@@ -2,6 +2,8 @@
 
 A powerline-style status bar extension for [pi](https://github.com/badlogic/pi-mono), the coding agent. Inspired by [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
+<img width="1782" height="170" alt="image" src="https://github.com/user-attachments/assets/e9d2aded-8cd7-4b35-bb8e-f7c55b01b16c" />
+
 ## Features
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer:
