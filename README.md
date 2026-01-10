@@ -6,12 +6,7 @@ A powerline-style status bar extension for [pi](https://github.com/badlogic/pi-m
 
 ## Features
 
-**Rounded box design** — Status renders directly in the editor's top border, not as a separate footer:
-```
-╭─  3.5 Sonnet  ~/project  main *2  45.2%/200k  1.2M  $0.42 ───╮
-│  your input here                                              │
-╰─                                                             ─╯
-```
+**Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
 **Smart defaults** — Nerd Font auto-detection for iTerm, WezTerm, Kitty, Ghostty, and Alacritty with ASCII fallbacks. Colors matched to oh-my-pi's dark theme.
 
