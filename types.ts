@@ -17,7 +17,8 @@ export type StatusLineSegmentId =
   | "hostname"
   | "cache_read"
   | "cache_write"
-  | "thinking";
+  | "thinking"
+  | "extension_statuses";
 
 // Separator styles
 export type StatusLineSeparatorStyle =

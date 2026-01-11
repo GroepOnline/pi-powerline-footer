@@ -2,7 +2,7 @@ import type { PresetDef, StatusLinePreset } from "./types.js";
 
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   default: {
-    leftSegments: ["pi", "model", "thinking", "path", "git", "context_pct", "token_total", "cost"],
+    leftSegments: ["pi", "model", "thinking", "path", "git", "context_pct", "token_total", "cost", "extension_statuses"],
     rightSegments: [],
     separator: "powerline-thin",
     segmentOptions: {
@@ -34,7 +34,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
 
   full: {
     leftSegments: ["pi", "hostname", "model", "thinking", "path", "git", "subagents"],
-    rightSegments: ["token_in", "token_out", "cache_read", "cost", "context_pct", "time_spent", "time"],
+    rightSegments: ["token_in", "token_out", "cache_read", "cost", "context_pct", "time_spent", "time", "extension_statuses"],
     separator: "powerline",
     segmentOptions: {
       model: { showThinkingLevel: false },
@@ -46,7 +46,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
 
   nerd: {
     leftSegments: ["pi", "hostname", "model", "thinking", "path", "git", "session", "subagents"],
-    rightSegments: ["token_in", "token_out", "cache_read", "cache_write", "cost", "context_pct", "context_total", "time_spent", "time"],
+    rightSegments: ["token_in", "token_out", "cache_read", "cache_write", "cost", "context_pct", "context_total", "time_spent", "time", "extension_statuses"],
     separator: "powerline",
     segmentOptions: {
       model: { showThinkingLevel: false },

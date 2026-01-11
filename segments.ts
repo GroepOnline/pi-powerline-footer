@@ -378,6 +378,26 @@ const cacheWriteSegment: StatusLineSegment = {
   },
 };
 
+const extensionStatusesSegment: StatusLineSegment = {
+  id: "extension_statuses",
+  render(ctx) {
+    const statuses = ctx.extensionStatuses;
+    if (!statuses || statuses.size === 0) return { content: "", visible: false };
+
+    // Join all extension statuses with a separator
+    const parts: string[] = [];
+    for (const [_key, value] of statuses) {
+      if (value) parts.push(value);
+    }
+
+    if (parts.length === 0) return { content: "", visible: false };
+
+    // Statuses already have their own styling applied by the extensions
+    const content = parts.join(` ${SEP_DOT} `);
+    return { content, visible: true };
+  },
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Segment Registry
 // ═══════════════════════════════════════════════════════════════════════════
@@ -401,6 +421,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
   hostname: hostnameSegment,
   cache_read: cacheReadSegment,
   cache_write: cacheWriteSegment,
+  extension_statuses: extensionStatusesSegment,
 };
 
 export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): RenderedSegment {
