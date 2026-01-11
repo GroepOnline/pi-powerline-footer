@@ -6,7 +6,7 @@ import type { SegmentContext, StatusLinePreset } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
-import { getGitStatus, invalidateGitStatus } from "./git-status.js";
+import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
 import { ansi, getFgAnsiCode } from "./colors.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -69,6 +69,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let footerDispose: (() => void) | null = null;
   let getThinkingLevelFn: (() => string) | null = null;
   let isStreaming = false;
+  let tuiRef: any = null; // Store TUI reference for forcing re-renders
 
   // Track session start
   pi.on("session_start", async (_event, ctx) => {
@@ -85,10 +86,45 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   });
 
-  // Invalidate git status on file changes
+  // Check if a bash command might change git branch
+  const mightChangeGitBranch = (cmd: string): boolean => {
+    const gitBranchPatterns = [
+      /\bgit\s+(checkout|switch|branch\s+-[dDmM]|merge|rebase|pull|reset|worktree)/,
+      /\bgit\s+stash\s+(pop|apply)/,
+    ];
+    return gitBranchPatterns.some(p => p.test(cmd));
+  };
+
+  // Invalidate git status on file changes, trigger re-render on potential branch changes
   pi.on("tool_result", async (event, _ctx) => {
     if (event.toolName === "write" || event.toolName === "edit") {
       invalidateGitStatus();
+    }
+    // Check for bash commands that might change git branch
+    if (event.toolName === "bash" && event.input?.command) {
+      const cmd = String(event.input.command);
+      if (mightChangeGitBranch(cmd)) {
+        // Invalidate caches since working tree state changes with branch
+        invalidateGitStatus();
+        invalidateGitBranch();
+        // Small delay to let git update, then re-render
+        setTimeout(() => tuiRef?.requestRender(), 100);
+      }
+    }
+  });
+
+  // Also catch user escape commands (! prefix)
+  // Note: This fires BEFORE execution, so we use a longer delay and multiple re-renders
+  // to ensure we catch the update after the command completes.
+  pi.on("user_bash", async (event, _ctx) => {
+    if (mightChangeGitBranch(event.command)) {
+      // Invalidate immediately so next render fetches fresh data
+      invalidateGitStatus();
+      invalidateGitBranch();
+      // Multiple staggered re-renders to catch fast and slow commands
+      setTimeout(() => tuiRef?.requestRender(), 100);
+      setTimeout(() => tuiRef?.requestRender(), 300);
+      setTimeout(() => tuiRef?.requestRender(), 500);
     }
   });
 
@@ -121,6 +157,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setFooter(undefined);
           footerDispose = null;
           footerDataRef = null;
+          tuiRef = null;
           ctx.ui.notify("Default editor restored", "info");
         }
         return;
@@ -322,6 +359,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       // Also set up footer data provider access via a minimal footer
       ctx.ui.setFooter((tui: any, _theme: any, footerData: ReadonlyFooterDataProvider) => {
         footerDataRef = footerData;
+        tuiRef = tui; // Store TUI reference for re-renders on git branch changes
         const unsub = footerData.onBranchChange(() => tui.requestRender());
 
         // Track dispose for cleanup when disabling

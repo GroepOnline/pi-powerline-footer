@@ -8,10 +8,19 @@ interface CachedGitStatus {
   timestamp: number;
 }
 
-const CACHE_TTL_MS = 1000; // 1 second
+interface CachedBranch {
+  branch: string | null;
+  timestamp: number;
+}
+
+const CACHE_TTL_MS = 1000; // 1 second for file status
+const BRANCH_TTL_MS = 500; // Shorter TTL so branch updates quickly after invalidation
 let cachedStatus: CachedGitStatus | null = null;
+let cachedBranch: CachedBranch | null = null;
 let pendingFetch: Promise<void> | null = null;
+let pendingBranchFetch: Promise<void> | null = null;
 let invalidationCounter = 0; // Track invalidations to prevent stale updates
+let branchInvalidationCounter = 0;
 
 /**
  * Parse git status --porcelain output
@@ -49,6 +58,50 @@ function parseGitStatusOutput(output: string): { staged: number; unstaged: numbe
   }
 
   return { staged, unstaged, untracked };
+}
+
+/**
+ * Fetch current git branch asynchronously
+ */
+async function fetchGitBranch(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const proc = spawn("git", ["branch", "--show-current"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let resolved = false;
+
+    const finish = (result: string | null) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutId);
+      resolve(result);
+    };
+
+    proc.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        finish(null);
+        return;
+      }
+      const branch = stdout.trim();
+      finish(branch || null); // Empty string means detached HEAD
+    });
+
+    proc.on("error", () => {
+      finish(null);
+    });
+
+    // Timeout after 200ms
+    const timeoutId = setTimeout(() => {
+      proc.kill();
+      finish(null);
+    }, 200);
+  });
 }
 
 /**
@@ -95,18 +148,47 @@ async function fetchGitStatus(): Promise<{ staged: number; unstaged: number; unt
 }
 
 /**
+ * Get the current git branch with caching.
+ * Falls back to provider branch if our cache is empty.
+ */
+export function getCurrentBranch(providerBranch: string | null): string | null {
+  const now = Date.now();
+
+  // Return cached if fresh
+  if (cachedBranch && now - cachedBranch.timestamp < BRANCH_TTL_MS) {
+    return cachedBranch.branch;
+  }
+
+  // Trigger background fetch if not already pending
+  if (!pendingBranchFetch) {
+    const fetchId = branchInvalidationCounter;
+    pendingBranchFetch = fetchGitBranch().then((result) => {
+      // Only update cache if fetch succeeded and no invalidation happened
+      if (result !== null && fetchId === branchInvalidationCounter) {
+        cachedBranch = {
+          branch: result,
+          timestamp: Date.now(),
+        };
+      }
+      pendingBranchFetch = null;
+    });
+  }
+
+  // Return cached branch, or fall back to provider
+  return cachedBranch?.branch ?? providerBranch;
+}
+
+/**
  * Get git status with caching.
  * Returns cached value if within TTL, otherwise triggers async fetch.
  * This is designed for synchronous render() calls - returns last known value
  * while refreshing in background.
- * 
- * Note: branch is passed in from the footer data provider and NOT cached,
- * since the provider handles branch change detection separately.
  */
-export function getGitStatus(branch: string | null): GitStatus {
+export function getGitStatus(providerBranch: string | null): GitStatus {
   const now = Date.now();
+  const branch = getCurrentBranch(providerBranch);
 
-  // Return cached if fresh (branch is always current, not from cache)
+  // Return cached if fresh
   if (cachedStatus && now - cachedStatus.timestamp < CACHE_TTL_MS) {
     return { 
       branch, 
@@ -133,7 +215,7 @@ export function getGitStatus(branch: string | null): GitStatus {
     });
   }
 
-  // Return last cached or empty (always use current branch)
+  // Return last cached or empty
   if (cachedStatus) {
     return { 
       branch, 
@@ -152,4 +234,12 @@ export function getGitStatus(branch: string | null): GitStatus {
 export function invalidateGitStatus(): void {
   cachedStatus = null;
   invalidationCounter++; // Increment to invalidate any pending fetches
+}
+
+/**
+ * Force refresh git branch (call when you know branch might have changed)
+ */
+export function invalidateGitBranch(): void {
+  cachedBranch = null;
+  branchInvalidationCounter++;
 }

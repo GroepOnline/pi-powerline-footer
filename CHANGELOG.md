@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1] - 2026-01-10
+
+### Added
+- **Live git branch updates** — Branch now updates in real-time when switching via `git checkout`, `git switch`, etc.
+- **Own branch fetching** — Extension fetches branch directly via `git branch --show-current` instead of relying solely on FooterDataProvider
+- **Branch cache with 500ms TTL** — Faster refresh cycle for branch changes
+- **Staggered re-renders for escape commands** — Multiple re-renders at 100/300/500ms to catch updates from `!` commands
+
+### Fixed
+- Git branch not updating after `git checkout` to existing branches
+- Race condition where FooterDataProvider's branch cache wasn't updating in time
+
 ## [0.2.0] - 2026-01-10
 
 ### Added
