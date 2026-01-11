@@ -2,11 +2,11 @@ import type { PresetDef, StatusLinePreset } from "./types.js";
 
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   default: {
-    leftSegments: ["pi", "model", "path", "git", "context_pct", "token_total", "cost"],
+    leftSegments: ["pi", "model", "thinking", "path", "git", "context_pct", "token_total", "cost"],
     rightSegments: [],
     separator: "powerline-thin",
     segmentOptions: {
-      model: { showThinkingLevel: true },
+      model: { showThinkingLevel: false },
       path: { abbreviate: true, maxLength: 40, stripWorkPrefix: true },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
     },
@@ -33,11 +33,11 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
 
   full: {
-    leftSegments: ["pi", "hostname", "model", "path", "git", "subagents"],
+    leftSegments: ["pi", "hostname", "model", "thinking", "path", "git", "subagents"],
     rightSegments: ["token_in", "token_out", "cache_read", "cost", "context_pct", "time_spent", "time"],
     separator: "powerline",
     segmentOptions: {
-      model: { showThinkingLevel: true },
+      model: { showThinkingLevel: false },
       path: { abbreviate: true, maxLength: 50 },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
       time: { format: "24h", showSeconds: false },
@@ -45,11 +45,11 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
 
   nerd: {
-    leftSegments: ["pi", "hostname", "model", "path", "git", "session", "subagents"],
+    leftSegments: ["pi", "hostname", "model", "thinking", "path", "git", "session", "subagents"],
     rightSegments: ["token_in", "token_out", "cache_read", "cache_write", "cost", "context_pct", "context_total", "time_spent", "time"],
     separator: "powerline",
     segmentOptions: {
-      model: { showThinkingLevel: true },
+      model: { showThinkingLevel: false },
       path: { abbreviate: true, maxLength: 60 },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
       time: { format: "24h", showSeconds: true },

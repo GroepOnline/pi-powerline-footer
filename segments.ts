@@ -1,6 +1,6 @@
 import { hostname as osHostname } from "node:os";
 import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types.js";
-import { fgOnly } from "./colors.js";
+import { fgOnly, rainbow } from "./colors.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -152,6 +152,41 @@ const gitSegment: StatusLineSegment = {
     // Wrap entire content in branch color
     const colorName = isDirty ? "gitDirty" : "gitClean";
     return { content: fgOnly(colorName, content), visible: true };
+  },
+};
+
+const thinkingSegment: StatusLineSegment = {
+  id: "thinking",
+  render(ctx) {
+    const level = ctx.thinkingLevel || "off";
+
+    // Text label for each level
+    const levelText: Record<string, string> = {
+      off: "off",
+      minimal: "min",
+      low: "low",
+      medium: "med",
+      high: "high",
+      xhigh: "xhigh",
+    };
+    const label = levelText[level] || level;
+    const content = `thinking:${label}`;
+
+    // Use rainbow effect for high/xhigh (like Claude Code ultrathink)
+    if (level === "high" || level === "xhigh") {
+      return { content: rainbow(content), visible: true };
+    }
+
+    // Map level to existing color names (gradient: gray → blue → teal)
+    const colorMap: Record<string, "sep" | "context" | "border" | "path"> = {
+      off: "sep",
+      minimal: "context",
+      low: "border",
+      medium: "path",
+    };
+    const color = colorMap[level] || "sep";
+    
+    return { content: fgOnly(color, content), visible: true };
   },
 };
 
@@ -352,6 +387,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
   model: modelSegment,
   path: pathSegment,
   git: gitSegment,
+  thinking: thinkingSegment,
   subagents: subagentsSegment,
   token_in: tokenInSegment,
   token_out: tokenOutSegment,

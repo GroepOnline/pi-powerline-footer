@@ -48,6 +48,14 @@ const THEME = {
   warning: "#e4c00f",                 // Yellow
   error: "#fc3a4b",                   // Red
   text: "",                           // Default terminal color
+
+  // Thinking level colors (gradient from dim to bright)
+  thinkingOff: "#3d424a",             // Dark gray
+  thinkingMinimal: "#5f6673",         // Dim gray
+  thinkingLow: "#178fb9",             // Blue
+  thinkingMedium: "#0088fa",          // Bright blue
+  thinkingHigh: "#b281d6",            // Purple
+  thinkingXhigh: "#e5c1ff",           // Bright lavender
 };
 
 // Color name to ANSI code mapping
@@ -55,7 +63,9 @@ type ColorName =
   | "sep" | "model" | "path" | "gitClean" | "gitDirty" 
   | "context" | "spend" | "staged" | "unstaged" | "untracked"
   | "output" | "cost" | "subagents" | "accent" | "border"
-  | "warning" | "error" | "text";
+  | "warning" | "error" | "text"
+  | "thinkingOff" | "thinkingMinimal" | "thinkingLow" 
+  | "thinkingMedium" | "thinkingHigh" | "thinkingXhigh";
 
 function getAnsiCode(color: ColorName): string {
   const value = THEME[color as keyof typeof THEME];
@@ -85,4 +95,32 @@ export function fgOnly(color: ColorName, text: string): string {
 // Get raw ANSI code for a color
 export function getFgAnsiCode(color: ColorName): string {
   return getAnsiCode(color);
+}
+
+// Rainbow colors for ultra/xhigh thinking (matches Claude Code ultrathink)
+const RAINBOW_COLORS = [
+  "#b281d6",  // purple
+  "#d787af",  // pink
+  "#febc38",  // orange
+  "#e4c00f",  // yellow
+  "#89d281",  // green
+  "#00afaf",  // cyan
+  "#178fb9",  // blue
+  "#b281d6",  // purple (loop)
+];
+
+// Apply rainbow gradient to text (each character gets next color)
+export function rainbow(text: string): string {
+  let result = "";
+  let colorIndex = 0;
+  for (const char of text) {
+    if (char === " " || char === ":") {
+      result += char;
+    } else {
+      const [r, g, b] = hexToRgb(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]);
+      result += `${ansi.getFgAnsi(r, g, b)}${char}`;
+      colorIndex++;
+    }
+  }
+  return result;
 }

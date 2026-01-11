@@ -67,11 +67,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let currentCtx: any = null;
   let footerDataRef: ReadonlyFooterDataProvider | null = null;
   let footerDispose: (() => void) | null = null;
+  let getThinkingLevelFn: (() => string) | null = null;
 
   // Track session start
   pi.on("session_start", async (_event, ctx) => {
     sessionStartTime = Date.now();
     currentCtx = ctx;
+    
+    // Store thinking level getter if available
+    if (typeof ctx.getThinkingLevel === 'function') {
+      getThinkingLevelFn = () => ctx.getThinkingLevel();
+    }
     
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
@@ -89,6 +95,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.registerCommand("powerline", {
     description: "Configure powerline status (toggle, preset)",
     handler: async (args, ctx) => {
+      // Update context reference (command ctx may have more methods)
+      currentCtx = ctx;
+      
       if (!args) {
         // Toggle
         enabled = !enabled;
@@ -127,12 +136,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function buildSegmentContext(ctx: any, width: number): SegmentContext {
     const presetDef = getPreset(config.preset);
 
-    // Build usage stats from session
+    // Build usage stats and get thinking level from session
     let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
     let lastAssistant: AssistantMessage | undefined;
+    let thinkingLevelFromSession = "off";
     
     const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
     for (const e of sessionEvents) {
+      // Check for thinking level change entries
+      if (e.type === "thinking_level_change" && e.thinkingLevel) {
+        thinkingLevelFromSession = e.thinkingLevel;
+      }
       if (e.type === "message" && e.message.role === "assistant") {
         const m = e.message as AssistantMessage;
         input += m.usage.input;
@@ -163,7 +177,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     return {
       model: ctx.model,
-      thinkingLevel: ctx.agent?.state?.thinkingLevel || "off",
+      thinkingLevel: thinkingLevelFromSession || getThinkingLevelFn?.() || "off",
       sessionId: ctx.sessionManager?.getSessionId?.(),
       usageStats: { input, output, cacheRead, cacheWrite, cost },
       contextPercent,
@@ -279,7 +293,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
         return {
           dispose: unsub,
-          invalidate() {},
+          invalidate() {
+            // Re-render when thinking level or other settings change
+            tui.requestRender();
+          },
           render(_width: number): string[] {
             // Return empty - we render in editor top border instead
             return [];
