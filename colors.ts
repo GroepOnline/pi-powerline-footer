@@ -122,5 +122,5 @@ export function rainbow(text: string): string {
       colorIndex++;
     }
   }
-  return result;
+  return result + ansi.reset;
 }

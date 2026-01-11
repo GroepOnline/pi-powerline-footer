@@ -16,7 +16,6 @@ export interface IconSet {
   session: string;
   auto: string;
   warning: string;
-  brain: string;
 }
 
 // Separator characters
@@ -67,7 +66,6 @@ export const NERD_ICONS: IconSet = {
   session: "\uF550",    // nf-md-identifier (session id)
   auto: "\u{F0068}",    // nf-md-lightning_bolt (auto-compact)
   warning: "\uF071",    // nf-fa-warning
-  brain: "Ψ",            // Psi - psychology/mind symbol (retro)
 };
 
 // ASCII/Unicode fallback icons (matching oh-my-pi)
@@ -89,7 +87,6 @@ export const ASCII_ICONS: IconSet = {
   session: "id",
   auto: "⚡",
   warning: "⚠",
-  brain: "🧠",
 };
 
 // Separator characters

@@ -54,7 +54,7 @@ function buildStatusContent(ctx: SegmentContext, presetDef: ReturnType<typeof ge
   // Build content with powerline separators (no background)
   const sep = separatorDef.left;
   const allParts = [...leftParts, ...rightParts];
-  return " " + allParts.join(` ${sepAnsi}${sep}${ansi.reset} `) + " ";
+  return " " + allParts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -68,6 +68,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let footerDataRef: ReadonlyFooterDataProvider | null = null;
   let footerDispose: (() => void) | null = null;
   let getThinkingLevelFn: (() => string) | null = null;
+  let isStreaming = false;
 
   // Track session start
   pi.on("session_start", async (_event, ctx) => {
@@ -89,6 +90,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (event.toolName === "write" || event.toolName === "edit") {
       invalidateGitStatus();
     }
+  });
+
+  // Track streaming state (footer only shows status during streaming)
+  pi.on("stream_start", async () => {
+    isStreaming = true;
+  });
+
+  pi.on("stream_end", async () => {
+    isStreaming = false;
   });
 
   // Command to toggle/configure
@@ -247,7 +257,33 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             const fillWidth = topFillWidth - statusWidth;
             result.push(topLeft + statusContent + bc("─".repeat(fillWidth)) + topRight);
           } else {
-            result.push(topLeft + bc("─".repeat(topFillWidth)) + topRight);
+            // Status too wide - truncate by removing segments from the end
+            // Build progressively shorter content until it fits
+            const allSegments = [...presetDef.leftSegments, ...presetDef.rightSegments];
+            let truncatedContent = "";
+            
+            for (let numSegments = allSegments.length - 1; numSegments >= 1; numSegments--) {
+              const limitedPreset = {
+                ...presetDef,
+                leftSegments: presetDef.leftSegments.slice(0, numSegments),
+                rightSegments: [],
+              };
+              truncatedContent = buildStatusContent(segmentCtx, limitedPreset);
+              const truncWidth = visibleWidth(truncatedContent);
+              if (truncWidth <= topFillWidth - 1) { // -1 for ellipsis
+                truncatedContent += "…";
+                break;
+              }
+            }
+            
+            const truncWidth = visibleWidth(truncatedContent);
+            if (truncWidth <= topFillWidth) {
+              const fillWidth = topFillWidth - truncWidth;
+              result.push(topLeft + truncatedContent + bc("─".repeat(fillWidth)) + topRight);
+            } else {
+              // Still too wide, show minimal
+              result.push(topLeft + bc("─".repeat(Math.max(0, topFillWidth))) + topRight);
+            }
           }
           
           // Content lines (between top border at 0 and bottom border)
@@ -297,9 +333,42 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             // Re-render when thinking level or other settings change
             tui.requestRender();
           },
-          render(_width: number): string[] {
-            // Return empty - we render in editor top border instead
-            return [];
+          render(width: number): string[] {
+            // Only show status in footer during streaming (editor hidden)
+            // When editor is visible, status shows in editor top border instead
+            if (!isStreaming || !currentCtx) return [];
+            
+            const presetDef = getPreset(config.preset);
+            const segmentCtx = buildSegmentContext(currentCtx, width);
+            const statusContent = buildStatusContent(segmentCtx, presetDef);
+            
+            if (!statusContent) return [];
+            
+            // Single line with status content, padded/truncated to width
+            const statusWidth = visibleWidth(statusContent);
+            if (statusWidth <= width) {
+              return [statusContent + " ".repeat(width - statusWidth)];
+            } else {
+              // Truncate by removing segments (same logic as editor)
+              const allSegments = [...presetDef.leftSegments, ...presetDef.rightSegments];
+              let truncatedContent = "";
+              
+              for (let numSegments = allSegments.length - 1; numSegments >= 1; numSegments--) {
+                const limitedPreset = {
+                  ...presetDef,
+                  leftSegments: presetDef.leftSegments.slice(0, numSegments),
+                  rightSegments: [],
+                };
+                truncatedContent = buildStatusContent(segmentCtx, limitedPreset);
+                const truncWidth = visibleWidth(truncatedContent);
+                if (truncWidth <= width - 1) {
+                  truncatedContent += "…";
+                  break;
+                }
+              }
+              
+              return [truncatedContent];
+            }
           },
         };
       });

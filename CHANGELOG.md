@@ -6,11 +6,20 @@
 - **Thinking level segment** — Live-updating display of current thinking level (`thinking:off`, `thinking:med`, etc.)
 - **Rainbow effect** — High and xhigh thinking levels display with rainbow gradient inspired by Claude Code's ultrathink
 - **Color gradient** — Thinking levels use progressive colors: gray → purple-gray → blue → teal → rainbow
+- **Streaming visibility** — Status bar now renders in footer during streaming so it's always visible
 
 ### Changed
 - Default preset now includes `thinking` segment after model
 - Thinking level reads from session branch entries for live updates
 - Footer invalidate() now triggers re-render for settings changes
+- Responsive truncation — progressively removes segments on narrow windows instead of hiding status
+
+### Fixed
+- ANSI color reset after status content to prevent color bleeding
+- ANSI color reset after rainbow text
+
+### Removed
+- Unused brain icon definitions
 
 ## [0.1.0] - 2025-01-10
 

@@ -2,7 +2,7 @@
 
 A powerline-style status bar extension for [pi](https://github.com/badlogic/pi-mono), the coding agent. Inspired by [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
-<img width="1782" height="170" alt="image" src="https://github.com/user-attachments/assets/e9d2aded-8cd7-4b35-bb8e-f7c55b01b16c" />
+<img width="1555" height="171" alt="image" src="https://github.com/user-attachments/assets/7bfc8a5a-29b5-478e-b9c8-c462c032a840" />
 
 ## Features
 
