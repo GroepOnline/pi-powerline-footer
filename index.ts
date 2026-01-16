@@ -244,7 +244,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
       ctx.ui.setEditorComponent((tui: any, theme: any, keybindings: any) => {
         // Create custom editor that overrides render for status in top border
-        const editor = new CustomEditor(theme, keybindings);
+        const editor = new CustomEditor(tui, theme, keybindings);
         
         // Store original render
         const originalRender = editor.render.bind(editor);

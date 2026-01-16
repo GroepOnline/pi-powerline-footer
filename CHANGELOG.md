@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.4] - 2026-01-15
+
+### Fixed
+- Compatible with pi-tui 0.47.0 breaking change: CustomEditor constructor now requires `tui` as first argument
+
 ## [0.2.3] - 2026-01-15
 
 ### Fixed
