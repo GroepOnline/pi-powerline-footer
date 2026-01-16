@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.3] - 2026-01-15
+
+### Fixed
+- npm bin entry now works correctly with `npx pi-powerline-footer`
+
 ## [0.2.2] - 2026-01-15
 
 ### Changed
