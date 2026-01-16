@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.6] - 2026-01-16
+
+### Fixed
+- Removed invalid `?` keyboard shortcut tip, replaced with `Shift+Tab` for cycling thinking level
+
 ## [0.2.5] - 2026-01-16
 
 ### Added

@@ -121,9 +121,9 @@ export class WelcomeComponent implements Component {
     // Right column
     const rightLines = [
       ` ${this.bold(fgOnly("accent", "Tips"))}`,
-      ` ${this.dim("?")} for keyboard shortcuts`,
       ` ${this.dim("/")} for commands`,
       ` ${this.dim("!")} to run bash`,
+      ` ${this.dim("Shift+Tab")} cycle thinking`,
       separator,
       ` ${this.bold(fgOnly("accent", "Loaded"))}`,
       ...countLines,
