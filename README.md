@@ -1,10 +1,12 @@
 # pi-powerline-footer
 
-A powerline-style status bar extension for [pi](https://github.com/badlogic/pi-mono), the coding agent. Inspired by [oh-my-pi](https://github.com/can1357/oh-my-pi).
+A powerline-style status bar and welcome header extension for [pi](https://github.com/badlogic/pi-mono), the coding agent. Inspired by [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
-<img width="1555" height="171" alt="image" src="https://github.com/user-attachments/assets/7bfc8a5a-29b5-478e-b9c8-c462c032a840" />
+<img width="1261" height="817" alt="Image" src="https://github.com/user-attachments/assets/4cc43320-3fb8-4503-b857-69dffa7028f2" />
 
 ## Features
+
+**Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, and recent sessions. Auto-dismisses after 30 seconds or on any key press.
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 

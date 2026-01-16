@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.5] - 2026-01-16
+
+### Added
+- **Welcome overlay** — Branded "pi agent" splash screen shown as centered overlay on startup
+- Two-column boxed layout with gradient PI logo (magenta → cyan)
+- Shows current model name and provider
+- Keyboard tips section (?, /, !)
+- Loaded counts: context files (AGENTS.md), extensions, skills, and prompt templates
+- Recent sessions list (up to 3, with time ago)
+- Auto-dismisses after 30 seconds or on any key press
+- Version now reads from package.json instead of being hardcoded
+- Context file discovery now checks `.claude/AGENTS.md` paths (matching pi-mono)
+
 ## [0.2.4] - 2026-01-15
 
 ### Fixed

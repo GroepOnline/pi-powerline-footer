@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { visibleWidth } from "@mariozechner/pi-tui";
+import { readFileSync } from "node:fs";
 
 import type { SegmentContext, StatusLinePreset } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
@@ -8,6 +9,7 @@ import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
 import { ansi, getFgAnsiCode } from "./colors.js";
+import { WelcomeComponent, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -82,6 +84,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
+      setupWelcomeOverlay(ctx);
     }
   });
 
@@ -148,14 +151,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         enabled = !enabled;
         if (enabled) {
           setupCustomEditor(ctx);
-          ctx.ui.notify("Powerline status enabled", "info");
+          ctx.ui.notify("Powerline enabled", "info");
         } else {
           // setFooter(undefined) internally calls the old footer's dispose()
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
           footerDataRef = null;
           tuiRef = null;
-          ctx.ui.notify("Default editor restored", "info");
+          ctx.ui.notify("Defaults restored", "info");
         }
         return;
       }
@@ -408,5 +411,85 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         };
       });
     });
+  }
+
+  function setupWelcomeOverlay(ctx: any) {
+    // Get version from package.json  
+    let version = "0.0.0";
+    try {
+      const pkgPath = new URL("./package.json", import.meta.url).pathname;
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      version = pkg.version || version;
+    } catch {}
+    
+    // Get model info
+    const modelName = ctx.model?.name || ctx.model?.id || "No model";
+    const providerName = ctx.model?.provider || "Unknown";
+    
+    // Discover loaded counts and recent sessions
+    const loadedCounts = discoverLoadedCounts();
+    const recentSessions = getRecentSessions(3);
+    
+    // Small delay to let pi-mono finish initialization before showing overlay
+    setTimeout(() => {
+      // Show welcome as an overlay that dismisses on any key or after timeout
+      ctx.ui.custom(
+        (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
+          const welcome = new WelcomeComponent(
+            version,
+            modelName,
+            providerName,
+            recentSessions,
+            loadedCounts,
+          );
+          
+          let countdown = 30;
+          let dismissed = false;
+          
+          const dismiss = () => {
+            if (dismissed) return;
+            dismissed = true;
+            clearInterval(interval);
+            done();
+          };
+          
+          // Update countdown every second
+          const interval = setInterval(() => {
+            if (dismissed) return;
+            countdown--;
+            welcome.setCountdown(countdown);
+            tui.requestRender();
+            
+            if (countdown <= 0) {
+              dismiss();
+            }
+          }, 1000);
+          
+          // Create a focusable wrapper component
+          // Must have 'focused' property for TUI to recognize it as focusable
+          return {
+            focused: false, // TUI sets this to true when focused
+            invalidate: () => welcome.invalidate(),
+            render: (width: number) => welcome.render(width),
+            handleInput: (_data: string) => {
+              dismiss();
+            },
+            dispose: () => {
+              dismissed = true;
+              clearInterval(interval);
+            },
+          };
+        },
+        {
+          overlay: true,
+          overlayOptions: () => ({
+            verticalAlign: "center",
+            horizontalAlign: "center",
+          }),
+        },
+      ).catch(() => {
+        // Dismissed, ignore
+      });
+    }, 100); // Small delay to let init complete
   }
 }
