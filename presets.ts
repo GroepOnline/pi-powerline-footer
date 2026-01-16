@@ -7,7 +7,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     separator: "powerline-thin",
     segmentOptions: {
       model: { showThinkingLevel: false },
-      path: { abbreviate: true, maxLength: 40, stripWorkPrefix: true },
+      path: { mode: "basename" },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
     },
   },
@@ -17,7 +17,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     rightSegments: ["context_pct"],
     separator: "slash",
     segmentOptions: {
-      path: { abbreviate: true, maxLength: 30 },
+      path: { mode: "basename" },
       git: { showBranch: true, showStaged: false, showUnstaged: false, showUntracked: false },
     },
   },
@@ -38,7 +38,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     separator: "powerline",
     segmentOptions: {
       model: { showThinkingLevel: false },
-      path: { abbreviate: true, maxLength: 50 },
+      path: { mode: "abbreviated", maxLength: 50 },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
       time: { format: "24h", showSeconds: false },
     },
@@ -50,7 +50,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     separator: "powerline",
     segmentOptions: {
       model: { showThinkingLevel: false },
-      path: { abbreviate: true, maxLength: 60 },
+      path: { mode: "abbreviated", maxLength: 60 },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
       time: { format: "24h", showSeconds: true },
     },
@@ -62,7 +62,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     separator: "ascii",
     segmentOptions: {
       model: { showThinkingLevel: true },
-      path: { abbreviate: true, maxLength: 40 },
+      path: { mode: "abbreviated", maxLength: 40 },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
     },
   },

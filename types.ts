@@ -46,7 +46,10 @@ export type StatusLinePreset =
 // Per-segment options
 export interface StatusLineSegmentOptions {
   model?: { showThinkingLevel?: boolean };
-  path?: { abbreviate?: boolean; maxLength?: number; stripWorkPrefix?: boolean };
+  path?: { 
+    mode?: "basename" | "abbreviated" | "full";
+    maxLength?: number;
+  };
   git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }

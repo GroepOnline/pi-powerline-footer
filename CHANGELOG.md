@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.2] - 2026-01-15
+
+### Changed
+- **Path segment defaults to basename** — Shows just the directory name (e.g., `powerline-footer`) instead of full path to save space
+- **New path modes** — `basename` (default), `abbreviated` (truncated full path), `full` (complete path)
+- Simplified path options: replaced `abbreviate`, `stripWorkPrefix` with cleaner `mode` option
+- Full/nerd presets use `abbreviated` mode, default/minimal/compact use `basename`
+- Thinking segment now uses dedicated gradient colors (thinkingOff → thinkingMedium)
+
+### Fixed
+- Path basename extraction now uses `path.basename()` for Windows compatibility
+- Git branch cache now stores `null` results, preventing repeated git calls in non-git directories
+- Git status cache now stores empty results for non-git directories (was also spawning repeatedly)
+- Removed dead `footerDispose` variable (cleanup handled by pi internally)
+
 ## [0.2.1] - 2026-01-10
 
 ### Added

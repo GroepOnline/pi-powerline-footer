@@ -163,8 +163,8 @@ export function getCurrentBranch(providerBranch: string | null): string | null {
   if (!pendingBranchFetch) {
     const fetchId = branchInvalidationCounter;
     pendingBranchFetch = fetchGitBranch().then((result) => {
-      // Only update cache if fetch succeeded and no invalidation happened
-      if (result !== null && fetchId === branchInvalidationCounter) {
+      // Cache result if no invalidation happened (including null for non-git dirs)
+      if (fetchId === branchInvalidationCounter) {
         cachedBranch = {
           branch: result,
           timestamp: Date.now(),
@@ -202,14 +202,11 @@ export function getGitStatus(providerBranch: string | null): GitStatus {
   if (!pendingFetch) {
     const fetchId = invalidationCounter; // Capture current counter
     pendingFetch = fetchGitStatus().then((result) => {
-      // Only update cache if no invalidation happened since fetch started
-      if (result && fetchId === invalidationCounter) {
-        cachedStatus = {
-          staged: result.staged,
-          unstaged: result.unstaged,
-          untracked: result.untracked,
-          timestamp: Date.now(),
-        };
+      // Cache result if no invalidation happened (including null for non-git dirs)
+      if (fetchId === invalidationCounter) {
+        cachedStatus = result
+          ? { staged: result.staged, unstaged: result.unstaged, untracked: result.untracked, timestamp: Date.now() }
+          : { staged: 0, unstaged: 0, untracked: 0, timestamp: Date.now() };
       }
       pendingFetch = null;
     });

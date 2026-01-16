@@ -1,4 +1,5 @@
 import { hostname as osHostname } from "node:os";
+import { basename } from "node:path";
 import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types.js";
 import { fgOnly, rainbow } from "./colors.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
@@ -77,26 +78,32 @@ const pathSegment: StatusLineSegment = {
   render(ctx) {
     const icons = getIcons();
     const opts = ctx.options.path ?? {};
+    const mode = opts.mode ?? "basename";
 
     let pwd = process.cwd();
     const home = process.env.HOME || process.env.USERPROFILE;
 
-    // Abbreviate home directory
-    if (opts.abbreviate !== false && home && pwd.startsWith(home)) {
-      pwd = `~${pwd.slice(home.length)}`;
-    }
+    if (mode === "basename") {
+      // Just the last directory component (cross-platform)
+      pwd = basename(pwd) || pwd;
+    } else {
+      // Abbreviate home directory for abbreviated/full modes
+      if (home && pwd.startsWith(home)) {
+        pwd = `~${pwd.slice(home.length)}`;
+      }
 
-    // Strip /work/ prefix (common in containers)
-    if (opts.stripWorkPrefix !== false && pwd.startsWith("/work/")) {
-      pwd = pwd.slice(6);
-    }
+      // Strip /work/ prefix (common in containers)
+      if (pwd.startsWith("/work/")) {
+        pwd = pwd.slice(6);
+      }
 
-    // Truncate if too long
-    const maxLen = opts.maxLength ?? 40;
-    if (pwd.length > maxLen) {
-      const ellipsis = "…";
-      const sliceLen = Math.max(0, maxLen - ellipsis.length);
-      pwd = `${ellipsis}${pwd.slice(-sliceLen)}`;
+      // Truncate if too long (only for abbreviated mode)
+      if (mode === "abbreviated") {
+        const maxLen = opts.maxLength ?? 40;
+        if (pwd.length > maxLen) {
+          pwd = `…${pwd.slice(-(maxLen - 1))}`;
+        }
+      }
     }
 
     const content = withIcon(icons.folder, pwd);
@@ -177,14 +184,14 @@ const thinkingSegment: StatusLineSegment = {
       return { content: rainbow(content), visible: true };
     }
 
-    // Map level to existing color names (gradient: gray → blue → teal)
-    const colorMap: Record<string, "sep" | "context" | "border" | "path"> = {
-      off: "sep",
-      minimal: "context",
-      low: "border",
-      medium: "path",
+    // Use dedicated thinking colors (gradient: gray → purple → blue → teal)
+    const colorMap: Record<string, "thinkingOff" | "thinkingMinimal" | "thinkingLow" | "thinkingMedium"> = {
+      off: "thinkingOff",
+      minimal: "thinkingMinimal",
+      low: "thinkingLow",
+      medium: "thinkingMedium",
     };
-    const color = colorMap[level] || "sep";
+    const color = colorMap[level] || "thinkingOff";
     
     return { content: fgOnly(color, content), visible: true };
   },

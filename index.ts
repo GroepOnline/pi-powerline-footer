@@ -66,7 +66,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let sessionStartTime = Date.now();
   let currentCtx: any = null;
   let footerDataRef: ReadonlyFooterDataProvider | null = null;
-  let footerDispose: (() => void) | null = null;
   let getThinkingLevelFn: (() => string) | null = null;
   let isStreaming = false;
   let tuiRef: any = null; // Store TUI reference for forcing re-renders
@@ -151,11 +150,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           setupCustomEditor(ctx);
           ctx.ui.notify("Powerline status enabled", "info");
         } else {
-          // Note: setFooter(undefined) internally calls the old footer's dispose()
-          // so we don't need to call footerDispose ourselves
+          // setFooter(undefined) internally calls the old footer's dispose()
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
-          footerDispose = null;
           footerDataRef = null;
           tuiRef = null;
           ctx.ui.notify("Default editor restored", "info");
@@ -196,6 +193,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
       if (e.type === "message" && e.message.role === "assistant") {
         const m = e.message as AssistantMessage;
+        if (m.stopReason === "error" || m.stopReason === "aborted") {
+          continue;
+        }
         input += m.usage.input;
         output += m.usage.output;
         cacheRead += m.usage.cacheRead;
@@ -361,9 +361,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         footerDataRef = footerData;
         tuiRef = tui; // Store TUI reference for re-renders on git branch changes
         const unsub = footerData.onBranchChange(() => tui.requestRender());
-
-        // Track dispose for cleanup when disabling
-        footerDispose = unsub;
 
         return {
           dispose: unsub,

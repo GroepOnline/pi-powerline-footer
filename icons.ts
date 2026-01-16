@@ -138,6 +138,9 @@ export function hasNerdFonts(): boolean {
   if (process.env.POWERLINE_NERD_FONTS === "1") return true;
   if (process.env.POWERLINE_NERD_FONTS === "0") return false;
   
+  // Check for Ghostty (survives into tmux via GHOSTTY_RESOURCES_DIR)
+  if (process.env.GHOSTTY_RESOURCES_DIR) return true;
+  
   // Check common terminals known to support Nerd Fonts (case-insensitive)
   const term = (process.env.TERM_PROGRAM || "").toLowerCase();
   const nerdTerms = ["iterm", "wezterm", "kitty", "ghostty", "alacritty"];

@@ -20,7 +20,11 @@ A powerline-style status bar extension for [pi](https://github.com/badlogic/pi-m
 
 ## Installation
 
-Copy to `~/.pi/agent/extensions/powerline-footer/`
+```bash
+npx pi-powerline-footer
+```
+
+This copies the extension to `~/.pi/agent/extensions/powerline-footer/`. Restart pi to activate.
 
 ## Usage
 
@@ -28,10 +32,10 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 
 | Preset | Description |
 |--------|-------------|
-| `default` | Model, thinking, path, git, context, tokens, cost |
-| `minimal` | Just path, git, context |
+| `default` | Model, thinking, path (basename), git, context, tokens, cost |
+| `minimal` | Just path (basename), git, context |
 | `compact` | Model, git, cost, context |
-| `full` | Everything including hostname and time |
+| `full` | Everything including hostname, time, abbreviated path |
 | `nerd` | Maximum detail for Nerd Font users |
 | `ascii` | Safe for any terminal |
 
@@ -49,6 +53,18 @@ The thinking segment shows live updates when you change thinking level:
 | medium | `thinking:med` | teal |
 | high | `thinking:high` | 🌈 rainbow |
 | xhigh | `thinking:xhigh` | 🌈 rainbow |
+
+## Path Display
+
+The path segment supports three modes:
+
+| Mode | Example | Description |
+|------|---------|-------------|
+| `basename` | `powerline-footer` | Just the directory name (default) |
+| `abbreviated` | `…/extensions/powerline-footer` | Full path with home abbreviated and length limit |
+| `full` | `~/.pi/agent/extensions/powerline-footer` | Complete path with home abbreviated |
+
+Configure via preset options: `path: { mode: "full" }`
 
 ## Segments
 
