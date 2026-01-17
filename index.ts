@@ -158,6 +158,16 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   // Also dismiss welcome when agent starts responding (handles `p "command"` case)
   pi.on("stream_start", async (_event, ctx) => {
     isStreaming = true;
+    dismissWelcome(ctx);
+  });
+
+  // Also dismiss on tool calls (agent is working)
+  pi.on("tool_call", async (_event, ctx) => {
+    dismissWelcome(ctx);
+  });
+
+  // Helper to dismiss welcome overlay/header
+  function dismissWelcome(ctx: any) {
     if (dismissWelcomeOverlay) {
       dismissWelcomeOverlay();
       dismissWelcomeOverlay = null;
@@ -169,7 +179,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       welcomeHeaderActive = false;
       ctx.ui.setHeader(undefined);
     }
-  });
+  }
 
   pi.on("stream_end", async () => {
     isStreaming = false;
@@ -177,17 +187,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Dismiss welcome overlay/header on first user message
   pi.on("user_message", async (_event, ctx) => {
-    if (dismissWelcomeOverlay) {
-      dismissWelcomeOverlay();
-      dismissWelcomeOverlay = null;
-    } else {
-      // Overlay not set up yet (100ms delay) - mark for immediate dismissal when it does
-      welcomeOverlayShouldDismiss = true;
-    }
-    if (welcomeHeaderActive) {
-      welcomeHeaderActive = false;
-      ctx.ui.setHeader(undefined);
-    }
+    dismissWelcome(ctx);
   });
 
   // Command to toggle/configure
@@ -304,19 +304,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         // Override handleInput to dismiss welcome on first keypress
         const originalHandleInput = editor.handleInput.bind(editor);
         editor.handleInput = (data: string) => {
-          // Dismiss welcome overlay/header on first keypress
-          if (dismissWelcomeOverlay) {
-            const dismiss = dismissWelcomeOverlay;
-            dismissWelcomeOverlay = null;
-            setTimeout(dismiss, 0);
-          } else {
-            // Overlay not set up yet (100ms delay) - mark for immediate dismissal when it does
-            welcomeOverlayShouldDismiss = true;
-          }
-          if (welcomeHeaderActive) {
-            welcomeHeaderActive = false;
-            ctx.ui.setHeader(undefined);
-          }
+          // Dismiss welcome overlay/header on first keypress (use setTimeout to avoid re-entrancy)
+          setTimeout(() => dismissWelcome(ctx), 0);
           originalHandleInput(data);
         };
         
@@ -510,10 +499,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     // Small delay to let pi-mono finish initialization
     setTimeout(() => {
-      // Skip overlay entirely if dismissal was requested during the delay
-      // (e.g., `p "command"` triggers stream_start before this runs)
-      if (welcomeOverlayShouldDismiss) {
+      // Skip overlay if:
+      // 1. Dismissal was explicitly requested (stream_start/user_message fired)
+      // 2. Agent is already streaming
+      // 3. Session already has assistant messages (agent already responded)
+      if (welcomeOverlayShouldDismiss || isStreaming) {
         welcomeOverlayShouldDismiss = false;
+        return;
+      }
+      
+      // Check if session already has activity (handles p "command" case)
+      const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
+      const hasActivity = sessionEvents.some((e: any) => 
+        (e.type === "message" && e.message?.role === "assistant") ||
+        e.type === "tool_call" ||
+        e.type === "tool_result"
+      );
+      if (hasActivity) {
         return;
       }
       

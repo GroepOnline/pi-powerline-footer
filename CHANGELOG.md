@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.10] - 2026-01-17
+
+### Fixed
+- Welcome overlay now properly dismisses for `p "command"` case by:
+  - Adding `tool_call` event listener (fires before stream_start)
+  - Checking `isStreaming` flag when overlay is about to show
+  - Checking session for existing activity (assistant messages, tool calls)
+- Refactored dismissal logic into `dismissWelcome()` helper
+
 ## [0.2.9] - 2026-01-17
 
 ### Fixed
