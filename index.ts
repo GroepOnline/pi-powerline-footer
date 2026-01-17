@@ -1,7 +1,8 @@
 import type { ExtensionAPI, ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 
 import type { SegmentContext, StatusLinePreset } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
@@ -9,7 +10,7 @@ import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
 import { ansi, getFgAnsiCode } from "./colors.js";
-import { WelcomeComponent, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
+import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -22,6 +23,21 @@ interface PowerlineConfig {
 let config: PowerlineConfig = {
   preset: "default",
 };
+
+// Check if quietStartup is enabled in settings
+function isQuietStartup(): boolean {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
+  
+  try {
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      return settings.quietStartup === true;
+    }
+  } catch {}
+  
+  return false;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Status Line Builder (for top border)
@@ -71,6 +87,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let getThinkingLevelFn: (() => string) | null = null;
   let isStreaming = false;
   let tuiRef: any = null; // Store TUI reference for forcing re-renders
+  let dismissWelcomeOverlay: (() => void) | null = null; // Callback to dismiss welcome overlay
+  let welcomeHeaderActive = false; // Track if welcome header should be cleared on first input
 
   // Track session start
   pi.on("session_start", async (_event, ctx) => {
@@ -84,7 +102,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
-      setupWelcomeOverlay(ctx);
+      // quietStartup: true → compact header, otherwise → full overlay
+      if (isQuietStartup()) {
+        setupWelcomeHeader(ctx);
+      } else {
+        setupWelcomeOverlay(ctx);
+      }
     }
   });
 
@@ -139,6 +162,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     isStreaming = false;
   });
 
+  // Dismiss welcome overlay/header on first user message
+  pi.on("user_message", async (_event, ctx) => {
+    if (dismissWelcomeOverlay) {
+      dismissWelcomeOverlay();
+      dismissWelcomeOverlay = null;
+    }
+    if (welcomeHeaderActive) {
+      welcomeHeaderActive = false;
+      ctx.ui.setHeader(undefined);
+    }
+  });
+
   // Command to toggle/configure
   pi.registerCommand("powerline", {
     description: "Configure powerline status (toggle, preset)",
@@ -153,9 +188,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           setupCustomEditor(ctx);
           ctx.ui.notify("Powerline enabled", "info");
         } else {
-          // setFooter(undefined) internally calls the old footer's dispose()
+          // Clear all custom UI components
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
+          ctx.ui.setHeader(undefined);
           footerDataRef = null;
           tuiRef = null;
           ctx.ui.notify("Defaults restored", "info");
@@ -249,6 +285,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         // Create custom editor that overrides render for status in top border
         const editor = new CustomEditor(tui, theme, keybindings);
         
+        // Override handleInput to dismiss welcome on first keypress
+        const originalHandleInput = editor.handleInput.bind(editor);
+        editor.handleInput = (data: string) => {
+          // Dismiss welcome overlay/header on first keypress
+          if (dismissWelcomeOverlay) {
+            const dismiss = dismissWelcomeOverlay;
+            dismissWelcomeOverlay = null;
+            setTimeout(dismiss, 0);
+          }
+          if (welcomeHeaderActive) {
+            welcomeHeaderActive = false;
+            ctx.ui.setHeader(undefined);
+          }
+          originalHandleInput(data);
+        };
+        
         // Store original render
         const originalRender = editor.render.bind(editor);
         
@@ -299,10 +351,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           } else {
             // Status too wide - truncate by removing segments from the end
             // Build progressively shorter content until it fits
-            const allSegments = [...presetDef.leftSegments, ...presetDef.rightSegments];
             let truncatedContent = "";
             
-            for (let numSegments = allSegments.length - 1; numSegments >= 1; numSegments--) {
+            for (let numSegments = presetDef.leftSegments.length - 1; numSegments >= 1; numSegments--) {
               const limitedPreset = {
                 ...presetDef,
                 leftSegments: presetDef.leftSegments.slice(0, numSegments),
@@ -368,8 +419,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return {
           dispose: unsub,
           invalidate() {
-            // Re-render when thinking level or other settings change
-            tui.requestRender();
+            // No cache to clear - render is always fresh
           },
           render(width: number): string[] {
             // Only show status in footer during streaming (editor hidden)
@@ -388,10 +438,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
               return [statusContent + " ".repeat(width - statusWidth)];
             } else {
               // Truncate by removing segments (same logic as editor)
-              const allSegments = [...presetDef.leftSegments, ...presetDef.rightSegments];
               let truncatedContent = "";
               
-              for (let numSegments = allSegments.length - 1; numSegments >= 1; numSegments--) {
+              for (let numSegments = presetDef.leftSegments.length - 1; numSegments >= 1; numSegments--) {
                 const limitedPreset = {
                   ...presetDef,
                   leftSegments: presetDef.leftSegments.slice(0, numSegments),
@@ -413,30 +462,38 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     });
   }
 
-  function setupWelcomeOverlay(ctx: any) {
-    // Get version from package.json  
-    let version = "0.0.0";
-    try {
-      const pkgPath = new URL("./package.json", import.meta.url).pathname;
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-      version = pkg.version || version;
-    } catch {}
-    
-    // Get model info
+  function setupWelcomeHeader(ctx: any) {
     const modelName = ctx.model?.name || ctx.model?.id || "No model";
     const providerName = ctx.model?.provider || "Unknown";
-    
-    // Discover loaded counts and recent sessions
     const loadedCounts = discoverLoadedCounts();
     const recentSessions = getRecentSessions(3);
     
-    // Small delay to let pi-mono finish initialization before showing overlay
+    const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts);
+    welcomeHeaderActive = true; // Will be cleared on first user input
+    
+    ctx.ui.setHeader((_tui: any, _theme: any) => {
+      return {
+        render(width: number): string[] {
+          return header.render(width);
+        },
+        invalidate() {
+          header.invalidate();
+        },
+      };
+    });
+  }
+
+  function setupWelcomeOverlay(ctx: any) {
+    const modelName = ctx.model?.name || ctx.model?.id || "No model";
+    const providerName = ctx.model?.provider || "Unknown";
+    const loadedCounts = discoverLoadedCounts();
+    const recentSessions = getRecentSessions(3);
+    
+    // Small delay to let pi-mono finish initialization
     setTimeout(() => {
-      // Show welcome as an overlay that dismisses on any key or after timeout
       ctx.ui.custom(
         (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
           const welcome = new WelcomeComponent(
-            version,
             modelName,
             providerName,
             recentSessions,
@@ -450,30 +507,26 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             if (dismissed) return;
             dismissed = true;
             clearInterval(interval);
+            dismissWelcomeOverlay = null;
             done();
           };
           
-          // Update countdown every second
+          // Store dismiss callback so user_message/keypress can trigger it
+          dismissWelcomeOverlay = dismiss;
+          
           const interval = setInterval(() => {
             if (dismissed) return;
             countdown--;
             welcome.setCountdown(countdown);
             tui.requestRender();
-            
-            if (countdown <= 0) {
-              dismiss();
-            }
+            if (countdown <= 0) dismiss();
           }, 1000);
           
-          // Create a focusable wrapper component
-          // Must have 'focused' property for TUI to recognize it as focusable
           return {
-            focused: false, // TUI sets this to true when focused
+            focused: false,
             invalidate: () => welcome.invalidate(),
             render: (width: number) => welcome.render(width),
-            handleInput: (_data: string) => {
-              dismiss();
-            },
+            handleInput: (_data: string) => dismiss(),
             dispose: () => {
               dismissed = true;
               clearInterval(interval);
@@ -487,9 +540,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             horizontalAlign: "center",
           }),
         },
-      ).catch(() => {
-        // Dismissed, ignore
-      });
-    }, 100); // Small delay to let init complete
+      ).catch(() => {});
+    }, 100);
   }
 }

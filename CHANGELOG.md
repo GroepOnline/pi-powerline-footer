@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.8] - 2026-01-16
+
+### Changed
+- `quietStartup: true` → shows welcome as header (dismisses on first input)
+- `quietStartup: false` or not set → shows welcome as centered overlay (dismisses on key/timeout)
+- Both modes use same two-column layout: logo, model info, tips, loaded counts, recent sessions
+- Refactored welcome.ts to share rendering logic between header and overlay
+
+### Fixed
+- `/powerline` toggle off now clears all custom UI (editor, footer, header)
+
 ## [0.2.6] - 2026-01-16
 
 ### Fixed
