@@ -89,6 +89,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let tuiRef: any = null; // Store TUI reference for forcing re-renders
   let dismissWelcomeOverlay: (() => void) | null = null; // Callback to dismiss welcome overlay
   let welcomeHeaderActive = false; // Track if welcome header should be cleared on first input
+  let welcomeOverlayShouldDismiss = false; // Track early dismissal request (before overlay setup completes)
 
   // Track session start
   pi.on("session_start", async (_event, ctx) => {
@@ -154,8 +155,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   // Track streaming state (footer only shows status during streaming)
-  pi.on("stream_start", async () => {
+  // Also dismiss welcome when agent starts responding (handles `p "command"` case)
+  pi.on("stream_start", async (_event, ctx) => {
     isStreaming = true;
+    if (dismissWelcomeOverlay) {
+      dismissWelcomeOverlay();
+      dismissWelcomeOverlay = null;
+    } else {
+      // Overlay not set up yet (100ms delay) - mark for immediate dismissal when it does
+      welcomeOverlayShouldDismiss = true;
+    }
+    if (welcomeHeaderActive) {
+      welcomeHeaderActive = false;
+      ctx.ui.setHeader(undefined);
+    }
   });
 
   pi.on("stream_end", async () => {
@@ -167,6 +180,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (dismissWelcomeOverlay) {
       dismissWelcomeOverlay();
       dismissWelcomeOverlay = null;
+    } else {
+      // Overlay not set up yet (100ms delay) - mark for immediate dismissal when it does
+      welcomeOverlayShouldDismiss = true;
     }
     if (welcomeHeaderActive) {
       welcomeHeaderActive = false;
@@ -293,6 +309,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             const dismiss = dismissWelcomeOverlay;
             dismissWelcomeOverlay = null;
             setTimeout(dismiss, 0);
+          } else {
+            // Overlay not set up yet (100ms delay) - mark for immediate dismissal when it does
+            welcomeOverlayShouldDismiss = true;
           }
           if (welcomeHeaderActive) {
             welcomeHeaderActive = false;
@@ -491,6 +510,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     // Small delay to let pi-mono finish initialization
     setTimeout(() => {
+      // Skip overlay entirely if dismissal was requested during the delay
+      // (e.g., `p "command"` triggers stream_start before this runs)
+      if (welcomeOverlayShouldDismiss) {
+        welcomeOverlayShouldDismiss = false;
+        return;
+      }
+      
       ctx.ui.custom(
         (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
           const welcome = new WelcomeComponent(
@@ -513,6 +539,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           
           // Store dismiss callback so user_message/keypress can trigger it
           dismissWelcomeOverlay = dismiss;
+          
+          // Double-check: dismissal might have been requested between the outer check
+          // and this callback running
+          if (welcomeOverlayShouldDismiss) {
+            welcomeOverlayShouldDismiss = false;
+            dismiss();
+          }
           
           const interval = setInterval(() => {
             if (dismissed) return;

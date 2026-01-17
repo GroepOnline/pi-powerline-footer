@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.9] - 2026-01-17
+
+### Fixed
+- Welcome overlay/header now dismisses when agent starts streaming (fixes `p "command"` case where welcome would briefly flash)
+- Race condition where dismissal request could be lost due to 100ms setup delay in overlay
+
 ## [0.2.8] - 2026-01-16
 
 ### Changed
