@@ -12,6 +12,7 @@
     "cli.js"
   ],
   "keywords": [
+    "pi-package",
     "pi",
     "coding-agent",
     "powerline",
@@ -23,5 +24,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nicobailon/pi-powerline-footer.git"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
   }
 }
