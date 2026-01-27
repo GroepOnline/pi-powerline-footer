@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-01-27
+
+### Added
+- **Responsive segment layout** — Segments dynamically flow between top bar and secondary row based on terminal width
+- When terminal is wide: all segments fit in top bar, secondary row hidden
+- When terminal is narrow: overflow segments move to secondary row automatically
+
+### Changed
+- **Default preset reordered** — New order: π → folder → model → think → git → context% → cache → cost
+- Path now appears before model name for better visual hierarchy
+- Thinking level now appears right after model name
+- Added git, cache_read, and cost to primary row in default preset
+- **Thinking label shortened** — `thinking:level` → `think:level` to save 3 characters
+
+### Fixed
+- **Narrow terminal crash** — Welcome screen now gracefully skips rendering on terminals < 44 columns wide
+- **Editor crash on very narrow terminals** — Falls back to original render when width < 10
+- **Streaming footer crash** — Truncation now properly handles edge cases and won't render content that exceeds terminal width
+- **Secondary widget crash** — Content width is now validated before rendering
+- **Layout cache invalidation** — Cache now properly clears when preset changes or powerline is toggled off
+
 ## [0.2.11] - 2026-01-26
 
 ### Changed

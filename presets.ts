@@ -2,8 +2,9 @@ import type { PresetDef, StatusLinePreset } from "./types.js";
 
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   default: {
-    leftSegments: ["pi", "model", "thinking", "path", "git", "context_pct", "token_total", "cost", "extension_statuses"],
+    leftSegments: ["pi", "path", "model", "thinking", "git", "context_pct", "cache_read", "cost"],
     rightSegments: [],
+    secondarySegments: ["extension_statuses"],
     separator: "powerline-thin",
     segmentOptions: {
       model: { showThinkingLevel: false },

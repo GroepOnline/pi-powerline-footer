@@ -4,7 +4,7 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import type { SegmentContext, StatusLinePreset } from "./types.js";
+import type { SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
@@ -43,36 +43,122 @@ function isQuietStartup(): boolean {
 // Status Line Builder (for top border)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Build just the status content (segments with separators, no borders) */
-function buildStatusContent(ctx: SegmentContext, presetDef: ReturnType<typeof getPreset>): string {
+/** Render a single segment and return its content with width */
+function renderSegmentWithWidth(
+  segId: StatusLineSegmentId,
+  ctx: SegmentContext
+): { content: string; width: number; visible: boolean } {
+  const rendered = renderSegment(segId, ctx);
+  if (!rendered.visible || !rendered.content) {
+    return { content: "", width: 0, visible: false };
+  }
+  return { content: rendered.content, width: visibleWidth(rendered.content), visible: true };
+}
+
+/** Build status content from a list of segment IDs */
+function buildStatusContentFromSegments(
+  segmentIds: StatusLineSegmentId[],
+  ctx: SegmentContext,
+  presetDef: ReturnType<typeof getPreset>
+): string {
   const separatorDef = getSeparator(presetDef.separator);
   const sepAnsi = getFgAnsiCode("sep");
 
   // Collect visible segment contents
-  const leftParts: string[] = [];
-  for (const segId of presetDef.leftSegments) {
+  const parts: string[] = [];
+  for (const segId of segmentIds) {
     const rendered = renderSegment(segId, ctx);
     if (rendered.visible && rendered.content) {
-      leftParts.push(rendered.content);
+      parts.push(rendered.content);
     }
   }
 
-  const rightParts: string[] = [];
-  for (const segId of presetDef.rightSegments) {
-    const rendered = renderSegment(segId, ctx);
-    if (rendered.visible && rendered.content) {
-      rightParts.push(rendered.content);
-    }
-  }
-
-  if (leftParts.length === 0 && rightParts.length === 0) {
+  if (parts.length === 0) {
     return "";
   }
 
   // Build content with powerline separators (no background)
   const sep = separatorDef.left;
-  const allParts = [...leftParts, ...rightParts];
-  return " " + allParts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
+  return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
+}
+
+/** Build content string from pre-rendered parts */
+function buildContentFromParts(
+  parts: string[],
+  presetDef: ReturnType<typeof getPreset>
+): string {
+  if (parts.length === 0) return "";
+  const separatorDef = getSeparator(presetDef.separator);
+  const sepAnsi = getFgAnsiCode("sep");
+  const sep = separatorDef.left;
+  return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
+}
+
+/**
+ * Responsive segment layout - fits segments into top bar, overflows to secondary row.
+ * When terminal is wide enough, secondary segments move up to top bar.
+ * When narrow, top bar segments overflow down to secondary row.
+ */
+function computeResponsiveLayout(
+  ctx: SegmentContext,
+  presetDef: ReturnType<typeof getPreset>,
+  availableWidth: number
+): { topContent: string; secondaryContent: string } {
+  const separatorDef = getSeparator(presetDef.separator);
+  const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
+  
+  // Get all segments: primary first, then secondary
+  const primaryIds = [...presetDef.leftSegments, ...presetDef.rightSegments];
+  const secondaryIds = presetDef.secondarySegments ?? [];
+  const allSegmentIds = [...primaryIds, ...secondaryIds];
+  
+  // Render all segments and get their widths
+  const renderedSegments: { id: StatusLineSegmentId; content: string; width: number }[] = [];
+  for (const segId of allSegmentIds) {
+    const { content, width, visible } = renderSegmentWithWidth(segId, ctx);
+    if (visible) {
+      renderedSegments.push({ id: segId, content, width });
+    }
+  }
+  
+  if (renderedSegments.length === 0) {
+    return { topContent: "", secondaryContent: "" };
+  }
+  
+  // Calculate how many segments fit in top bar
+  // Account for: leading space (1) + trailing space (1) = 2 chars overhead
+  const baseOverhead = 2;
+  let currentWidth = baseOverhead;
+  let topSegments: string[] = [];
+  let secondarySegments: string[] = [];
+  let overflow = false;
+  
+  for (let i = 0; i < renderedSegments.length; i++) {
+    const seg = renderedSegments[i];
+    // Width needed: segment width + separator (except for first segment)
+    const neededWidth = seg.width + (topSegments.length > 0 ? sepWidth : 0);
+    
+    if (!overflow && currentWidth + neededWidth <= availableWidth) {
+      // Fits in top bar
+      topSegments.push(seg.content);
+      currentWidth += neededWidth;
+    } else {
+      // Overflow to secondary row
+      overflow = true;
+      secondarySegments.push(seg.content);
+    }
+  }
+  
+  return {
+    topContent: buildContentFromParts(topSegments, presetDef),
+    secondaryContent: buildContentFromParts(secondarySegments, presetDef),
+  };
+}
+
+/** Build primary status content (for top border) - legacy, used during streaming */
+function buildStatusContent(ctx: SegmentContext, presetDef: ReturnType<typeof getPreset>): string {
+  const allSegments = [...presetDef.leftSegments, ...presetDef.rightSegments];
+  return buildStatusContentFromSegments(allSegments, ctx, presetDef);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -90,6 +176,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let dismissWelcomeOverlay: (() => void) | null = null; // Callback to dismiss welcome overlay
   let welcomeHeaderActive = false; // Track if welcome header should be cleared on first input
   let welcomeOverlayShouldDismiss = false; // Track early dismissal request (before overlay setup completes)
+  
+  // Cache for responsive layout (shared between editor and widget for consistency)
+  let lastLayoutWidth = 0;
+  let lastLayoutResult: { topContent: string; secondaryContent: string } | null = null;
+  let lastLayoutTimestamp = 0;
 
   // Track session start
   pi.on("session_start", async (_event, ctx) => {
@@ -208,8 +299,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
           ctx.ui.setHeader(undefined);
+          ctx.ui.setWidget("powerline-secondary", undefined);
           footerDataRef = null;
           tuiRef = null;
+          // Clear layout cache
+          lastLayoutResult = null;
           ctx.ui.notify("Defaults restored", "info");
         }
         return;
@@ -219,6 +313,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       const preset = args.trim().toLowerCase() as StatusLinePreset;
       if (preset in PRESETS) {
         config.preset = preset;
+        // Invalidate layout cache since preset changed
+        lastLayoutResult = null;
         if (enabled) {
           setupCustomEditor(ctx);
         }
@@ -294,6 +390,29 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     };
   }
 
+  /**
+   * Get cached responsive layout or compute fresh one.
+   * Layout is cached per render cycle (same width = same layout).
+   */
+  function getResponsiveLayout(width: number): { topContent: string; secondaryContent: string } {
+    const now = Date.now();
+    // Cache is valid if same width and within 50ms (same render cycle)
+    if (lastLayoutResult && lastLayoutWidth === width && now - lastLayoutTimestamp < 50) {
+      return lastLayoutResult;
+    }
+    
+    const presetDef = getPreset(config.preset);
+    const segmentCtx = buildSegmentContext(currentCtx, width);
+    // Available width for top bar content (minus box corners: ╭─ and ─╮ = 4 chars)
+    const topBarAvailable = width - 4;
+    
+    lastLayoutWidth = width;
+    lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, topBarAvailable);
+    lastLayoutTimestamp = now;
+    
+    return lastLayoutResult;
+  }
+
   function setupCustomEditor(ctx: any) {
     // Import CustomEditor dynamically and create wrapper
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
@@ -318,6 +437,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         // ╰─                                  ─╯
         // + autocomplete items (if showing)
         editor.render = (width: number): string[] => {
+          // Minimum width for box layout: borders (4) + minimal content (1) = 5
+          // Fall back to original render on extremely narrow terminals
+          if (width < 10) {
+            return originalRender(width);
+          }
+          
           const bc = (s: string) => `${getFgAnsiCode("border")}${s}${ansi.reset}`;
           
           // Box drawing chars
@@ -347,43 +472,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           const result: string[] = [];
           
           // Top border: ╭─ status ────────────╮
-          const presetDef = getPreset(config.preset);
-          const segmentCtx = buildSegmentContext(currentCtx, width);
-          const statusContent = buildStatusContent(segmentCtx, presetDef);
+          // Use responsive layout - overflow goes to secondary row
+          const layout = getResponsiveLayout(width);
+          const statusContent = layout.topContent;
           const statusWidth = visibleWidth(statusContent);
           const topFillWidth = width - 4; // Reserve 4 for corners (╭─ and ─╮)
           
-          if (statusWidth <= topFillWidth) {
-            const fillWidth = topFillWidth - statusWidth;
-            result.push(topLeft + statusContent + bc("─".repeat(fillWidth)) + topRight);
-          } else {
-            // Status too wide - truncate by removing segments from the end
-            // Build progressively shorter content until it fits
-            let truncatedContent = "";
-            
-            for (let numSegments = presetDef.leftSegments.length - 1; numSegments >= 1; numSegments--) {
-              const limitedPreset = {
-                ...presetDef,
-                leftSegments: presetDef.leftSegments.slice(0, numSegments),
-                rightSegments: [],
-              };
-              truncatedContent = buildStatusContent(segmentCtx, limitedPreset);
-              const truncWidth = visibleWidth(truncatedContent);
-              if (truncWidth <= topFillWidth - 1) { // -1 for ellipsis
-                truncatedContent += "…";
-                break;
-              }
-            }
-            
-            const truncWidth = visibleWidth(truncatedContent);
-            if (truncWidth <= topFillWidth) {
-              const fillWidth = topFillWidth - truncWidth;
-              result.push(topLeft + truncatedContent + bc("─".repeat(fillWidth)) + topRight);
-            } else {
-              // Still too wide, show minimal
-              result.push(topLeft + bc("─".repeat(Math.max(0, topFillWidth))) + topRight);
-            }
-          }
+          const fillWidth = Math.max(0, topFillWidth - statusWidth);
+          result.push(topLeft + statusContent + bc("─".repeat(fillWidth)) + topRight);
           
           // Content lines (between top border at 0 and bottom border)
           for (let i = 1; i < bottomBorderIndex; i++) {
@@ -418,7 +514,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return editor;
       });
 
-      // Also set up footer data provider access via a minimal footer
+      // Set up footer data provider access via a minimal footer
       ctx.ui.setFooter((tui: any, _theme: any, footerData: ReadonlyFooterDataProvider) => {
         footerDataRef = footerData;
         tuiRef = tui; // Store TUI reference for re-renders on git branch changes
@@ -430,43 +526,76 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             // No cache to clear - render is always fresh
           },
           render(width: number): string[] {
-            // Only show status in footer during streaming (editor hidden)
-            // When editor is visible, status shows in editor top border instead
-            if (!isStreaming || !currentCtx) return [];
+            if (!currentCtx) return [];
             
             const presetDef = getPreset(config.preset);
             const segmentCtx = buildSegmentContext(currentCtx, width);
-            const statusContent = buildStatusContent(segmentCtx, presetDef);
+            const lines: string[] = [];
             
-            if (!statusContent) return [];
-            
-            // Single line with status content, padded/truncated to width
-            const statusWidth = visibleWidth(statusContent);
-            if (statusWidth <= width) {
-              return [statusContent + " ".repeat(width - statusWidth)];
-            } else {
-              // Truncate by removing segments (same logic as editor)
-              let truncatedContent = "";
-              
-              for (let numSegments = presetDef.leftSegments.length - 1; numSegments >= 1; numSegments--) {
-                const limitedPreset = {
-                  ...presetDef,
-                  leftSegments: presetDef.leftSegments.slice(0, numSegments),
-                  rightSegments: [],
-                };
-                truncatedContent = buildStatusContent(segmentCtx, limitedPreset);
-                const truncWidth = visibleWidth(truncatedContent);
-                if (truncWidth <= width - 1) {
-                  truncatedContent += "…";
-                  break;
+            // During streaming, show primary status in footer (editor hidden)
+            if (isStreaming) {
+              const statusContent = buildStatusContent(segmentCtx, presetDef);
+              if (statusContent) {
+                const statusWidth = visibleWidth(statusContent);
+                if (statusWidth <= width) {
+                  lines.push(statusContent + " ".repeat(width - statusWidth));
+                } else {
+                  // Truncate by removing segments until it fits
+                  // Start from leftSegments.length to try "just leftSegments" when rightSegments exists
+                  let truncatedContent = "";
+                  let foundFit = false;
+                  for (let numSegments = presetDef.leftSegments.length; numSegments >= 1; numSegments--) {
+                    const limitedPreset = {
+                      ...presetDef,
+                      leftSegments: presetDef.leftSegments.slice(0, numSegments),
+                      rightSegments: [],
+                    };
+                    truncatedContent = buildStatusContent(segmentCtx, limitedPreset);
+                    const truncWidth = visibleWidth(truncatedContent);
+                    if (truncWidth <= width - 1) {
+                      truncatedContent += "…";
+                      foundFit = true;
+                      break;
+                    }
+                  }
+                  // Only push if we found a fit, otherwise skip (don't crash on very narrow terminals)
+                  if (foundFit) {
+                    lines.push(truncatedContent);
+                  }
                 }
               }
-              
-              return [truncatedContent];
             }
+            
+            return lines;
           },
         };
       });
+
+      // Set up secondary row as a widget below editor (above sub bar)
+      // Shows overflow segments when top bar is too narrow
+      ctx.ui.setWidget("powerline-secondary", (tui: any, _theme: any) => {
+        return {
+          dispose() {},
+          invalidate() {},
+          render(width: number): string[] {
+            if (!currentCtx) return [];
+            
+            // Use responsive layout - secondary row shows overflow from top bar
+            const layout = getResponsiveLayout(width);
+            
+            // Only show secondary row if there's overflow content that fits
+            if (layout.secondaryContent) {
+              const contentWidth = visibleWidth(layout.secondaryContent);
+              // Don't render if content exceeds terminal width (graceful degradation)
+              if (contentWidth <= width) {
+                return [layout.secondaryContent];
+              }
+            }
+            
+            return [];
+          },
+        };
+      }, { placement: "belowEditor" });
     });
   }
 

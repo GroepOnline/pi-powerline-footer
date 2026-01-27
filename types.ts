@@ -58,6 +58,8 @@ export interface StatusLineSegmentOptions {
 export interface PresetDef {
   leftSegments: StatusLineSegmentId[];
   rightSegments: StatusLineSegmentId[];
+  /** Secondary row segments (shown in footer, above sub bar) */
+  secondarySegments?: StatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;
 }

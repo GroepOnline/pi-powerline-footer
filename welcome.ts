@@ -182,11 +182,20 @@ function renderWelcomeBox(
   termWidth: number, 
   bottomLine: string,
 ): string[] {
+  // Minimum width for two-column layout: leftCol(26) + separator(3) + minRightCol(15) = 44
+  const minLayoutWidth = 44;
+  
+  // If terminal is too narrow for the layout, return empty (skip welcome box)
+  if (termWidth < minLayoutWidth) {
+    return [];
+  }
+  
   const minWidth = 76;
   const maxWidth = 96;
-  const boxWidth = Math.max(minWidth, Math.min(termWidth - 2, maxWidth));
+  // Clamp to termWidth to prevent crash on narrow terminals
+  const boxWidth = Math.min(termWidth, Math.max(minWidth, Math.min(termWidth - 2, maxWidth)));
   const leftCol = 26;
-  const rightCol = boxWidth - leftCol - 3;
+  const rightCol = Math.max(1, boxWidth - leftCol - 3); // Ensure rightCol is at least 1
   
   const hChar = "─";
   const v = dim("│");
@@ -251,9 +260,16 @@ export class WelcomeComponent implements Component {
   invalidate(): void {}
 
   render(termWidth: number): string[] {
+    // Minimum width for two-column layout (must match renderWelcomeBox)
+    const minLayoutWidth = 44;
+    if (termWidth < minLayoutWidth) {
+      return [];
+    }
+    
     const minWidth = 76;
     const maxWidth = 96;
-    const boxWidth = Math.max(minWidth, Math.min(termWidth - 2, maxWidth));
+    // Clamp to termWidth to prevent crash on narrow terminals
+    const boxWidth = Math.min(termWidth, Math.max(minWidth, Math.min(termWidth - 2, maxWidth)));
     
     // Bottom line with countdown
     const countdownText = ` Press any key to continue (${this.countdown}s) `;
@@ -290,18 +306,27 @@ export class WelcomeHeader implements Component {
   invalidate(): void {}
 
   render(termWidth: number): string[] {
+    // Minimum width for two-column layout (must match renderWelcomeBox)
+    const minLayoutWidth = 44;
+    if (termWidth < minLayoutWidth) {
+      return [];
+    }
+    
     const minWidth = 76;
     const maxWidth = 96;
-    const boxWidth = Math.max(minWidth, Math.min(termWidth - 2, maxWidth));
+    // Clamp to termWidth to prevent crash on narrow terminals
+    const boxWidth = Math.min(termWidth, Math.max(minWidth, Math.min(termWidth - 2, maxWidth)));
     const hChar = "─";
     
     // Bottom line with column separator (leftCol=26, rightCol=boxWidth-29)
     const leftCol = 26;
-    const rightCol = boxWidth - leftCol - 3;
+    const rightCol = Math.max(1, boxWidth - leftCol - 3);
     const bottomLine = dim(hChar.repeat(leftCol)) + dim("┴") + dim(hChar.repeat(rightCol));
     
     const lines = renderWelcomeBox(this.data, termWidth, bottomLine);
-    lines.push(""); // Add empty line for spacing
+    if (lines.length > 0) {
+      lines.push(""); // Add empty line for spacing only if we rendered content
+    }
     return lines;
   }
 }
