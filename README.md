@@ -23,10 +23,10 @@ A powerline-style status bar and welcome header extension for [pi](https://githu
 ## Installation
 
 ```bash
-npx pi-powerline-footer
+pi install npm:pi-powerline-footer
 ```
 
-This copies the extension to `~/.pi/agent/extensions/powerline-footer/`. Restart pi to activate.
+Restart pi to activate.
 
 ## Usage
 
