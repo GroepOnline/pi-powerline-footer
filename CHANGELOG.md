@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-01-27
+
+### Added
+- **Theme system** — Colors now integrate with pi's theme system instead of hardcoded values
+- Each preset defines its own color scheme with semantic color names
+- Optional `theme.json` file for user customization (power user feature)
+- Colors can be theme names (`accent`, `primary`, `muted`) or hex values (`#ff5500`)
+- Added `theme.example.json` documenting all available color options
+
+### Changed
+- Segments now use pi's `Theme` object for color rendering
+- Removed hardcoded ANSI color codes in favor of theme-based colors
+- Presets include both layout AND color scheme for cohesive looks
+- Simplified thinking level colors to use semantic `thinking` color (rainbow preserved for high/xhigh)
+
 ## [0.2.12] - 2026-01-27
 
 ### Added

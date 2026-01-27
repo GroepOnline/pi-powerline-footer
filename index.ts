@@ -1,16 +1,17 @@
-import type { ExtensionAPI, ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import type { SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
+import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
 import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
+import { getDefaultColors } from "./theme.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -328,8 +329,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
-  function buildSegmentContext(ctx: any, width: number): SegmentContext {
+  function buildSegmentContext(ctx: any, width: number, theme: Theme): SegmentContext {
     const presetDef = getPreset(config.preset);
+    const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
 
     // Build usage stats and get thinking level from session
     let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
@@ -387,6 +389,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       extensionStatuses: footerDataRef?.getExtensionStatuses() ?? new Map(),
       options: presetDef.segmentOptions ?? {},
       width,
+      theme,
+      colors,
     };
   }
 
@@ -394,7 +398,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
    * Get cached responsive layout or compute fresh one.
    * Layout is cached per render cycle (same width = same layout).
    */
-  function getResponsiveLayout(width: number): { topContent: string; secondaryContent: string } {
+  function getResponsiveLayout(width: number, theme: Theme): { topContent: string; secondaryContent: string } {
     const now = Date.now();
     // Cache is valid if same width and within 50ms (same render cycle)
     if (lastLayoutResult && lastLayoutWidth === width && now - lastLayoutTimestamp < 50) {
@@ -402,7 +406,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
     
     const presetDef = getPreset(config.preset);
-    const segmentCtx = buildSegmentContext(currentCtx, width);
+    const segmentCtx = buildSegmentContext(currentCtx, width, theme);
     // Available width for top bar content (minus box corners: ╭─ and ─╮ = 4 chars)
     const topBarAvailable = width - 4;
     
@@ -473,7 +477,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           
           // Top border: ╭─ status ────────────╮
           // Use responsive layout - overflow goes to secondary row
-          const layout = getResponsiveLayout(width);
+          const layout = getResponsiveLayout(width, theme);
           const statusContent = layout.topContent;
           const statusWidth = visibleWidth(statusContent);
           const topFillWidth = width - 4; // Reserve 4 for corners (╭─ and ─╮)
@@ -515,7 +519,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       });
 
       // Set up footer data provider access via a minimal footer
-      ctx.ui.setFooter((tui: any, _theme: any, footerData: ReadonlyFooterDataProvider) => {
+      ctx.ui.setFooter((tui: any, theme: Theme, footerData: ReadonlyFooterDataProvider) => {
         footerDataRef = footerData;
         tuiRef = tui; // Store TUI reference for re-renders on git branch changes
         const unsub = footerData.onBranchChange(() => tui.requestRender());
@@ -529,7 +533,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             if (!currentCtx) return [];
             
             const presetDef = getPreset(config.preset);
-            const segmentCtx = buildSegmentContext(currentCtx, width);
+            const segmentCtx = buildSegmentContext(currentCtx, width, theme);
             const lines: string[] = [];
             
             // During streaming, show primary status in footer (editor hidden)
@@ -573,7 +577,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
       // Set up secondary row as a widget below editor (above sub bar)
       // Shows overflow segments when top bar is too narrow
-      ctx.ui.setWidget("powerline-secondary", (tui: any, _theme: any) => {
+      ctx.ui.setWidget("powerline-secondary", (tui: any, theme: Theme) => {
         return {
           dispose() {},
           invalidate() {},
@@ -581,7 +585,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             if (!currentCtx) return [];
             
             // Use responsive layout - secondary row shows overflow from top bar
-            const layout = getResponsiveLayout(width);
+            const layout = getResponsiveLayout(width, theme);
             
             // Only show secondary row if there's overflow content that fits
             if (layout.secondaryContent) {

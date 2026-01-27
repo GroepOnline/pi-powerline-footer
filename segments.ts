@@ -1,8 +1,13 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
-import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types.js";
-import { fgOnly, rainbow } from "./colors.js";
+import type { RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
+import { fg, rainbow, applyColor } from "./theme.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
+
+// Helper to apply semantic color from context
+function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
+  return fg(ctx.theme, semantic, text, ctx.colors);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -36,11 +41,11 @@ function formatDuration(ms: number): string {
 
 const piSegment: StatusLineSegment = {
   id: "pi",
-  render(_ctx) {
+  render(ctx) {
     const icons = getIcons();
     if (!icons.pi) return { content: "", visible: false };
     const content = `${icons.pi} `;
-    return { content: fgOnly("accent", content), visible: true };
+    return { content: color(ctx, "pi", content), visible: true };
   },
 };
 
@@ -69,7 +74,7 @@ const modelSegment: StatusLineSegment = {
       }
     }
 
-    return { content: fgOnly("model", content), visible: true };
+    return { content: color(ctx, "model", content), visible: true };
   },
 };
 
@@ -107,7 +112,7 @@ const pathSegment: StatusLineSegment = {
     }
 
     const content = withIcon(icons.folder, pwd);
-    return { content: fgOnly("path", content), visible: true };
+    return { content: color(ctx, "path", content), visible: true };
   },
 };
 
@@ -125,29 +130,32 @@ const gitSegment: StatusLineSegment = {
 
     const isDirty = gitStatus && (gitStatus.staged > 0 || gitStatus.unstaged > 0 || gitStatus.untracked > 0);
     const showBranch = opts.showBranch !== false;
+    const branchColor: SemanticColor = isDirty ? "gitDirty" : "gitClean";
 
-    // Build content
+    // Build content - color branch separately from indicators
     let content = "";
     if (showBranch && branch) {
-      content = withIcon(icons.branch, branch);
+      // Color just the branch name (icon + branch text)
+      content = color(ctx, branchColor, withIcon(icons.branch, branch));
     }
 
-    // Add status indicators
+    // Add status indicators (each with their own color, not wrapped)
     if (gitStatus) {
       const indicators: string[] = [];
       if (opts.showUnstaged !== false && gitStatus.unstaged > 0) {
-        indicators.push(fgOnly("unstaged", `*${gitStatus.unstaged}`));
+        indicators.push(applyColor(ctx.theme, "warning", `*${gitStatus.unstaged}`));
       }
       if (opts.showStaged !== false && gitStatus.staged > 0) {
-        indicators.push(fgOnly("staged", `+${gitStatus.staged}`));
+        indicators.push(applyColor(ctx.theme, "success", `+${gitStatus.staged}`));
       }
       if (opts.showUntracked !== false && gitStatus.untracked > 0) {
-        indicators.push(fgOnly("untracked", `?${gitStatus.untracked}`));
+        indicators.push(applyColor(ctx.theme, "muted", `?${gitStatus.untracked}`));
       }
       if (indicators.length > 0) {
         const indicatorText = indicators.join(" ");
         if (!content && showBranch === false) {
-          content = withIcon(icons.git, indicatorText);
+          // No branch shown, color the git icon with branch color
+          content = color(ctx, branchColor, icons.git ? `${icons.git} ` : "") + indicatorText;
         } else {
           content += content ? ` ${indicatorText}` : indicatorText;
         }
@@ -156,9 +164,7 @@ const gitSegment: StatusLineSegment = {
 
     if (!content) return { content: "", visible: false };
 
-    // Wrap entire content in branch color
-    const colorName = isDirty ? "gitDirty" : "gitClean";
-    return { content: fgOnly(colorName, content), visible: true };
+    return { content, visible: true };
   },
 };
 
@@ -184,16 +190,8 @@ const thinkingSegment: StatusLineSegment = {
       return { content: rainbow(content), visible: true };
     }
 
-    // Use dedicated thinking colors (gradient: gray → purple → blue → teal)
-    const colorMap: Record<string, "thinkingOff" | "thinkingMinimal" | "thinkingLow" | "thinkingMedium"> = {
-      off: "thinkingOff",
-      minimal: "thinkingMinimal",
-      low: "thinkingLow",
-      medium: "thinkingMedium",
-    };
-    const color = colorMap[level] || "thinkingOff";
-    
-    return { content: fgOnly(color, content), visible: true };
+    // Use thinking color for lower levels
+    return { content: color(ctx, "thinking", content), visible: true };
   },
 };
 
@@ -215,7 +213,7 @@ const tokenInSegment: StatusLineSegment = {
     if (!input) return { content: "", visible: false };
 
     const content = withIcon(icons.input, formatTokens(input));
-    return { content: fgOnly("spend", content), visible: true };
+    return { content: color(ctx, "tokens", content), visible: true };
   },
 };
 
@@ -227,7 +225,7 @@ const tokenOutSegment: StatusLineSegment = {
     if (!output) return { content: "", visible: false };
 
     const content = withIcon(icons.output, formatTokens(output));
-    return { content: fgOnly("output", content), visible: true };
+    return { content: color(ctx, "tokens", content), visible: true };
   },
 };
 
@@ -240,7 +238,7 @@ const tokenTotalSegment: StatusLineSegment = {
     if (!total) return { content: "", visible: false };
 
     const content = withIcon(icons.tokens, formatTokens(total));
-    return { content: fgOnly("spend", content), visible: true };
+    return { content: color(ctx, "tokens", content), visible: true };
   },
 };
 
@@ -255,7 +253,7 @@ const costSegment: StatusLineSegment = {
     }
 
     const costDisplay = usingSubscription ? "(sub)" : `$${cost.toFixed(2)}`;
-    return { content: fgOnly("cost", costDisplay), visible: true };
+    return { content: color(ctx, "cost", costDisplay), visible: true };
   },
 };
 
@@ -269,14 +267,14 @@ const contextPctSegment: StatusLineSegment = {
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
     const text = `${pct.toFixed(1)}%/${formatTokens(window)}${autoIcon}`;
 
-    // Icon outside color, text inside
+    // Icon outside color, text inside - use semantic colors for thresholds
     let content: string;
     if (pct > 90) {
-      content = withIcon(icons.context, fgOnly("error", text));
+      content = withIcon(icons.context, color(ctx, "contextError", text));
     } else if (pct > 70) {
-      content = withIcon(icons.context, fgOnly("warning", text));
+      content = withIcon(icons.context, color(ctx, "contextWarn", text));
     } else {
-      content = withIcon(icons.context, fgOnly("context", text));
+      content = withIcon(icons.context, color(ctx, "context", text));
     }
 
     return { content, visible: true };
@@ -291,7 +289,7 @@ const contextTotalSegment: StatusLineSegment = {
     if (!window) return { content: "", visible: false };
 
     return {
-      content: fgOnly("context", withIcon(icons.context, formatTokens(window))),
+      content: color(ctx, "context", withIcon(icons.context, formatTokens(window))),
       visible: true,
     };
   },
@@ -367,7 +365,7 @@ const cacheReadSegment: StatusLineSegment = {
     // Space-separated parts
     const parts = [icons.cache, icons.input, formatTokens(cacheRead)].filter(Boolean);
     const content = parts.join(" ");
-    return { content: fgOnly("spend", content), visible: true };
+    return { content: color(ctx, "tokens", content), visible: true };
   },
 };
 
@@ -381,7 +379,7 @@ const cacheWriteSegment: StatusLineSegment = {
     // Space-separated parts
     const parts = [icons.cache, icons.output, formatTokens(cacheWrite)].filter(Boolean);
     const content = parts.join(" ");
-    return { content: fgOnly("output", content), visible: true };
+    return { content: color(ctx, "tokens", content), visible: true };
   },
 };
 

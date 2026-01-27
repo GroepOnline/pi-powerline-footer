@@ -1,3 +1,29 @@
+import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
+
+// Theme color - either a pi theme color name or a custom hex color
+export type ColorValue = ThemeColor | `#${string}`;
+
+// Semantic color names for segments
+export type SemanticColor =
+  | "pi"
+  | "model"
+  | "path"
+  | "git"
+  | "gitDirty"
+  | "gitClean"
+  | "thinking"
+  | "thinkingHigh"
+  | "context"
+  | "contextWarn"
+  | "contextError"
+  | "cost"
+  | "tokens"
+  | "separator"
+  | "border";
+
+// Color scheme mapping semantic names to actual colors
+export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
+
 // Segment identifiers
 export type StatusLineSegmentId =
   | "pi"
@@ -62,6 +88,8 @@ export interface PresetDef {
   secondarySegments?: StatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;
+  /** Color scheme for this preset */
+  colors?: ColorScheme;
 }
 
 // Separator definition
@@ -116,6 +144,10 @@ export interface SegmentContext {
   // Options
   options: StatusLineSegmentOptions;
   width: number;
+  
+  // Theming
+  theme: Theme;
+  colors: ColorScheme;
 }
 
 // Rendered segment output

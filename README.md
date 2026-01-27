@@ -75,3 +75,44 @@ Configure via preset options: `path: { mode: "full" }`
 ## Separators
 
 `powerline` · `powerline-thin` · `slash` · `pipe` · `dot` · `chevron` · `star` · `block` · `none` · `ascii`
+
+## Theming
+
+Colors are configurable via pi's theme system. Each preset defines its own color scheme, and you can override individual colors with a `theme.json` file in the extension directory.
+
+### Default Colors
+
+| Semantic | Theme Color | Description |
+|----------|-------------|-------------|
+| `pi` | `accent` | Pi icon |
+| `model` | `primary` | Model name |
+| `path` | `muted` | Directory path |
+| `gitClean` | `success` | Git branch (clean) |
+| `gitDirty` | `warning` | Git branch (dirty) |
+| `thinking` | `muted` | Thinking level |
+| `context` | `dim` | Context usage |
+| `contextWarn` | `warning` | Context usage >70% |
+| `contextError` | `error` | Context usage >90% |
+| `cost` | `primary` | Cost display |
+| `tokens` | `muted` | Token counts |
+
+### Custom Theme Override
+
+Create `~/.pi/agent/extensions/powerline-footer/theme.json`:
+
+```json
+{
+  "colors": {
+    "pi": "#ff5500",
+    "model": "accent",
+    "path": "#00afaf",
+    "gitClean": "success"
+  }
+}
+```
+
+Colors can be:
+- **Theme color names**: `accent`, `primary`, `muted`, `dim`, `text`, `success`, `warning`, `error`, `borderMuted`
+- **Hex colors**: `#ff5500`, `#d787af`
+
+See `theme.example.json` for all available options.
