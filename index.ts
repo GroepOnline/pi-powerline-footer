@@ -420,9 +420,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function setupCustomEditor(ctx: any) {
     // Import CustomEditor dynamically and create wrapper
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
-      ctx.ui.setEditorComponent((tui: any, theme: any, keybindings: any) => {
+      ctx.ui.setEditorComponent((tui: any, editorTheme: any, keybindings: any) => {
         // Create custom editor that overrides render for status in top border
-        const editor = new CustomEditor(tui, theme, keybindings);
+        const editor = new CustomEditor(tui, editorTheme, keybindings);
         
         // Override handleInput to dismiss welcome on first keypress
         const originalHandleInput = editor.handleInput.bind(editor);
@@ -477,7 +477,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           
           // Top border: ╭─ status ────────────╮
           // Use responsive layout - overflow goes to secondary row
-          const layout = getResponsiveLayout(width, theme);
+          // Note: ctx.ui.theme is the pi Theme with fg(), editorTheme is the pi-tui EditorTheme for styling
+          const layout = getResponsiveLayout(width, ctx.ui.theme);
           const statusContent = layout.topContent;
           const statusWidth = visibleWidth(statusContent);
           const topFillWidth = width - 4; // Reserve 4 for corners (╭─ and ─╮)

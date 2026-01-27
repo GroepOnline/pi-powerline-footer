@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-01-26
+
+### Fixed
+- **Theme type mismatch crash** — Fixed `TypeError: theme.fg is not a function` caused by passing `EditorTheme` (from pi-tui) instead of `Theme` (from pi-coding-agent) to segment rendering
+- **Invalid theme color** — Changed `"primary"` to `"text"` in default colors since `"primary"` is not a valid `ThemeColor`
+
 ## [0.2.13] - 2026-01-27
 
 ### Added
