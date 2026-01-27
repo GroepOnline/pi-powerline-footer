@@ -301,6 +301,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setFooter(undefined);
           ctx.ui.setHeader(undefined);
           ctx.ui.setWidget("powerline-secondary", undefined);
+          ctx.ui.setWidget("powerline-status", undefined);
           footerDataRef = null;
           tuiRef = null;
           // Clear layout cache
@@ -601,6 +602,36 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           },
         };
       }, { placement: "belowEditor" });
+
+      // Set up status notifications widget above editor
+      // Shows extension status messages that look like notifications (e.g., "[pi-annotate] Received: CANCEL")
+      // Compact statuses (e.g., "MCP: 6 servers") stay in the powerline bar via extension_statuses segment
+      ctx.ui.setWidget("powerline-status", (tui: any, _theme: Theme) => {
+        return {
+          dispose() {},
+          invalidate() {},
+          render(width: number): string[] {
+            if (!currentCtx || !footerDataRef) return [];
+            
+            const statuses = footerDataRef.getExtensionStatuses();
+            if (!statuses || statuses.size === 0) return [];
+            
+            // Collect notification-style statuses (those starting with "[extensionName]")
+            const notifications: string[] = [];
+            for (const [_key, value] of statuses) {
+              // Only show as notification if it starts with "[" (notification pattern)
+              if (value && value.trimStart().startsWith('[')) {
+                const contentWidth = visibleWidth(value);
+                if (contentWidth <= width) {
+                  notifications.push(` ${value}`);
+                }
+              }
+            }
+            
+            return notifications;
+          },
+        };
+      }, { placement: "aboveEditor" });
     });
   }
 

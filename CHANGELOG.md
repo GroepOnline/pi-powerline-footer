@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-01-27
+
+### Added
+- **Status notifications above editor** — Extension status messages that look like notifications (e.g., `[pi-annotate] Received: CANCEL`) now appear on a separate line above the editor input
+- Notification-style statuses (starting with `[`) appear above editor
+- Compact statuses (e.g., `MCP: 6 servers`) remain in the powerline bar
+
 ## [0.2.14] - 2026-01-26
 
 ### Fixed
