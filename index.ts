@@ -12,6 +12,17 @@ import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-st
 import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
 import { getDefaultColors } from "./theme.js";
+import { 
+  initVibeManager, 
+  onVibeBeforeAgentStart, 
+  onVibeAgentStart, 
+  onVibeAgentEnd,
+  onVibeToolCall,
+  getVibeTheme,
+  setVibeTheme,
+  getVibeModel,
+  setVibeModel,
+} from "./working-vibes.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -54,33 +65,6 @@ function renderSegmentWithWidth(
     return { content: "", width: 0, visible: false };
   }
   return { content: rendered.content, width: visibleWidth(rendered.content), visible: true };
-}
-
-/** Build status content from a list of segment IDs */
-function buildStatusContentFromSegments(
-  segmentIds: StatusLineSegmentId[],
-  ctx: SegmentContext,
-  presetDef: ReturnType<typeof getPreset>
-): string {
-  const separatorDef = getSeparator(presetDef.separator);
-  const sepAnsi = getFgAnsiCode("sep");
-
-  // Collect visible segment contents
-  const parts: string[] = [];
-  for (const segId of segmentIds) {
-    const rendered = renderSegment(segId, ctx);
-    if (rendered.visible && rendered.content) {
-      parts.push(rendered.content);
-    }
-  }
-
-  if (parts.length === 0) {
-    return "";
-  }
-
-  // Build content with powerline separators (no background)
-  const sep = separatorDef.left;
-  return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
 }
 
 /** Build content string from pre-rendered parts */
@@ -156,12 +140,6 @@ function computeResponsiveLayout(
   };
 }
 
-/** Build primary status content (for top border) - legacy, used during streaming */
-function buildStatusContent(ctx: SegmentContext, presetDef: ReturnType<typeof getPreset>): string {
-  const allSegments = [...presetDef.leftSegments, ...presetDef.rightSegments];
-  return buildStatusContentFromSegments(allSegments, ctx, presetDef);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Extension
 // ═══════════════════════════════════════════════════════════════════════════
@@ -192,6 +170,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (typeof ctx.getThinkingLevel === 'function') {
       getThinkingLevelFn = () => ctx.getThinkingLevel();
     }
+    
+    // Initialize vibe manager (needs modelRegistry from ctx)
+    initVibeManager(ctx);
     
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
@@ -246,16 +227,27 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   });
 
+  // Generate themed working message before agent starts (has access to user's prompt)
+  pi.on("before_agent_start", async (event, ctx) => {
+    if (ctx.hasUI) {
+      onVibeBeforeAgentStart(event.prompt, ctx.ui.setWorkingMessage);
+    }
+  });
+
   // Track streaming state (footer only shows status during streaming)
   // Also dismiss welcome when agent starts responding (handles `p "command"` case)
-  pi.on("stream_start", async (_event, ctx) => {
+  pi.on("agent_start", async (_event, ctx) => {
     isStreaming = true;
+    onVibeAgentStart();
     dismissWelcome(ctx);
   });
 
-  // Also dismiss on tool calls (agent is working)
-  pi.on("tool_call", async (_event, ctx) => {
+  // Also dismiss on tool calls (agent is working) + refresh vibe if rate limit allows
+  pi.on("tool_call", async (event, ctx) => {
     dismissWelcome(ctx);
+    if (ctx.hasUI) {
+      onVibeToolCall(event.toolName, event.input, ctx.ui.setWorkingMessage);
+    }
   });
 
   // Helper to dismiss welcome overlay/header
@@ -273,8 +265,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
-  pi.on("stream_end", async () => {
+  pi.on("agent_end", async (_event, ctx) => {
     isStreaming = false;
+    if (ctx.hasUI) {
+      onVibeAgentEnd(ctx.ui.setWorkingMessage); // working-vibes internal state + reset message
+    }
   });
 
   // Dismiss welcome overlay/header on first user message
@@ -327,6 +322,51 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       // Show available presets
       const presetList = Object.keys(PRESETS).join(", ");
       ctx.ui.notify(`Available presets: ${presetList}`, "info");
+    },
+  });
+
+  // Command to set working message theme
+  pi.registerCommand("vibe", {
+    description: "Set working message theme. Usage: /vibe [theme|off|model [provider/model]]",
+    handler: async (args, ctx) => {
+      const parts = args?.trim().split(/\s+/) || [];
+      const subcommand = parts[0]?.toLowerCase();
+      
+      // No args: show current status
+      if (!args || !args.trim()) {
+        const theme = getVibeTheme();
+        const model = getVibeModel();
+        ctx.ui.notify(`Vibe: ${theme || "off"} | Model: ${model}`, "info");
+        return;
+      }
+      
+      // /vibe model [spec] - show or set model
+      if (subcommand === "model") {
+        const modelSpec = parts.slice(1).join(" ");
+        if (!modelSpec) {
+          ctx.ui.notify(`Current vibe model: ${getVibeModel()}`, "info");
+          return;
+        }
+        // Validate format (provider/modelId)
+        if (!modelSpec.includes("/")) {
+          ctx.ui.notify("Invalid model format. Use: provider/modelId (e.g., anthropic/claude-haiku-4-5)", "error");
+          return;
+        }
+        setVibeModel(modelSpec);
+        ctx.ui.notify(`Vibe model set to: ${modelSpec}`, "info");
+        return;
+      }
+      
+      // /vibe off - disable
+      if (subcommand === "off") {
+        setVibeTheme(null);
+        ctx.ui.notify("Vibe disabled", "info");
+        return;
+      }
+      
+      // /vibe <theme> - set theme (preserve original casing)
+      setVibeTheme(args.trim());
+      ctx.ui.notify(`Vibe set to: ${args.trim()}`, "info");
     },
   });
 
@@ -520,59 +560,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return editor;
       });
 
-      // Set up footer data provider access via a minimal footer
-      ctx.ui.setFooter((tui: any, theme: Theme, footerData: ReadonlyFooterDataProvider) => {
+      // Set up footer data provider access (needed for git branch, extension statuses)
+      // Note: We don't render status here - it's already in the editor's top border
+      ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
         footerDataRef = footerData;
         tuiRef = tui; // Store TUI reference for re-renders on git branch changes
         const unsub = footerData.onBranchChange(() => tui.requestRender());
 
         return {
           dispose: unsub,
-          invalidate() {
-            // No cache to clear - render is always fresh
-          },
-          render(width: number): string[] {
-            if (!currentCtx) return [];
-            
-            const presetDef = getPreset(config.preset);
-            const segmentCtx = buildSegmentContext(currentCtx, width, theme);
-            const lines: string[] = [];
-            
-            // During streaming, show primary status in footer (editor hidden)
-            if (isStreaming) {
-              const statusContent = buildStatusContent(segmentCtx, presetDef);
-              if (statusContent) {
-                const statusWidth = visibleWidth(statusContent);
-                if (statusWidth <= width) {
-                  lines.push(statusContent + " ".repeat(width - statusWidth));
-                } else {
-                  // Truncate by removing segments until it fits
-                  // Start from leftSegments.length to try "just leftSegments" when rightSegments exists
-                  let truncatedContent = "";
-                  let foundFit = false;
-                  for (let numSegments = presetDef.leftSegments.length; numSegments >= 1; numSegments--) {
-                    const limitedPreset = {
-                      ...presetDef,
-                      leftSegments: presetDef.leftSegments.slice(0, numSegments),
-                      rightSegments: [],
-                    };
-                    truncatedContent = buildStatusContent(segmentCtx, limitedPreset);
-                    const truncWidth = visibleWidth(truncatedContent);
-                    if (truncWidth <= width - 1) {
-                      truncatedContent += "…";
-                      foundFit = true;
-                      break;
-                    }
-                  }
-                  // Only push if we found a fit, otherwise skip (don't crash on very narrow terminals)
-                  if (foundFit) {
-                    lines.push(truncatedContent);
-                  }
-                }
-              }
-            }
-            
-            return lines;
+          invalidate() {},
+          render(): string[] {
+            return []; // Status is in editor top border, not footer
           },
         };
       });
@@ -666,7 +665,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // Small delay to let pi-mono finish initialization
     setTimeout(() => {
       // Skip overlay if:
-      // 1. Dismissal was explicitly requested (stream_start/user_message fired)
+      // 1. Dismissal was explicitly requested (agent_start/user_message fired)
       // 2. Agent is already streaming
       // 3. Session already has assistant messages (agent already responded)
       if (welcomeOverlayShouldDismiss || isStreaming) {

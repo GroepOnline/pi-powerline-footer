@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-01-28
+
+### Added
+- **Working Vibes** — AI-generated themed loading messages that match your preferred style
+  - Set a theme with `/vibe star trek` and loading messages become "Running diagnostics..." instead of "Working..."
+  - Configure via `settings.json`: `"workingVibe": "pirate"` for nautical-themed messages
+  - Supports any theme: star trek, pirate, zen, noir, cowboy, etc.
+  - Shows "Channeling {theme}..." placeholder, then updates when AI responds (within 3s timeout)
+  - **Auto-refresh on tool calls** — Generates new vibes during long tasks (rate-limited, default 30s)
+  - Configurable refresh interval via `workingVibeRefreshInterval` (in seconds)
+  - Custom prompt templates via `workingVibePrompt` with `{theme}` and `{task}` variables
+  - Uses claude-haiku-4-5 by default (~$0.000015/generation), configurable via `/vibe model` or `workingVibeModel` setting
+
+### Fixed
+- **Event handlers now use correct events** — Replaced non-existent `stream_start`/`stream_end` with `agent_start`/`agent_end`
+- **Removed duplicate powerline bar** — Footer no longer renders redundant status during streaming
+
 ## [0.2.16] - 2026-01-28
 
 ### Fixed

@@ -6,6 +6,8 @@ A powerline-style status bar and welcome header extension for [pi](https://githu
 
 ## Features
 
+**Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
+
 **Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, and recent sessions. Auto-dismisses after 30 seconds or on any key press.
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
@@ -42,6 +44,46 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 | `ascii` | Safe for any terminal |
 
 **Environment:** `POWERLINE_NERD_FONTS=1` to force Nerd Fonts, `=0` for ASCII.
+
+## Working Vibes
+
+Transform boring "Working..." messages into themed phrases that match your style:
+
+```
+/vibe star trek    → "Running diagnostics...", "Engaging warp drive..."
+/vibe pirate       → "Hoisting the sails...", "Charting course..."
+/vibe zen          → "Breathing deeply...", "Finding balance..."
+/vibe noir         → "Following the trail...", "Checking the angles..."
+/vibe              → Shows current theme and model
+/vibe off          → Disables (back to "Working...")
+/vibe model        → Shows current model
+/vibe model openai/gpt-4o-mini → Use a different model for generation
+```
+
+### Configuration
+
+In `~/.pi/agent/settings.json`:
+
+```json
+{
+  "workingVibe": "star trek",                              // Theme phrase
+  "workingVibeModel": "anthropic/claude-haiku-4-5",        // Optional: model to use (default)
+  "workingVibeFallback": "Working",                        // Optional: fallback message
+  "workingVibeRefreshInterval": 30,                        // Optional: seconds between refreshes (default 30)
+  "workingVibePrompt": "Generate a {theme} loading message for: {task}"  // Optional: custom prompt template
+}
+```
+
+**Prompt template variables:**
+- `{theme}` — the current vibe theme (e.g., "star trek", "mafia")
+- `{task}` — the current task hint (user prompt or tool action, truncated to 100 chars)
+
+**How it works:**
+1. When you send a message, shows "Channeling {theme}..." placeholder
+2. AI generates a themed message in the background (3s timeout)
+3. Message updates to the themed version (e.g., "Engaging warp drive...")
+4. During long tasks, refreshes on tool calls (rate-limited, default 30s)
+5. Cost: ~$0.000015 per generation (60 tokens @ haiku pricing)
 
 ## Thinking Level Display
 
