@@ -22,6 +22,11 @@ import {
   setVibeTheme,
   getVibeModel,
   setVibeModel,
+  getVibeMode,
+  setVibeMode,
+  hasVibeFile,
+  getVibeFileCount,
+  generateVibesBatch,
 } from "./working-vibes.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -246,9 +251,37 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     dismissWelcome(ctx);
     if (ctx.hasUI) {
-      onVibeToolCall(event.toolName, event.input, ctx.ui.setWorkingMessage);
+      // Extract recent agent context from session for richer vibe generation
+      const agentContext = getRecentAgentContext(ctx);
+      onVibeToolCall(event.toolName, event.input, ctx.ui.setWorkingMessage, agentContext);
     }
   });
+  
+  // Helper to extract recent agent response text (skipping thinking blocks)
+  function getRecentAgentContext(ctx: any): string | undefined {
+    const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
+    
+    // Find the most recent assistant message
+    for (let i = sessionEvents.length - 1; i >= 0; i--) {
+      const e = sessionEvents[i];
+      if (e.type === "message" && e.message?.role === "assistant") {
+        const content = e.message.content;
+        if (!Array.isArray(content)) continue;
+        
+        // Extract text content, skip thinking blocks
+        for (const block of content) {
+          if (block.type === "text" && block.text) {
+            // Return first ~200 chars of non-empty text
+            const text = block.text.trim();
+            if (text.length > 0) {
+              return text.slice(0, 200);
+            }
+          }
+        }
+      }
+    }
+    return undefined;
+  }
 
   // Helper to dismiss welcome overlay/header
   function dismissWelcome(ctx: any) {
@@ -327,7 +360,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Command to set working message theme
   pi.registerCommand("vibe", {
-    description: "Set working message theme. Usage: /vibe [theme|off|model [provider/model]]",
+    description: "Set working message theme. Usage: /vibe [theme|off|mode|model|generate]",
     handler: async (args, ctx) => {
       const parts = args?.trim().split(/\s+/) || [];
       const subcommand = parts[0]?.toLowerCase();
@@ -335,8 +368,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       // No args: show current status
       if (!args || !args.trim()) {
         const theme = getVibeTheme();
+        const mode = getVibeMode();
         const model = getVibeModel();
-        ctx.ui.notify(`Vibe: ${theme || "off"} | Model: ${model}`, "info");
+        let status = `Vibe: ${theme || "off"} | Mode: ${mode} | Model: ${model}`;
+        if (theme && mode === "file") {
+          const count = getVibeFileCount(theme);
+          status += count > 0 ? ` | File: ${count} vibes` : " | File: not found";
+        }
+        ctx.ui.notify(status, "info");
         return;
       }
       
@@ -357,6 +396,50 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return;
       }
       
+      // /vibe mode [generate|file] - show or set mode
+      if (subcommand === "mode") {
+        const newMode = parts[1]?.toLowerCase();
+        if (!newMode) {
+          ctx.ui.notify(`Current vibe mode: ${getVibeMode()}`, "info");
+          return;
+        }
+        if (newMode !== "generate" && newMode !== "file") {
+          ctx.ui.notify("Invalid mode. Use: generate or file", "error");
+          return;
+        }
+        // Check if file exists when switching to file mode
+        const theme = getVibeTheme();
+        if (newMode === "file" && theme && !hasVibeFile(theme)) {
+          ctx.ui.notify(`No vibe file for "${theme}". Run /vibe generate ${theme} first`, "error");
+          return;
+        }
+        setVibeMode(newMode);
+        ctx.ui.notify(`Vibe mode set to: ${newMode}`, "info");
+        return;
+      }
+      
+      // /vibe generate <theme> [count] - generate vibes and save to file
+      if (subcommand === "generate") {
+        const theme = parts[1];
+        const count = parseInt(parts[2]) || 100;
+        
+        if (!theme) {
+          ctx.ui.notify("Usage: /vibe generate <theme> [count]", "error");
+          return;
+        }
+        
+        ctx.ui.notify(`Generating ${count} vibes for "${theme}"...`, "info");
+        
+        const result = await generateVibesBatch(theme, count);
+        
+        if (result.success) {
+          ctx.ui.notify(`Generated ${result.count} vibes for "${theme}" → ${result.filePath}`, "info");
+        } else {
+          ctx.ui.notify(`Failed to generate vibes: ${result.error}`, "error");
+        }
+        return;
+      }
+      
       // /vibe off - disable
       if (subcommand === "off") {
         setVibeTheme(null);
@@ -366,7 +449,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       
       // /vibe <theme> - set theme (preserve original casing)
       setVibeTheme(args.trim());
-      ctx.ui.notify(`Vibe set to: ${args.trim()}`, "info");
+      const mode = getVibeMode();
+      const theme = args.trim();
+      if (mode === "file" && !hasVibeFile(theme)) {
+        ctx.ui.notify(`Vibe set to: ${theme} (file mode, but no file found - run /vibe generate ${theme})`, "warning");
+      } else {
+        ctx.ui.notify(`Vibe set to: ${theme}`, "info");
+      }
     },
   });
 

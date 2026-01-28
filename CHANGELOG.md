@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-01-28
+
+### Added
+- **File-based vibe mode** — Pre-generate vibes once, pull from file at runtime (zero cost, instant)
+  - `/vibe generate <theme> [count]` — Generate and save vibes to `~/.pi/agent/vibes/{theme}.txt`
+  - `/vibe mode file` — Switch to file-based mode
+  - `/vibe mode generate` — Switch back to on-demand generation
+  - Uses seed-based deterministic shuffle for no-repeat selection
+  - Works offline, no API key needed at runtime
+
+### Improved
+- **Better vibe variety in generate mode** — Tracks last 5 vibes and excludes them from generation
+- **Updated prompt** — Now emphasizes creativity and avoiding clichéd phrases
+- **Richer tool call context** — Uses agent's response text instead of just "reading file: X" for more contextual vibes
+- **Configurable max message length** — `workingVibeMaxLength` setting (default: 65 chars, up from 50)
+
 ## [0.2.18] - 2026-01-28
 
 ### Fixed
