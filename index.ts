@@ -579,7 +579,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
       // Set up secondary row as a widget below editor (above sub bar)
       // Shows overflow segments when top bar is too narrow
-      ctx.ui.setWidget("powerline-secondary", (tui: any, theme: Theme) => {
+      ctx.ui.setWidget("powerline-secondary", (_tui: any, theme: Theme) => {
         return {
           dispose() {},
           invalidate() {},
@@ -606,7 +606,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       // Set up status notifications widget above editor
       // Shows extension status messages that look like notifications (e.g., "[pi-annotate] Received: CANCEL")
       // Compact statuses (e.g., "MCP: 6 servers") stay in the powerline bar via extension_statuses segment
-      ctx.ui.setWidget("powerline-status", (tui: any, _theme: Theme) => {
+      ctx.ui.setWidget("powerline-status", () => {
         return {
           dispose() {},
           invalidate() {},
@@ -618,12 +618,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             
             // Collect notification-style statuses (those starting with "[extensionName]")
             const notifications: string[] = [];
-            for (const [_key, value] of statuses) {
-              // Only show as notification if it starts with "[" (notification pattern)
+            for (const value of statuses.values()) {
               if (value && value.trimStart().startsWith('[')) {
-                const contentWidth = visibleWidth(value);
+                // Account for leading space when checking width
+                const lineContent = ` ${value}`;
+                const contentWidth = visibleWidth(lineContent);
                 if (contentWidth <= width) {
-                  notifications.push(` ${value}`);
+                  notifications.push(lineContent);
                 }
               }
             }

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-01-28
+
+### Fixed
+- **Model and path colors restored** — Fixed color regression from v0.2.13 theme refactor:
+  - Model segment now uses original pink (`#d787af`) instead of white/gray (`text`)
+  - Path segment now uses original cyan (`#00afaf`) instead of muted gray
+
 ## [0.2.15] - 2026-01-27
 
 ### Added

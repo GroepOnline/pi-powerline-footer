@@ -389,10 +389,13 @@ const extensionStatusesSegment: StatusLineSegment = {
     const statuses = ctx.extensionStatuses;
     if (!statuses || statuses.size === 0) return { content: "", visible: false };
 
-    // Join all extension statuses with a separator
+    // Join compact statuses with a separator
+    // Notification-style statuses (starting with "[") are shown above the editor instead
     const parts: string[] = [];
-    for (const [_key, value] of statuses) {
-      if (value) parts.push(value);
+    for (const value of statuses.values()) {
+      if (value && !value.trimStart().startsWith('[')) {
+        parts.push(value);
+      }
     }
 
     if (parts.length === 0) return { content: "", visible: false };
