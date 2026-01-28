@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-01-28
+
+### Fixed
+- **Race condition in vibe generation** — Fixed bug where stale vibe generations could overwrite newer ones by capturing AbortController in local variable
+
 ## [0.2.17] - 2026-01-28
 
 ### Added

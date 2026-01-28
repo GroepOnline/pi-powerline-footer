@@ -228,14 +228,16 @@ async function generateAndUpdate(
   prompt: string, 
   setWorkingMessage: (msg?: string) => void,
 ): Promise<void> {
-  // Cancel any in-flight generation
+  // Cancel any in-flight generation and create new controller
+  // Capture in local variable to avoid race condition with subsequent calls
+  const controller = new AbortController();
   currentGeneration?.abort();
-  currentGeneration = new AbortController();
+  currentGeneration = controller;
   
   // Create timeout signal (3 seconds)
   const timeoutSignal = AbortSignal.timeout(config.timeout);
   const combinedSignal = AbortSignal.any([
-    currentGeneration.signal,
+    controller.signal,
     timeoutSignal,
   ]);
   
@@ -245,8 +247,8 @@ async function generateAndUpdate(
       combinedSignal,
     );
     
-    // Only update if still streaming and not aborted
-    if (isStreaming && !currentGeneration.signal.aborted) {
+    // Only update if still streaming and THIS generation wasn't aborted
+    if (isStreaming && !controller.signal.aborted) {
       setWorkingMessage(vibe);
     }
   } catch (error) {
