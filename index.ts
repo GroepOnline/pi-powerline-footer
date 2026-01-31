@@ -57,7 +57,7 @@ function isQuietStartup(): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Status Line Builder (for top border)
+// Status Line Builder
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Render a single segment and return its content with width */
@@ -537,8 +537,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     const presetDef = getPreset(config.preset);
     const segmentCtx = buildSegmentContext(currentCtx, width, theme);
-    // Available width for top bar content (minus box corners: ╭─ and ─╮ = 4 chars)
-    const topBarAvailable = width - 4;
+    // Available width for status bar content (no fill, full width)
+    const topBarAvailable = width;
     
     lastLayoutWidth = width;
     lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, topBarAvailable);
@@ -551,7 +551,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // Import CustomEditor dynamically and create wrapper
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
       ctx.ui.setEditorComponent((tui: any, editorTheme: any, keybindings: any) => {
-        // Create custom editor that overrides render for status in top border
+        // Create custom editor that overrides render for status bar below content
         const editor = new CustomEditor(tui, editorTheme, keybindings);
         
         // Override handleInput to dismiss welcome on first keypress
@@ -565,39 +565,36 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         // Store original render
         const originalRender = editor.render.bind(editor);
         
-        // Override render to match oh-my-pi design with rounded box:
-        // ╭─ status content ────────────────────╮
-        // │  input text here                   │
-        // ╰─                                  ─╯
+        // Override render: top rule, prompted content, bottom rule, status bar
+        //  ──────────────────────────────────────
+        //  > first line of input
+        //    continuation lines
+        //  ──────────────────────────────────────
+        //  status content
         // + autocomplete items (if showing)
         editor.render = (width: number): string[] => {
-          // Minimum width for box layout: borders (4) + minimal content (1) = 5
           // Fall back to original render on extremely narrow terminals
           if (width < 10) {
             return originalRender(width);
           }
           
-          const bc = (s: string) => `${getFgAnsiCode("border")}${s}${ansi.reset}`;
+          const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
+          const prompt = `${ansi.getFgAnsi(200, 200, 200)}>${ansi.reset}`;
           
-          // Box drawing chars
-          const topLeft = bc("╭─");
-          const topRight = bc("─╮");
-          const bottomLeft = bc("╰─");
-          const bottomRight = bc("─╯");
-          const vertical = bc("│");
-          
-          // Content area is width - 6 (3 chars border on each side)
-          const contentWidth = Math.max(1, width - 6);
+          // Content area: 3 chars for prompt prefix (" > " / "   ")
+          const promptPrefix = ` ${prompt} `;
+          const contPrefix = "   ";
+          const contentWidth = Math.max(1, width - 3);
           const lines = originalRender(contentWidth);
           
           if (lines.length === 0 || !currentCtx) return lines;
           
-          // Find where the bottom border is (last line that's all ─ chars)
+          // Find bottom border (plain ─ or scroll indicator ─── ↓ N more)
           // Lines after it are autocomplete items
           let bottomBorderIndex = lines.length - 1;
           for (let i = lines.length - 1; i >= 1; i--) {
             const stripped = lines[i]?.replace(/\x1b\[[0-9;]*m/g, "") || "";
-            if (stripped.length > 0 && /^─+$/.test(stripped)) {
+            if (stripped.length > 0 && /^─{3,}/.test(stripped)) {
               bottomBorderIndex = i;
               break;
             }
@@ -605,38 +602,28 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           
           const result: string[] = [];
           
-          // Top border: ╭─ status ────────────╮
-          // Use responsive layout - overflow goes to secondary row
-          // Note: ctx.ui.theme is the pi Theme with fg(), editorTheme is the pi-tui EditorTheme for styling
+          // Top border (plain rule, 1-char margins)
+          result.push(" " + bc("─".repeat(width - 2)));
+          
+          // Content lines: first line gets "> " prompt, rest indented to match
+          for (let i = 1; i < bottomBorderIndex; i++) {
+            const prefix = i === 1 ? promptPrefix : contPrefix;
+            result.push(`${prefix}${lines[i] || ""}`);
+          }
+          
+          // If only had top/bottom borders (empty editor), show prompt
+          if (bottomBorderIndex === 1) {
+            result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
+          }
+          
+          // Bottom border
+          result.push(" " + bc("─".repeat(width - 2)));
+          
+          // Status bar below border
           const layout = getResponsiveLayout(width, ctx.ui.theme);
           const statusContent = layout.topContent;
-          const statusWidth = visibleWidth(statusContent);
-          const topFillWidth = width - 4; // Reserve 4 for corners (╭─ and ─╮)
-          
-          const fillWidth = Math.max(0, topFillWidth - statusWidth);
-          result.push(topLeft + statusContent + bc("─".repeat(fillWidth)) + topRight);
-          
-          // Content lines (between top border at 0 and bottom border)
-          for (let i = 1; i < bottomBorderIndex; i++) {
-            const line = lines[i] || "";
-            const lineWidth = visibleWidth(line);
-            const padding = " ".repeat(Math.max(0, contentWidth - lineWidth));
-            
-            const isLastContent = i === bottomBorderIndex - 1;
-            if (isLastContent) {
-              // Last content line: ╰─ content ─╯
-              result.push(`${bottomLeft} ${line}${padding} ${bottomRight}`);
-            } else {
-              // Middle lines: │  content  │
-              result.push(`${vertical}  ${line}${padding}  ${vertical}`);
-            }
-          }
-          
-          // If only had top/bottom borders (empty editor), add the bottom
-          if (bottomBorderIndex === 1) {
-            const padding = " ".repeat(contentWidth);
-            result.push(`${bottomLeft} ${padding} ${bottomRight}`);
-          }
+          result.push(statusContent);
+          result.push("");
           
           // Append any autocomplete lines that come after the bottom border
           for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
@@ -650,7 +637,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       });
 
       // Set up footer data provider access (needed for git branch, extension statuses)
-      // Note: We don't render status here - it's already in the editor's top border
+      // Status bar is rendered inside the editor override, footer is empty
       ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
         footerDataRef = footerData;
         tuiRef = tui; // Store TUI reference for re-renders on git branch changes
@@ -660,7 +647,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           dispose: unsub,
           invalidate() {},
           render(): string[] {
-            return []; // Status is in editor top border, not footer
+            return [];
           },
         };
       });

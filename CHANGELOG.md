@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-01-30
+
+### Changed
+- **Editor layout redesign** — Replaced rounded box (`╭╮│╰╯`) with clean open layout:
+  - Subtle grey `─` top/bottom borders with 1-char margins
+  - `>` input prompt on first content line (light gray), continuation lines indented to match
+  - Status bar moved below the bottom border as a standalone line
+  - Status bar no longer has trailing `─` fill
+- **Softer border colors** — Borders use muted grey (`sep`) instead of bright blue (`border`)
+
+### Fixed
+- **Scroll indicator detection** — Bottom border regex now matches editor scroll indicators (`─── ↓ N more`) in addition to plain borders, preventing broken rendering when editor content is scrollable
+- **Segment overflow** — `topBarAvailable` no longer wastes 4 chars on removed box corners, giving segments the full terminal width for layout calculation
+
 ## [0.2.19] - 2026-01-28
 
 ### Added
