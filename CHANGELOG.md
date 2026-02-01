@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.21] - 2026-01-31
+
+### Changed
+- **Status bar moved above editor** — Powerline segments now render above the top border instead of below the bottom border, keeping the input prompt closer to the conversation
+- **Removed blank line below editor** — Eliminated extra spacing after the status bar
+- **Default segment order** — Model and thinking level now appear before path for better at-a-glance info (π → model → think → path → ...)
+
 ## [0.2.20] - 2026-01-30
 
 ### Changed

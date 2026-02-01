@@ -565,12 +565,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         // Store original render
         const originalRender = editor.render.bind(editor);
         
-        // Override render: top rule, prompted content, bottom rule, status bar
+        // Override render: status bar, top rule, prompted content, bottom rule
+        //  status content
         //  ──────────────────────────────────────
         //  > first line of input
         //    continuation lines
         //  ──────────────────────────────────────
-        //  status content
         // + autocomplete items (if showing)
         editor.render = (width: number): string[] => {
           // Fall back to original render on extremely narrow terminals
@@ -602,6 +602,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           
           const result: string[] = [];
           
+          // Status bar above top border
+          const layout = getResponsiveLayout(width, ctx.ui.theme);
+          result.push(layout.topContent);
+          
           // Top border (plain rule, 1-char margins)
           result.push(" " + bc("─".repeat(width - 2)));
           
@@ -618,12 +622,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           
           // Bottom border
           result.push(" " + bc("─".repeat(width - 2)));
-          
-          // Status bar below border
-          const layout = getResponsiveLayout(width, ctx.ui.theme);
-          const statusContent = layout.topContent;
-          result.push(statusContent);
-          result.push("");
           
           // Append any autocomplete lines that come after the bottom border
           for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
