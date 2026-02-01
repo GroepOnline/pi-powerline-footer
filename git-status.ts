@@ -60,12 +60,9 @@ function parseGitStatusOutput(output: string): { staged: number; unstaged: numbe
   return { staged, unstaged, untracked };
 }
 
-/**
- * Fetch current git branch asynchronously
- */
-async function fetchGitBranch(): Promise<string | null> {
+function runGit(args: string[], timeoutMs = 200): Promise<string | null> {
   return new Promise((resolve) => {
-    const proc = spawn("git", ["branch", "--show-current"], {
+    const proc = spawn("git", args, {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -84,67 +81,40 @@ async function fetchGitBranch(): Promise<string | null> {
     });
 
     proc.on("close", (code) => {
-      if (code !== 0) {
-        finish(null);
-        return;
-      }
-      const branch = stdout.trim();
-      finish(branch || null); // Empty string means detached HEAD
+      finish(code === 0 ? stdout.trim() : null);
     });
 
     proc.on("error", () => {
       finish(null);
     });
 
-    // Timeout after 200ms
     const timeoutId = setTimeout(() => {
       proc.kill();
       finish(null);
-    }, 200);
+    }, timeoutMs);
   });
+}
+
+/**
+ * Fetch current git branch asynchronously.
+ * For detached HEAD, returns the short commit SHA (matches provider's "detached" behavior).
+ */
+async function fetchGitBranch(): Promise<string | null> {
+  const branch = await runGit(["branch", "--show-current"]);
+  if (branch === null) return null;
+  if (branch) return branch;
+
+  const sha = await runGit(["rev-parse", "--short", "HEAD"]);
+  return sha ? `${sha} (detached)` : "detached";
 }
 
 /**
  * Fetch git status asynchronously
  */
 async function fetchGitStatus(): Promise<{ staged: number; unstaged: number; untracked: number } | null> {
-  return new Promise((resolve) => {
-    const proc = spawn("git", ["status", "--porcelain"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let resolved = false;
-
-    const finish = (result: { staged: number; unstaged: number; untracked: number } | null) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeoutId);
-      resolve(result);
-    };
-
-    proc.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        finish(null);
-        return;
-      }
-      finish(parseGitStatusOutput(stdout));
-    });
-
-    proc.on("error", () => {
-      finish(null);
-    });
-
-    // Timeout after 500ms
-    const timeoutId = setTimeout(() => {
-      proc.kill();
-      finish(null);
-    }, 500);
-  });
+  const output = await runGit(["status", "--porcelain"], 500);
+  if (output === null) return null;
+  return parseGitStatusOutput(output);
 }
 
 /**
@@ -174,8 +144,8 @@ export function getCurrentBranch(providerBranch: string | null): string | null {
     });
   }
 
-  // Return cached branch, or fall back to provider
-  return cachedBranch?.branch ?? providerBranch;
+  // Return stale cache while refreshing; only use provider before first fetch
+  return cachedBranch ? cachedBranch.branch : providerBranch;
 }
 
 /**

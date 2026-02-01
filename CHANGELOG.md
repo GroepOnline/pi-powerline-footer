@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.2.22] - 2026-01-31
+
+### Fixed
+- **Detached HEAD flickering** — Git branch segment no longer oscillates between showing "detached" and hiding every 500ms when HEAD is detached
+  - Root cause: two competing branch detection methods (provider reads `.git/HEAD` → `"detached"`, extension runs `git branch --show-current` → empty/null) fought via a `??` fallback that leaked the provider value on every cache expiry
+  - Branch cache now returns stale value while refreshing instead of falling through to provider
+  - Detached HEAD now shows the short commit SHA (e.g., `abc1234 (detached)`) instead of bare "detached"
+
+### Changed
+- **Extracted `runGit` helper** — Consolidated duplicated process-spawning logic from `fetchGitBranch` and `fetchGitStatus` into a shared helper
+- `fetchGitBranch` now distinguishes "not a git repo" (null, early exit) from "detached HEAD" (empty string, SHA lookup) — avoids spawning a wasteful second process for non-git directories
+
 ## [0.2.21] - 2026-01-31
 
 ### Changed
