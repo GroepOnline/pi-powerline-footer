@@ -550,14 +550,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function setupCustomEditor(ctx: any) {
     // Import CustomEditor dynamically and create wrapper
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
-      ctx.ui.setEditorComponent((tui: any, editorTheme: any, keybindings: any) => {
+      let currentEditor: any = null;
+      let autocompleteFixed = false;
+
+      const editorFactory = (tui: any, editorTheme: any, keybindings: any) => {
         // Create custom editor that overrides render for status bar below content
         const editor = new CustomEditor(tui, editorTheme, keybindings);
+        currentEditor = editor;
         
-        // Override handleInput to dismiss welcome on first keypress
         const originalHandleInput = editor.handleInput.bind(editor);
         editor.handleInput = (data: string) => {
-          // Dismiss welcome overlay/header on first keypress (use setTimeout to avoid re-entrancy)
+          if (!autocompleteFixed && !(editor as any).autocompleteProvider) {
+            autocompleteFixed = true;
+            ctx.ui.setEditorComponent(editorFactory);
+            currentEditor?.handleInput(data);
+            return;
+          }
+          // Dismiss welcome overlay/header (use setTimeout to avoid re-entrancy)
           setTimeout(() => dismissWelcome(ctx), 0);
           originalHandleInput(data);
         };
@@ -632,7 +641,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         };
         
         return editor;
-      });
+      };
+
+      ctx.ui.setEditorComponent(editorFactory);
 
       // Set up footer data provider access (needed for git branch, extension statuses)
       // Status bar is rendered inside the editor override, footer is empty

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-02-06
+
+### Fixed
+- **Slash command autocomplete not appearing** — Custom editor created during `session_start` never received the autocomplete provider because pi v0.52.7 moved `setupAutocomplete()` to run after extensions load. The `handleInput` override now detects the missing provider on first keystroke, re-triggers `setEditorComponent` (which succeeds because the provider exists by then), and forwards the keystroke to the new editor. Users without editor-replacing extensions were unaffected.
+
 ## [0.2.22] - 2026-01-31
 
 ### Fixed
