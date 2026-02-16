@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.24] - 2026-02-15
+
+### Fixed
+- **Secondary row disappearing** — When overflow segments exceeded terminal width, the entire secondary row vanished instead of showing what fits. The secondary row now applies the same width-fitting logic as the top bar, adding segments until full and stopping there.
+
+### Removed
+- Dead `width` field from `SegmentContext` (set but never read by any segment)
+- Dead `rainbow` function and `RAINBOW_COLORS` from `colors.ts` (duplicated in `theme.ts`, which is the version actually used)
+
 ## [0.2.23] - 2026-02-06
 
 ### Fixed

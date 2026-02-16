@@ -97,30 +97,4 @@ export function getFgAnsiCode(color: ColorName): string {
   return getAnsiCode(color);
 }
 
-// Rainbow colors for ultra/xhigh thinking (matches Claude Code ultrathink)
-const RAINBOW_COLORS = [
-  "#b281d6",  // purple
-  "#d787af",  // pink
-  "#febc38",  // orange
-  "#e4c00f",  // yellow
-  "#89d281",  // green
-  "#00afaf",  // cyan
-  "#178fb9",  // blue
-  "#b281d6",  // purple (loop)
-];
 
-// Apply rainbow gradient to text (each character gets next color)
-export function rainbow(text: string): string {
-  let result = "";
-  let colorIndex = 0;
-  for (const char of text) {
-    if (char === " " || char === ":") {
-      result += char;
-    } else {
-      const [r, g, b] = hexToRgb(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]);
-      result += `${ansi.getFgAnsi(r, g, b)}${char}`;
-      colorIndex++;
-    }
-  }
-  return result + ansi.reset;
-}

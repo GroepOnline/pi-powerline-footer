@@ -143,7 +143,6 @@ export interface SegmentContext {
   
   // Options
   options: StatusLineSegmentOptions;
-  width: number;
   
   // Theming
   theme: Theme;

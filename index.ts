@@ -103,11 +103,11 @@ function computeResponsiveLayout(
   const allSegmentIds = [...primaryIds, ...secondaryIds];
   
   // Render all segments and get their widths
-  const renderedSegments: { id: StatusLineSegmentId; content: string; width: number }[] = [];
+  const renderedSegments: { content: string; width: number }[] = [];
   for (const segId of allSegmentIds) {
     const { content, width, visible } = renderSegmentWithWidth(segId, ctx);
     if (visible) {
-      renderedSegments.push({ id: segId, content, width });
+      renderedSegments.push({ content, width });
     }
   }
   
@@ -120,22 +120,33 @@ function computeResponsiveLayout(
   const baseOverhead = 2;
   let currentWidth = baseOverhead;
   let topSegments: string[] = [];
-  let secondarySegments: string[] = [];
+  let overflowSegments: { content: string; width: number }[] = [];
   let overflow = false;
   
-  for (let i = 0; i < renderedSegments.length; i++) {
-    const seg = renderedSegments[i];
-    // Width needed: segment width + separator (except for first segment)
+  for (const seg of renderedSegments) {
     const neededWidth = seg.width + (topSegments.length > 0 ? sepWidth : 0);
     
     if (!overflow && currentWidth + neededWidth <= availableWidth) {
-      // Fits in top bar
       topSegments.push(seg.content);
       currentWidth += neededWidth;
     } else {
-      // Overflow to secondary row
       overflow = true;
+      overflowSegments.push(seg);
+    }
+  }
+  
+  // Fit overflow segments into secondary row (same width constraint)
+  // Stop at first non-fitting segment to preserve ordering
+  let secondaryWidth = baseOverhead;
+  let secondarySegments: string[] = [];
+  
+  for (const seg of overflowSegments) {
+    const neededWidth = seg.width + (secondarySegments.length > 0 ? sepWidth : 0);
+    if (secondaryWidth + neededWidth <= availableWidth) {
       secondarySegments.push(seg.content);
+      secondaryWidth += neededWidth;
+    } else {
+      break;
     }
   }
   
@@ -459,7 +470,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
-  function buildSegmentContext(ctx: any, width: number, theme: Theme): SegmentContext {
+  function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
     const presetDef = getPreset(config.preset);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
 
@@ -518,7 +529,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       git: gitStatus,
       extensionStatuses: footerDataRef?.getExtensionStatuses() ?? new Map(),
       options: presetDef.segmentOptions ?? {},
-      width,
       theme,
       colors,
     };
@@ -536,12 +546,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
     
     const presetDef = getPreset(config.preset);
-    const segmentCtx = buildSegmentContext(currentCtx, width, theme);
-    // Available width for status bar content (no fill, full width)
-    const topBarAvailable = width;
+    const segmentCtx = buildSegmentContext(currentCtx, theme);
     
     lastLayoutWidth = width;
-    lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, topBarAvailable);
+    lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, width);
     lastLayoutTimestamp = now;
     
     return lastLayoutResult;
@@ -670,16 +678,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           render(width: number): string[] {
             if (!currentCtx) return [];
             
-            // Use responsive layout - secondary row shows overflow from top bar
             const layout = getResponsiveLayout(width, theme);
             
-            // Only show secondary row if there's overflow content that fits
             if (layout.secondaryContent) {
-              const contentWidth = visibleWidth(layout.secondaryContent);
-              // Don't render if content exceeds terminal width (graceful degradation)
-              if (contentWidth <= width) {
-                return [layout.secondaryContent];
-              }
+              return [layout.secondaryContent];
             }
             
             return [];
