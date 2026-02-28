@@ -56,6 +56,21 @@ function isQuietStartup(): boolean {
   return false;
 }
 
+// Read showLastPrompt setting (default: true) - called once at session start
+function readShowLastPromptSetting(): boolean {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
+  
+  try {
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      return settings.showLastPrompt !== false;
+    }
+  } catch {}
+  
+  return true;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Status Line Builder
 // ═══════════════════════════════════════════════════════════════════════════
@@ -172,6 +187,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let welcomeHeaderActive = false; // Track if welcome header should be cleared on first input
   let welcomeOverlayShouldDismiss = false; // Track early dismissal request (before overlay setup completes)
   let lastUserPrompt = ""; // Track last user message for "what did I type?" reminder
+  let showLastPrompt = true; // Cached setting for last prompt visibility
   
   // Cache for responsive layout (shared between editor and widget for consistency)
   let lastLayoutWidth = 0;
@@ -184,6 +200,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentCtx = ctx;
     lastUserPrompt = "";
     isStreaming = false;
+    showLastPrompt = readShowLastPromptSetting();
     
     // Store thinking level getter if available
     if (typeof ctx.getThinkingLevel === 'function') {
@@ -728,14 +745,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }, { placement: "aboveEditor" });
 
       // Set up "last prompt" widget below editor
-      // Shows what the user typed during streaming so they don't forget
+      // Shows what the user typed so they don't forget (configurable via showLastPrompt setting)
       ctx.ui.setWidget("powerline-last-prompt", () => {
         return {
           dispose() {},
           invalidate() {},
           render(width: number): string[] {
-            // Only show during streaming when there's something to show
-            if (!isStreaming || !lastUserPrompt) return [];
+            // Check setting and ensure there's something to show
+            if (!showLastPrompt || !lastUserPrompt) return [];
             
             // Subtle prefix: "↳ " in separator color
             const prefix = `${getFgAnsiCode("sep")}↳${ansi.reset} `;

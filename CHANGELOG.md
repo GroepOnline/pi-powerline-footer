@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-02-28
+
+### Changed
+- **Last prompt reminder now always visible** — Shows your last message at all times (not just during streaming) so you always have context. Disable via `"showLastPrompt": false` in settings.json.
+
 ## [0.3.0] - 2026-02-28
 
 ### Added
