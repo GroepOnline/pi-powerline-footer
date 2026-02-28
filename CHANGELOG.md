@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-28
+
+### Added
+- **Last prompt reminder** — Shows your last message below the powerline bar while the agent is streaming, so you don't forget what you asked during long operations. Displays as a subtle gray `↳ your message here...` that disappears when the agent finishes.
+
 ## [0.2.24] - 2026-02-15
 
 ### Fixed

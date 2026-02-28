@@ -171,6 +171,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let dismissWelcomeOverlay: (() => void) | null = null; // Callback to dismiss welcome overlay
   let welcomeHeaderActive = false; // Track if welcome header should be cleared on first input
   let welcomeOverlayShouldDismiss = false; // Track early dismissal request (before overlay setup completes)
+  let lastUserPrompt = ""; // Track last user message for "what did I type?" reminder
   
   // Cache for responsive layout (shared between editor and widget for consistency)
   let lastLayoutWidth = 0;
@@ -181,6 +182,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     sessionStartTime = Date.now();
     currentCtx = ctx;
+    lastUserPrompt = "";
+    isStreaming = false;
     
     // Store thinking level getter if available
     if (typeof ctx.getThinkingLevel === 'function') {
@@ -245,6 +248,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Generate themed working message before agent starts (has access to user's prompt)
   pi.on("before_agent_start", async (event, ctx) => {
+    // Store the user's prompt so we can show it during streaming
+    lastUserPrompt = event.prompt;
+    
     if (ctx.hasUI) {
       onVibeBeforeAgentStart(event.prompt, ctx.ui.setWorkingMessage);
     }
@@ -341,6 +347,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setHeader(undefined);
           ctx.ui.setWidget("powerline-secondary", undefined);
           ctx.ui.setWidget("powerline-status", undefined);
+          ctx.ui.setWidget("powerline-last-prompt", undefined);
           footerDataRef = null;
           tuiRef = null;
           // Clear layout cache
@@ -719,6 +726,42 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           },
         };
       }, { placement: "aboveEditor" });
+
+      // Set up "last prompt" widget below editor
+      // Shows what the user typed during streaming so they don't forget
+      ctx.ui.setWidget("powerline-last-prompt", () => {
+        return {
+          dispose() {},
+          invalidate() {},
+          render(width: number): string[] {
+            // Only show during streaming when there's something to show
+            if (!isStreaming || !lastUserPrompt) return [];
+            
+            // Subtle prefix: "↳ " in separator color
+            const prefix = `${getFgAnsiCode("sep")}↳${ansi.reset} `;
+            const prefixWidth = 2; // "↳ "
+            
+            // Calculate available width for prompt text (1 leading space + prefix + text)
+            const availableWidth = width - prefixWidth - 1;
+            if (availableWidth < 10) return [];
+            
+            // Collapse whitespace and trim
+            let promptText = lastUserPrompt.replace(/\s+/g, " ").trim();
+            if (!promptText) return [];
+            
+            // Fast truncation: slice by character (works for most ASCII prompts)
+            // For prompts with wide chars, this is an approximation but good enough
+            if (promptText.length > availableWidth) {
+              promptText = promptText.slice(0, availableWidth - 1).trimEnd() + "…";
+            }
+            
+            // Apply dim styling to the prompt text
+            const styledPrompt = `${getFgAnsiCode("sep")}${promptText}${ansi.reset}`;
+            
+            return [` ${prefix}${styledPrompt}`];
+          },
+        };
+      }, { placement: "belowEditor" });
     });
   }
 
