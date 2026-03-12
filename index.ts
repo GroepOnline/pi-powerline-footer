@@ -41,6 +41,67 @@ let config: PowerlineConfig = {
   preset: "default",
 };
 
+const PROMPT_HISTORY_LIMIT = 100;
+const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
+const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
+
+function getPromptHistoryState(): { savedPromptHistory: string[] } {
+  const globalState = globalThis as any;
+  if (!globalState[PROMPT_HISTORY_STATE_KEY]) {
+    globalState[PROMPT_HISTORY_STATE_KEY] = { savedPromptHistory: [] };
+  }
+  return globalState[PROMPT_HISTORY_STATE_KEY];
+}
+
+function readPromptHistory(editor: any): string[] {
+  const history = editor?.history;
+  if (!Array.isArray(history)) return [];
+
+  const normalized: string[] = [];
+  for (const entry of history) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    if (normalized.length > 0 && normalized[normalized.length - 1] === trimmed) continue;
+    normalized.push(trimmed);
+    if (normalized.length >= PROMPT_HISTORY_LIMIT) break;
+  }
+
+  return normalized;
+}
+
+function snapshotPromptHistory(editor: any): void {
+  const history = readPromptHistory(editor);
+  if (history.length > 0) {
+    getPromptHistoryState().savedPromptHistory = [...history];
+  }
+}
+
+function restorePromptHistory(editor: any): void {
+  const { savedPromptHistory } = getPromptHistoryState();
+  if (!savedPromptHistory.length || typeof editor?.addToHistory !== "function") return;
+
+  for (let i = savedPromptHistory.length - 1; i >= 0; i--) {
+    editor.addToHistory(savedPromptHistory[i]);
+  }
+}
+
+function trackPromptHistory(editor: any): void {
+  if (!editor || typeof editor.addToHistory !== "function") return;
+  if (editor[PROMPT_HISTORY_TRACKED]) {
+    snapshotPromptHistory(editor);
+    return;
+  }
+
+  const originalAddToHistory = editor.addToHistory.bind(editor);
+  editor.addToHistory = (text: string) => {
+    originalAddToHistory(text);
+    snapshotPromptHistory(editor);
+  };
+  editor[PROMPT_HISTORY_TRACKED] = true;
+  snapshotPromptHistory(editor);
+}
+
 function readSettings(): Record<string, unknown> {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
   const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
@@ -359,6 +420,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           setupCustomEditor(ctx);
           ctx.ui.notify("Powerline enabled", "info");
         } else {
+          getPromptHistoryState().savedPromptHistory = [];
           // Clear all custom UI components
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
@@ -618,6 +680,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function setupCustomEditor(ctx: any) {
+    snapshotPromptHistory(currentEditor);
+
     // Import CustomEditor dynamically and create wrapper
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
       let autocompleteFixed = false;
@@ -626,11 +690,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         // Create custom editor that overrides render for status bar below content
         const editor = new CustomEditor(tui, editorTheme, keybindings);
         currentEditor = editor;
+        trackPromptHistory(editor);
+        restorePromptHistory(editor);
         
         const originalHandleInput = editor.handleInput.bind(editor);
         editor.handleInput = (data: string) => {
           if (!autocompleteFixed && !(editor as any).autocompleteProvider) {
             autocompleteFixed = true;
+            snapshotPromptHistory(editor);
             ctx.ui.setEditorComponent(editorFactory);
             currentEditor?.handleInput(data);
             return;

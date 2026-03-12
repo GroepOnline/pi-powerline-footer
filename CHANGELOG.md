@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-12
+
+### Fixed
+- **Prompt history now survives custom editor reinstalls** — Up-arrow recall is preserved across `/reload`, preset changes, and the editor's autocomplete self-rebind path by snapshotting prompt history before replacement and restoring it into the new custom editor instance. Explicitly disabling `powerline-footer` via `/powerline` still clears the extension-managed history on purpose.
+
 ## [0.4.0] - 2026-03-11
 
 ### Added
