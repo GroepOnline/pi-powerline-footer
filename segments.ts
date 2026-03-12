@@ -197,7 +197,7 @@ const thinkingSegment: StatusLineSegment = {
 
 const subagentsSegment: StatusLineSegment = {
   id: "subagents",
-  render(_ctx) {
+  render() {
     // Note: pi-mono doesn't have subagent tracking built-in
     // This would require extension state management
     // For now, return not visible
@@ -347,7 +347,7 @@ const sessionSegment: StatusLineSegment = {
 
 const hostnameSegment: StatusLineSegment = {
   id: "hostname",
-  render(_ctx) {
+  render() {
     const icons = getIcons();
     const name = osHostname().split(".")[0];
     // No explicit color

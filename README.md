@@ -10,6 +10,8 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 ## Features
 
+**Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and swap. A `📋 stash` indicator appears in the powerline bar while text is stashed.
+
 **Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
 
 **Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, and recent sessions. Auto-dismisses after 30 seconds or on any key press.
@@ -48,6 +50,21 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 | `ascii` | Safe for any terminal |
 
 **Environment:** `POWERLINE_NERD_FONTS=1` to force Nerd Fonts, `=0` for ASCII.
+
+## Editor Stash
+
+Midway through typing a long prompt and need to send something quick first? Press `Alt+S` to stash your editor content, type and submit the quick message, and your stashed text auto-restores when the agent finishes.
+
+| Editor | Stash | Alt+S result |
+|--------|-------|-------------|
+| Has text | Empty | Stash text, clear editor |
+| Empty | Has stash | Pop stash into editor |
+| Has text | Has stash | Swap editor and stash |
+| Empty | Empty | "Nothing to stash" |
+
+Auto-restore only happens when the editor is empty — if you started typing while the agent worked, the stash is preserved and you're notified to `Alt+S` to swap.
+
+The `📋 stash` indicator appears in the powerline bar (on presets with `extension_statuses`). Stash is ephemeral — it clears on session switch and isn't persisted to disk.
 
 ## Working Vibes
 

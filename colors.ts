@@ -97,4 +97,3 @@ export function getFgAnsiCode(color: ColorName): string {
   return getAnsiCode(color);
 }
 
-

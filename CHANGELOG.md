@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-11
+
+### Added
+- **Editor stash** — Press `Alt+S` to save editor content and clear the editor, type a quick prompt, and have the stashed text auto-restored when the agent finishes. Toggles: stash, pop, swap, or "nothing to stash" depending on editor/stash state. Status indicator (`📋 stash`) shown in the powerline bar on presets that include `extension_statuses`. Auto-restore only happens when the editor is empty (won't overwrite text you started typing).
+
+### Fixed
+- **Stale state on session switch** — `/new` and `/resume` now properly reset session timer, context, last prompt, streaming flag, and dismiss any active welcome overlay/header. Previously these carried over from the old session because `session_start` only fires on initial load and `/reload`, not on session changes.
+
+### Removed
+- Dead `clearThemeCache()` export from `theme.ts`
+- Dead `user_message` event handler (welcome dismissal already handled by `agent_start`, `tool_call`, and editor keypress)
+- Unused parameters across handlers and segments
+- Redundant double settings file read (consolidated into single `readSettings()` helper)
+
 ## [0.3.1] - 2026-02-28
 
 ### Changed

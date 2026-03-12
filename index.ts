@@ -41,34 +41,15 @@ let config: PowerlineConfig = {
   preset: "default",
 };
 
-// Check if quietStartup is enabled in settings
-function isQuietStartup(): boolean {
+function readSettings(): Record<string, unknown> {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
   const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
-  
   try {
     if (existsSync(settingsPath)) {
-      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-      return settings.quietStartup === true;
+      return JSON.parse(readFileSync(settingsPath, "utf-8"));
     }
   } catch {}
-  
-  return false;
-}
-
-// Read showLastPrompt setting (default: true) - called once at session start
-function readShowLastPromptSetting(): boolean {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
-  
-  try {
-    if (existsSync(settingsPath)) {
-      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-      return settings.showLastPrompt !== false;
-    }
-  } catch {}
-  
-  return true;
+  return {};
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -186,8 +167,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let dismissWelcomeOverlay: (() => void) | null = null; // Callback to dismiss welcome overlay
   let welcomeHeaderActive = false; // Track if welcome header should be cleared on first input
   let welcomeOverlayShouldDismiss = false; // Track early dismissal request (before overlay setup completes)
-  let lastUserPrompt = ""; // Track last user message for "what did I type?" reminder
+  let lastUserPrompt = ""; // Last user message for prompt reminder widget
   let showLastPrompt = true; // Cached setting for last prompt visibility
+  let stashedEditorText: string | null = null;
+  let currentEditor: any = null;
   
   // Cache for responsive layout (shared between editor and widget for consistency)
   let lastLayoutWidth = 0;
@@ -200,8 +183,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentCtx = ctx;
     lastUserPrompt = "";
     isStreaming = false;
-    showLastPrompt = readShowLastPromptSetting();
-    
+
+    const settings = readSettings();
+    showLastPrompt = settings.showLastPrompt !== false;
+
     // Store thinking level getter if available
     if (typeof ctx.getThinkingLevel === 'function') {
       getThinkingLevelFn = () => ctx.getThinkingLevel();
@@ -212,8 +197,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
-      // quietStartup: true → compact header, otherwise → full overlay
-      if (isQuietStartup()) {
+      if (settings.quietStartup === true) {
         setupWelcomeHeader(ctx);
       } else {
         setupWelcomeOverlay(ctx);
@@ -231,7 +215,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   };
 
   // Invalidate git status on file changes, trigger re-render on potential branch changes
-  pi.on("tool_result", async (event, _ctx) => {
+  pi.on("tool_result", async (event) => {
     if (event.toolName === "write" || event.toolName === "edit") {
       invalidateGitStatus();
     }
@@ -251,7 +235,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   // Also catch user escape commands (! prefix)
   // Note: This fires BEFORE execution, so we use a longer delay and multiple re-renders
   // to ensure we catch the update after the command completes.
-  pi.on("user_bash", async (event, _ctx) => {
+  pi.on("user_bash", async (event) => {
     if (mightChangeGitBranch(event.command)) {
       // Invalidate immediately so next render fetches fresh data
       invalidateGitStatus();
@@ -265,9 +249,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Generate themed working message before agent starts (has access to user's prompt)
   pi.on("before_agent_start", async (event, ctx) => {
-    // Store the user's prompt so we can show it during streaming
     lastUserPrompt = event.prompt;
-    
     if (ctx.hasUI) {
       onVibeBeforeAgentStart(event.prompt, ctx.ui.setWorkingMessage);
     }
@@ -336,11 +318,30 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     isStreaming = false;
     if (ctx.hasUI) {
       onVibeAgentEnd(ctx.ui.setWorkingMessage); // working-vibes internal state + reset message
+      if (stashedEditorText !== null) {
+        if (ctx.ui.getEditorText().trim() === "") {
+          ctx.ui.setEditorText(stashedEditorText);
+          stashedEditorText = null;
+          ctx.ui.setStatus("stash", undefined);
+          ctx.ui.notify("Stash restored", "info");
+        } else {
+          ctx.ui.notify("Stash preserved — Alt+S to swap", "info");
+        }
+      }
     }
   });
 
-  // Dismiss welcome overlay/header on first user message
-  pi.on("user_message", async (_event, ctx) => {
+  pi.on("session_switch", async (_event, ctx) => {
+    sessionStartTime = Date.now();
+    currentCtx = ctx;
+    lastUserPrompt = "";
+    isStreaming = false;
+    if (stashedEditorText !== null) {
+      stashedEditorText = null;
+      if (ctx.hasUI) {
+        ctx.ui.setStatus("stash", undefined);
+      }
+    }
     dismissWelcome(ctx);
   });
 
@@ -367,6 +368,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setWidget("powerline-last-prompt", undefined);
           footerDataRef = null;
           tuiRef = null;
+          currentEditor = null;
           // Clear layout cache
           lastLayoutResult = null;
           ctx.ui.notify("Defaults restored", "info");
@@ -390,6 +392,42 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       // Show available presets
       const presetList = Object.keys(PRESETS).join(", ");
       ctx.ui.notify(`Available presets: ${presetList}`, "info");
+    },
+  });
+
+  pi.registerShortcut("alt+s", {
+    description: "Stash/restore editor text",
+    handler: async (ctx) => {
+      const rawText = currentEditor?.getExpandedText?.() ?? ctx.ui.getEditorText();
+      const hasText = rawText.trim().length > 0;
+      const hasStash = stashedEditorText !== null;
+
+      if (hasText && !hasStash) {
+        stashedEditorText = rawText;
+        ctx.ui.setEditorText("");
+        ctx.ui.setStatus("stash", "📋 stash");
+        ctx.ui.notify("Text stashed", "info");
+        return;
+      }
+
+      if (!hasText && hasStash) {
+        ctx.ui.setEditorText(stashedEditorText);
+        stashedEditorText = null;
+        ctx.ui.setStatus("stash", undefined);
+        ctx.ui.notify("Stash restored", "info");
+        return;
+      }
+
+      if (hasText && hasStash) {
+        const prev = stashedEditorText;
+        stashedEditorText = rawText;
+        ctx.ui.setEditorText(prev);
+        ctx.ui.setStatus("stash", "📋 stash");
+        ctx.ui.notify("Stash swapped", "info");
+        return;
+      }
+
+      ctx.ui.notify("Nothing to stash", "info");
     },
   });
 
@@ -582,7 +620,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function setupCustomEditor(ctx: any) {
     // Import CustomEditor dynamically and create wrapper
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
-      let currentEditor: any = null;
       let autocompleteFixed = false;
 
       const editorFactory = (tui: any, editorTheme: any, keybindings: any) => {
@@ -744,37 +781,28 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         };
       }, { placement: "aboveEditor" });
 
-      // Set up "last prompt" widget below editor
-      // Shows what the user typed so they don't forget (configurable via showLastPrompt setting)
+      // Last prompt reminder below editor (configurable via showLastPrompt setting)
       ctx.ui.setWidget("powerline-last-prompt", () => {
         return {
           dispose() {},
           invalidate() {},
           render(width: number): string[] {
-            // Check setting and ensure there's something to show
             if (!showLastPrompt || !lastUserPrompt) return [];
             
-            // Subtle prefix: "↳ " in separator color
             const prefix = `${getFgAnsiCode("sep")}↳${ansi.reset} `;
             const prefixWidth = 2; // "↳ "
-            
-            // Calculate available width for prompt text (1 leading space + prefix + text)
             const availableWidth = width - prefixWidth - 1;
             if (availableWidth < 10) return [];
             
-            // Collapse whitespace and trim
             let promptText = lastUserPrompt.replace(/\s+/g, " ").trim();
             if (!promptText) return [];
             
-            // Fast truncation: slice by character (works for most ASCII prompts)
-            // For prompts with wide chars, this is an approximation but good enough
+            // Truncate by character count (approximation for wide chars, good enough)
             if (promptText.length > availableWidth) {
               promptText = promptText.slice(0, availableWidth - 1).trimEnd() + "…";
             }
             
-            // Apply dim styling to the prompt text
             const styledPrompt = `${getFgAnsiCode("sep")}${promptText}${ansi.reset}`;
-            
             return [` ${prefix}${styledPrompt}`];
           },
         };
@@ -791,7 +819,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts);
     welcomeHeaderActive = true; // Will be cleared on first user input
     
-    ctx.ui.setHeader((_tui: any, _theme: any) => {
+    ctx.ui.setHeader(() => {
       return {
         render(width: number): string[] {
           return header.render(width);
@@ -812,7 +840,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // Small delay to let pi-mono finish initialization
     setTimeout(() => {
       // Skip overlay if:
-      // 1. Dismissal was explicitly requested (agent_start/user_message fired)
+      // 1. Dismissal was explicitly requested (agent_start/keypress fired)
       // 2. Agent is already streaming
       // 3. Session already has assistant messages (agent already responded)
       if (welcomeOverlayShouldDismiss || isStreaming) {
@@ -851,7 +879,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             done();
           };
           
-          // Store dismiss callback so user_message/keypress can trigger it
+          // Store dismiss callback so agent_start/keypress can trigger it
           dismissWelcomeOverlay = dismiss;
           
           // Double-check: dismissal might have been requested between the outer check
@@ -873,7 +901,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             focused: false,
             invalidate: () => welcome.invalidate(),
             render: (width: number) => welcome.render(width),
-            handleInput: (_data: string) => dismiss(),
+            handleInput: () => dismiss(),
             dispose: () => {
               dismissed = true;
               clearInterval(interval);

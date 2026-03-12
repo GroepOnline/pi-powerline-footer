@@ -161,11 +161,3 @@ export function rainbow(text: string): string {
 export function getDefaultColors(): Required<ColorScheme> {
   return { ...DEFAULT_COLORS };
 }
-
-/**
- * Clear the user theme cache (for reloading)
- */
-export function clearThemeCache(): void {
-  userThemeCache = null;
-  userThemeCacheTime = 0;
-}
