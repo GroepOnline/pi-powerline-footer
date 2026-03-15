@@ -1,5 +1,6 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
+import { visibleWidth } from "@mariozechner/pi-tui";
 import type { RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
 import { fg, rainbow, applyColor } from "./theme.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
@@ -390,11 +391,18 @@ const extensionStatusesSegment: StatusLineSegment = {
     if (!statuses || statuses.size === 0) return { content: "", visible: false };
 
     // Join compact statuses with a separator
-    // Notification-style statuses (starting with "[") are shown above the editor instead
+    // Skip: empty strings, notification-style ("[...") shown above editor,
+    // and strings that are only ANSI codes with no visible text
     const parts: string[] = [];
     for (const value of statuses.values()) {
-      if (value && !value.trimStart().startsWith('[')) {
-        parts.push(value);
+      if (value && !value.trimStart().startsWith('[') && visibleWidth(value) > 0) {
+        // Strip trailing separators (· | · etc.) that some extensions bake in,
+        // since we add our own SEP_DOT joiner between entries.
+        // The separator may be wrapped in ANSI codes, so strip those too.
+        const stripped = value.replace(/(\x1b\[[0-9;]*m|\s|·|[|])+$/, "");
+        if (visibleWidth(stripped) > 0) {
+          parts.push(stripped);
+        }
       }
     }
 

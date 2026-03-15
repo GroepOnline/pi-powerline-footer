@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-15
+
+### Fixed
+- **Ghost entries in extension statuses** — Status values that are purely ANSI escape codes with no visible text (zero `visibleWidth`) are now filtered out instead of rendering as blank ` · ` gaps in the powerline bar.
+- **Double separator artifacts** — Extensions that bake in their own trailing separators (e.g., Glimpse's `G ·`) no longer clash with the segment's own ` · ` joiner. Trailing ANSI codes, whitespace, `·`, and `|` are stripped from each status value before joining.
+
 ## [0.4.1] - 2026-03-12
 
 ### Fixed
