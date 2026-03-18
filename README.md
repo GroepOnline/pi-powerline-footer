@@ -51,6 +51,9 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 
 **Environment:** `POWERLINE_NERD_FONTS=1` to force Nerd Fonts, `=0` for ASCII.
 
+Preset selection is saved to `~/.pi/agent/settings.json` under `powerline` and restored on startup.
+Run `/powerline default` to switch back to the default preset.
+
 ## Editor Stash
 
 Midway through typing a long prompt and need to send something quick first? Press `Alt+S` to stash your editor content, type and submit the quick message, and your stashed text auto-restores when the agent finishes.
