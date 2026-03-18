@@ -193,6 +193,22 @@ function buildContentFromParts(
   return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
 }
 
+function truncateWithEllipsisByWidth(text: string, maxWidth: number): string {
+  if (maxWidth <= 0) return "";
+  if (visibleWidth(text) <= maxWidth) return text;
+  if (maxWidth === 1) return "…";
+
+  const targetWidth = maxWidth - 1;
+  let truncated = "";
+  for (const char of text) {
+    const candidate = truncated + char;
+    if (visibleWidth(candidate) > targetWidth) break;
+    truncated = candidate;
+  }
+
+  return truncated.trimEnd() + "…";
+}
+
 /**
  * Responsive segment layout - fits segments into top bar, overflows to secondary row.
  * When terminal is wide enough, secondary segments move up to top bar.
@@ -919,12 +935,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             
             let promptText = lastUserPrompt.replace(/\s+/g, " ").trim();
             if (!promptText) return [];
-            
-            // Truncate by character count (approximation for wide chars, good enough)
-            if (promptText.length > availableWidth) {
-              promptText = promptText.slice(0, availableWidth - 1).trimEnd() + "…";
-            }
-            
+
+            promptText = truncateWithEllipsisByWidth(promptText, availableWidth);
+
             const styledPrompt = `${getFgAnsiCode("sep")}${promptText}${ansi.reset}`;
             return [` ${prefix}${styledPrompt}`];
           },
