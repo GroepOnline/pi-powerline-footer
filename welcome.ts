@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, statSync } from "node:fs";
+import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { Component } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
@@ -364,9 +364,45 @@ export function discoverLoadedCounts(): LoadedCounts {
     join(cwd, "extensions"),
     join(cwd, ".pi", "extensions"),
   ];
-  
+
   const countedExtensions = new Set<string>();
-  
+
+  const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
+  if (existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      let packages: unknown = null;
+      if (typeof settings === "object" && settings !== null && !Array.isArray(settings)) {
+        packages = (settings as { packages?: unknown }).packages;
+      }
+
+      if (Array.isArray(packages)) {
+        for (const pkg of packages) {
+          let source: unknown = null;
+          if (typeof pkg === "string") {
+            source = pkg;
+          } else if (typeof pkg === "object" && pkg !== null && !Array.isArray(pkg)) {
+            source = (pkg as { source?: unknown }).source;
+          }
+
+          if (typeof source !== "string" || !source.startsWith("npm:")) {
+            continue;
+          }
+
+          const body = source.slice(4);
+          const versionIndex = body.lastIndexOf("@");
+          const name = versionIndex > 0 ? body.slice(0, versionIndex) : body;
+          if (!name || countedExtensions.has(name)) {
+            continue;
+          }
+
+          countedExtensions.add(name);
+          extensions++;
+        }
+      }
+    } catch {}
+  }
+
   for (const dir of extensionDirs) {
     if (existsSync(dir)) {
       try {
