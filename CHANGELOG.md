@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-19
+
 ### Fixed
 - **`nerd` preset crash on `primary` theme color** — Replaced invalid `tokens: "primary"` with `tokens: "muted"` so `/powerline nerd` no longer trips `Unknown theme color: primary` on current pi themes.
 - **Stale theme docs** — Updated README and `theme.example.json` to remove `primary` as a supported theme color name and align documented defaults with runtime values.
