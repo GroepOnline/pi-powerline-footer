@@ -1,16 +1,12 @@
 {
   "name": "pi-powerline-footer",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Powerline-style status bar extension for pi coding agent",
   "type": "module",
-  "bin": {
-    "pi-powerline-footer": "./cli.js"
-  },
   "files": [
     "*.ts",
     "*.md",
-    "*.json",
-    "cli.js"
+    "*.json"
   ],
   "keywords": [
     "pi-package",
