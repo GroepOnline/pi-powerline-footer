@@ -178,15 +178,15 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 | Semantic | Theme Color | Description |
 |----------|-------------|-------------|
 | `pi` | `accent` | Pi icon |
-| `model` | `primary` | Model name |
-| `path` | `muted` | Directory path |
+| `model` | `#d787af` | Model name |
+| `path` | `#00afaf` | Directory path |
 | `gitClean` | `success` | Git branch (clean) |
 | `gitDirty` | `warning` | Git branch (dirty) |
 | `thinking` | `muted` | Thinking level |
 | `context` | `dim` | Context usage |
 | `contextWarn` | `warning` | Context usage >70% |
 | `contextError` | `error` | Context usage >90% |
-| `cost` | `primary` | Cost display |
+| `cost` | `text` | Cost display |
 | `tokens` | `muted` | Token counts |
 
 ### Custom Theme Override
@@ -205,7 +205,7 @@ Create `~/.pi/agent/extensions/powerline-footer/theme.json`:
 ```
 
 Colors can be:
-- **Theme color names**: `accent`, `primary`, `muted`, `dim`, `text`, `success`, `warning`, `error`, `borderMuted`
+- **Theme color names**: `accent`, `muted`, `dim`, `text`, `success`, `warning`, `error`, `border`, `borderAccent`, `borderMuted`
 - **Hex colors**: `#ff5500`, `#d787af`
 
 See `theme.example.json` for all available options.

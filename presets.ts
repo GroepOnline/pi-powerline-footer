@@ -10,7 +10,6 @@ const MINIMAL_COLORS: ColorScheme = {
   pi: "dim",
   model: "text",
   path: "text",
-  git: "dim",
   gitClean: "dim",
 };
 
@@ -20,7 +19,7 @@ const NERD_COLORS: ColorScheme = {
   pi: "accent",
   model: "accent",
   path: "success",
-  tokens: "primary",
+  tokens: "muted",
   cost: "warning",
 };
 

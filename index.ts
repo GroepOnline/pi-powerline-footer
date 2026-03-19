@@ -3,6 +3,7 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
@@ -103,7 +104,7 @@ function trackPromptHistory(editor: any): void {
 }
 
 function getSettingsPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(homeDir, ".pi", "agent", "settings.json");
 }
 
@@ -119,8 +120,13 @@ function readSettings(): Record<string, unknown> {
     }
 
     const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    return isRecord(parsed) ? parsed : {};
-  } catch {
+    if (!isRecord(parsed)) {
+      console.debug(`[powerline-footer] Ignoring non-object settings at ${settingsPath}`);
+      return {};
+    }
+    return parsed;
+  } catch (error) {
+    console.debug(`[powerline-footer] Failed to read settings from ${settingsPath}:`, error);
     return {};
   }
 }
@@ -133,10 +139,12 @@ function writePowerlinePresetSetting(preset: StatusLinePreset): boolean {
     try {
       const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
       if (!isRecord(parsed)) {
+        console.debug(`[powerline-footer] Refusing to write preset to non-object settings at ${settingsPath}`);
         return false;
       }
       settings = parsed;
-    } catch {
+    } catch (error) {
+      console.debug(`[powerline-footer] Failed to parse settings at ${settingsPath}:`, error);
       return false;
     }
   }
@@ -147,7 +155,8 @@ function writePowerlinePresetSetting(preset: StatusLinePreset): boolean {
     mkdirSync(dirname(settingsPath), { recursive: true });
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
     return true;
-  } catch {
+  } catch (error) {
+    console.debug(`[powerline-footer] Failed to persist preset to ${settingsPath}:`, error);
     return false;
   }
 }
@@ -200,10 +209,13 @@ function truncateWithEllipsisByWidth(text: string, maxWidth: number): string {
 
   const targetWidth = maxWidth - 1;
   let truncated = "";
+  let truncatedWidth = 0;
+
   for (const char of text) {
-    const candidate = truncated + char;
-    if (visibleWidth(candidate) > targetWidth) break;
-    truncated = candidate;
+    const charWidth = visibleWidth(char);
+    if (truncatedWidth + charWidth > targetWidth) break;
+    truncated += char;
+    truncatedWidth += charWidth;
   }
 
   return truncated.trimEnd() + "…";
@@ -317,10 +329,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     showLastPrompt = settings.showLastPrompt !== false;
     config.preset = normalizePreset(settings.powerline) ?? "default";
 
-    // Store thinking level getter if available
-    if (typeof ctx.getThinkingLevel === 'function') {
-      getThinkingLevelFn = () => ctx.getThinkingLevel();
-    }
+    getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
+      ? () => ctx.getThinkingLevel()
+      : null;
     
     // Initialize vibe manager (needs modelRegistry from ctx)
     initVibeManager(ctx);
@@ -464,6 +475,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("session_switch", async (_event, ctx) => {
     sessionStartTime = Date.now();
     currentCtx = ctx;
+    getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
+      ? () => ctx.getThinkingLevel()
+      : null;
     lastUserPrompt = "";
     isStreaming = false;
     if (stashedEditorText !== null) {
@@ -598,8 +612,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.notify("Invalid model format. Use: provider/modelId (e.g., anthropic/claude-haiku-4-5)", "error");
           return;
         }
-        setVibeModel(modelSpec);
-        ctx.ui.notify(`Vibe model set to: ${modelSpec}`, "info");
+        const persisted = setVibeModel(modelSpec);
+        if (persisted) {
+          ctx.ui.notify(`Vibe model set to: ${modelSpec}`, "info");
+        } else {
+          ctx.ui.notify(`Vibe model set to: ${modelSpec} (not persisted; check settings.json)`, "warning");
+        }
         return;
       }
       
@@ -620,23 +638,30 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.notify(`No vibe file for "${theme}". Run /vibe generate ${theme} first`, "error");
           return;
         }
-        setVibeMode(newMode);
-        ctx.ui.notify(`Vibe mode set to: ${newMode}`, "info");
+        const persisted = setVibeMode(newMode);
+        if (persisted) {
+          ctx.ui.notify(`Vibe mode set to: ${newMode}`, "info");
+        } else {
+          ctx.ui.notify(`Vibe mode set to: ${newMode} (not persisted; check settings.json)`, "warning");
+        }
         return;
       }
       
       // /vibe generate <theme> [count] - generate vibes and save to file
       if (subcommand === "generate") {
         const theme = parts[1];
-        const count = parseInt(parts[2]) || 100;
-        
+        const parsedCount = Number.parseInt(parts[2] ?? "", 10);
+        const count = Number.isFinite(parsedCount)
+          ? Math.min(Math.max(Math.floor(parsedCount), 1), 500)
+          : 100;
+
         if (!theme) {
           ctx.ui.notify("Usage: /vibe generate <theme> [count]", "error");
           return;
         }
-        
+
         ctx.ui.notify(`Generating ${count} vibes for "${theme}"...`, "info");
-        
+
         const result = await generateVibesBatch(theme, count);
         
         if (result.success) {
@@ -649,19 +674,26 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       
       // /vibe off - disable
       if (subcommand === "off") {
-        setVibeTheme(null);
-        ctx.ui.notify("Vibe disabled", "info");
+        const persisted = setVibeTheme(null);
+        if (persisted) {
+          ctx.ui.notify("Vibe disabled", "info");
+        } else {
+          ctx.ui.notify("Vibe disabled (not persisted; check settings.json)", "warning");
+        }
         return;
       }
       
       // /vibe <theme> - set theme (preserve original casing)
-      setVibeTheme(args.trim());
-      const mode = getVibeMode();
       const theme = args.trim();
+      const persisted = setVibeTheme(theme);
+      const mode = getVibeMode();
       if (mode === "file" && !hasVibeFile(theme)) {
-        ctx.ui.notify(`Vibe set to: ${theme} (file mode, but no file found - run /vibe generate ${theme})`, "warning");
-      } else {
+        const suffix = persisted ? "" : " (not persisted; check settings.json)";
+        ctx.ui.notify(`Vibe set to: ${theme} (file mode, but no file found - run /vibe generate ${theme})${suffix}`, "warning");
+      } else if (persisted) {
         ctx.ui.notify(`Vibe set to: ${theme}`, "info");
+      } else {
+        ctx.ui.notify(`Vibe set to: ${theme} (not persisted; check settings.json)`, "warning");
       }
     },
   });
@@ -673,7 +705,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // Build usage stats and get thinking level from session
     let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
     let lastAssistant: AssistantMessage | undefined;
-    let thinkingLevelFromSession = "off";
+    let thinkingLevelFromSession: string | null = null;
     
     const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
     for (const e of sessionEvents) {
@@ -714,7 +746,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     return {
       model: ctx.model,
-      thinkingLevel: thinkingLevelFromSession || getThinkingLevelFn?.() || "off",
+      thinkingLevel: thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off",
       sessionId: ctx.sessionManager?.getSessionId?.(),
       usageStats: { input, output, cacheRead, cacheWrite, cost },
       contextPercent,
@@ -756,6 +788,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     // Import CustomEditor dynamically and create wrapper
     import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
+      if (!enabled) {
+        return;
+      }
+
       let autocompleteFixed = false;
 
       const editorFactory = (tui: any, editorTheme: any, keybindings: any) => {
@@ -851,6 +887,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return editor;
       };
 
+      if (!enabled) {
+        return;
+      }
+
       ctx.ui.setEditorComponent(editorFactory);
 
       // Set up footer data provider access (needed for git branch, extension statuses)
@@ -943,6 +983,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           },
         };
       }, { placement: "belowEditor" });
+    }).catch((error) => {
+      console.debug("[powerline-footer] Failed to initialize custom editor:", error);
     });
   }
 
@@ -976,10 +1018,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // Small delay to let pi-mono finish initialization
     setTimeout(() => {
       // Skip overlay if:
-      // 1. Dismissal was explicitly requested (agent_start/keypress fired)
-      // 2. Agent is already streaming
-      // 3. Session already has assistant messages (agent already responded)
-      if (welcomeOverlayShouldDismiss || isStreaming) {
+      // 1. Extension is disabled
+      // 2. Dismissal was explicitly requested (agent_start/keypress fired)
+      // 3. Agent is already streaming
+      // 4. Session already has assistant messages (agent already responded)
+      if (!enabled || welcomeOverlayShouldDismiss || isStreaming) {
         welcomeOverlayShouldDismiss = false;
         return;
       }
@@ -1051,7 +1094,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             horizontalAlign: "center",
           }),
         },
-      ).catch(() => {});
+      ).catch((error) => {
+        console.debug("[powerline-footer] Welcome overlay failed:", error);
+      });
     }, 100);
   }
 }

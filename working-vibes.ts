@@ -5,7 +5,8 @@
 import { complete, type Context } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 
 type VibeMode = "generate" | "file";
 
@@ -74,83 +75,130 @@ let recentVibes: string[] = [];
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getSettingsPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(homeDir, ".pi", "agent", "settings.json");
 }
 
-function loadConfig(): VibeConfig {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readSettingsForLoad(): Record<string, unknown> {
   const settingsPath = getSettingsPath();
-  
-  let settings: Record<string, unknown> = {};
+
   try {
-    if (existsSync(settingsPath)) {
-      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    if (!existsSync(settingsPath)) {
+      return {};
     }
-  } catch {}
-  
+
+    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    if (!isRecord(parsed)) {
+      console.debug(`[working-vibes] Ignoring non-object settings at ${settingsPath}`);
+      return {};
+    }
+
+    return parsed;
+  } catch (error) {
+    console.debug(`[working-vibes] Failed to load settings from ${settingsPath}:`, error);
+    return {};
+  }
+}
+
+function readSettingsForWrite(scope: string): Record<string, unknown> | null {
+  const settingsPath = getSettingsPath();
+
+  if (!existsSync(settingsPath)) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    if (!isRecord(parsed)) {
+      console.debug(`[working-vibes] Refusing to write ${scope}: settings at ${settingsPath} is not an object`);
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.debug(`[working-vibes] Failed to parse settings while writing ${scope} at ${settingsPath}:`, error);
+    return null;
+  }
+}
+
+function persistSettings(settings: Record<string, unknown>, scope: string): boolean {
+  const settingsPath = getSettingsPath();
+
+  try {
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    return true;
+  } catch (error) {
+    console.debug(`[working-vibes] Failed to persist ${scope} to ${settingsPath}:`, error);
+    return false;
+  }
+}
+
+function loadConfig(): VibeConfig {
+  const settings = readSettingsForLoad();
+
   // Handle "off" in settings.json (same as null/disabled)
   const rawTheme = typeof settings.workingVibe === "string" ? settings.workingVibe : null;
   const theme = rawTheme?.toLowerCase() === "off" ? null : rawTheme;
-  
+
   // Validate mode setting
   const rawMode = settings.workingVibeMode;
-  const mode: VibeMode = (rawMode === "file" || rawMode === "generate") ? rawMode : "generate";
-  
+  const mode: VibeMode = rawMode === "file" || rawMode === "generate" ? rawMode : "generate";
+
+  const refreshSeconds =
+    typeof settings.workingVibeRefreshInterval === "number" && Number.isFinite(settings.workingVibeRefreshInterval)
+      ? Math.max(0, settings.workingVibeRefreshInterval)
+      : 30;
+
+  const maxLength =
+    typeof settings.workingVibeMaxLength === "number" && Number.isFinite(settings.workingVibeMaxLength)
+      ? Math.max(4, Math.floor(settings.workingVibeMaxLength))
+      : 65;
+
   return {
     theme,
     mode,
     modelSpec: typeof settings.workingVibeModel === "string" ? settings.workingVibeModel : DEFAULT_MODEL,
     fallback: typeof settings.workingVibeFallback === "string" ? settings.workingVibeFallback : "Working",
     timeout: 3000,
-    refreshInterval: typeof settings.workingVibeRefreshInterval === "number" 
-      ? settings.workingVibeRefreshInterval * 1000  // config is in seconds
-      : 30000, // default 30s
+    refreshInterval: refreshSeconds * 1000,
     promptTemplate: typeof settings.workingVibePrompt === "string" ? settings.workingVibePrompt : DEFAULT_PROMPT,
-    maxLength: typeof settings.workingVibeMaxLength === "number" ? settings.workingVibeMaxLength : 65,
+    maxLength,
   };
 }
 
-function saveConfig(): void {
-  const settingsPath = getSettingsPath();
-  
-  try {
-    let settings: Record<string, unknown> = {};
-    if (existsSync(settingsPath)) {
-      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    }
-    
-    if (config.theme === null) {
-      delete settings.workingVibe;
-    } else {
-      settings.workingVibe = config.theme;
-    }
-    
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  } catch (error) {
-    console.debug("[working-vibes] Failed to save settings:", error);
+function saveConfig(): boolean {
+  const settings = readSettingsForWrite("workingVibe");
+  if (!settings) {
+    return false;
   }
+
+  if (config.theme === null) {
+    delete settings.workingVibe;
+  } else {
+    settings.workingVibe = config.theme;
+  }
+
+  return persistSettings(settings, "workingVibe");
 }
 
-function saveModelConfig(): void {
-  const settingsPath = getSettingsPath();
-  
-  try {
-    let settings: Record<string, unknown> = {};
-    if (existsSync(settingsPath)) {
-      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    }
-    
-    // Only save if different from default
-    if (config.modelSpec === DEFAULT_MODEL) {
-      delete settings.workingVibeModel;
-    } else {
-      settings.workingVibeModel = config.modelSpec;
-    }
-    
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  } catch (error) {
-    console.debug("[working-vibes] Failed to save model settings:", error);
+function saveModelConfig(): boolean {
+  const settings = readSettingsForWrite("workingVibeModel");
+  if (!settings) {
+    return false;
   }
+
+  if (config.modelSpec === DEFAULT_MODEL) {
+    delete settings.workingVibeModel;
+  } else {
+    settings.workingVibeModel = config.modelSpec;
+  }
+
+  return persistSettings(settings, "workingVibeModel");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -158,13 +206,23 @@ function saveModelConfig(): void {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getVibesDir(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(homeDir, ".pi", "agent", "vibes");
 }
 
+function toVibeFileSlug(theme: string): string {
+  const slug = theme
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "");
+
+  return slug || "theme";
+}
+
 function getVibeFilePath(theme: string): string {
-  // Convert theme to kebab-case filename
-  const filename = theme.toLowerCase().replace(/\s+/g, "-") + ".txt";
+  const filename = `${toVibeFileSlug(theme)}.txt`;
   return join(getVibesDir(), filename);
 }
 
@@ -178,7 +236,8 @@ function loadVibesFromFile(theme: string): string[] {
       .split("\n")
       .map(line => line.trim())
       .filter(line => line.length > 0 && line.endsWith("..."));
-  } catch {
+  } catch (error) {
+    console.debug(`[working-vibes] Failed to load vibe file ${filePath}:`, error);
     return [];
   }
 }
@@ -420,19 +479,19 @@ export function getVibeTheme(): string | null {
   return config.theme;
 }
 
-export function setVibeTheme(theme: string | null): void {
+export function setVibeTheme(theme: string | null): boolean {
   config = { ...config, theme };
   recentVibes = [];  // Clear recent vibes on theme change
-  saveConfig();
+  return saveConfig();
 }
 
 export function getVibeModel(): string {
   return config.modelSpec;
 }
 
-export function setVibeModel(modelSpec: string): void {
+export function setVibeModel(modelSpec: string): boolean {
   config = { ...config, modelSpec };
-  saveModelConfig();
+  return saveModelConfig();
 }
 
 export function onVibeBeforeAgentStart(
@@ -508,31 +567,24 @@ export function getVibeMode(): VibeMode {
   return config.mode;
 }
 
-export function setVibeMode(mode: VibeMode): void {
+export function setVibeMode(mode: VibeMode): boolean {
   config = { ...config, mode };
-  saveModeConfig();
+  return saveModeConfig();
 }
 
-function saveModeConfig(): void {
-  const settingsPath = getSettingsPath();
-  
-  try {
-    let settings: Record<string, unknown> = {};
-    if (existsSync(settingsPath)) {
-      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    }
-    
-    // Only save if different from default
-    if (config.mode === "generate") {
-      delete settings.workingVibeMode;
-    } else {
-      settings.workingVibeMode = config.mode;
-    }
-    
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  } catch (error) {
-    console.debug("[working-vibes] Failed to save mode settings:", error);
+function saveModeConfig(): boolean {
+  const settings = readSettingsForWrite("workingVibeMode");
+  if (!settings) {
+    return false;
   }
+
+  if (config.mode === "generate") {
+    delete settings.workingVibeMode;
+  } else {
+    settings.workingVibeMode = config.mode;
+  }
+
+  return persistSettings(settings, "workingVibeMode");
 }
 
 export function hasVibeFile(theme: string): boolean {
@@ -556,6 +608,7 @@ export async function generateVibesBatch(
   count: number = 100,
 ): Promise<GenerateVibesResult> {
   const filePath = getVibeFilePath(theme);
+  const safeCount = Number.isFinite(count) ? Math.min(Math.max(Math.floor(count), 1), 500) : 100;
   
   if (!extensionCtx) {
     return { success: false, count: 0, filePath, error: "Extension not initialized" };
@@ -584,7 +637,7 @@ export async function generateVibesBatch(
   // Build batch prompt
   const prompt = BATCH_PROMPT
     .replace(/\{theme\}/g, theme)
-    .replace(/\{count\}/g, String(count));
+    .replace(/\{count\}/g, String(safeCount));
   
   const aiContext: Context = {
     messages: [{

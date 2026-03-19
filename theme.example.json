@@ -1,17 +1,15 @@
 {
   "colors": {
     "pi": "accent",
-    "model": "primary",
-    "path": "muted",
-    "git": "success",
+    "model": "#d787af",
+    "path": "#00afaf",
     "gitDirty": "warning",
     "gitClean": "success",
     "thinking": "muted",
-    "thinkingHigh": "accent",
     "context": "dim",
     "contextWarn": "warning",
     "contextError": "error",
-    "cost": "primary",
+    "cost": "text",
     "tokens": "muted",
     "separator": "dim",
     "border": "borderMuted"

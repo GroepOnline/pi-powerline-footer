@@ -25,47 +25,17 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
-// oh-my-pi dark theme colors (exact match)
+// Colors used by welcome/editor chrome rendering
 const THEME = {
-  // Status line colors
-  sep: 244,                           // ANSI 256 gray
-  model: "#d787af",                   // Pink/mauve
-  path: "#00afaf",                    // Teal/cyan
-  gitClean: "#5faf5f",                // Green
-  gitDirty: "#d7af5f",                // Gold/orange
-  context: "#8787af",                 // Purple-gray
-  spend: "#5fafaf",                   // Teal
-  staged: 70,                         // ANSI 256 green
-  unstaged: 178,                      // ANSI 256 gold
-  untracked: 39,                      // ANSI 256 blue
-  output: 205,                        // ANSI 256 pink
-  cost: 205,                          // ANSI 256 pink
-  subagents: "#febc38",               // Accent orange
-
-  // UI colors
-  accent: "#febc38",                  // Orange (for pi icon)
-  border: "#178fb9",                  // Blue (for box border)
-  warning: "#e4c00f",                 // Yellow
-  error: "#fc3a4b",                   // Red
-  text: "",                           // Default terminal color
-
-  // Thinking level colors (gradient from dim to bright)
-  thinkingOff: "#3d424a",             // Dark gray
-  thinkingMinimal: "#5f6673",         // Dim gray
-  thinkingLow: "#178fb9",             // Blue
-  thinkingMedium: "#0088fa",          // Bright blue
-  thinkingHigh: "#b281d6",            // Purple
-  thinkingXhigh: "#e5c1ff",           // Bright lavender
+  sep: 244,               // ANSI 256 gray
+  model: "#d787af",       // Pink/mauve
+  path: "#00afaf",        // Teal/cyan
+  gitClean: "#5faf5f",    // Green
+  accent: "#febc38",      // Orange
 };
 
 // Color name to ANSI code mapping
-type ColorName = 
-  | "sep" | "model" | "path" | "gitClean" | "gitDirty" 
-  | "context" | "spend" | "staged" | "unstaged" | "untracked"
-  | "output" | "cost" | "subagents" | "accent" | "border"
-  | "warning" | "error" | "text"
-  | "thinkingOff" | "thinkingMinimal" | "thinkingLow" 
-  | "thinkingMedium" | "thinkingHigh" | "thinkingXhigh";
+type ColorName = "sep" | "model" | "path" | "gitClean" | "accent";
 
 function getAnsiCode(color: ColorName): string {
   const value = THEME[color as keyof typeof THEME];

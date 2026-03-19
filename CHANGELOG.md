@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Fixed
+- **`nerd` preset crash on `primary` theme color** — Replaced invalid `tokens: "primary"` with `tokens: "muted"` so `/powerline nerd` no longer trips `Unknown theme color: primary` on current pi themes.
+- **Stale theme docs** — Updated README and `theme.example.json` to remove `primary` as a supported theme color name and align documented defaults with runtime values.
+- **Thinking level fallback from footer context** — `buildSegmentContext()` now correctly falls back to `ctx.getThinkingLevel()` when no session `thinking_level_change` event exists.
+- **Vibe config persistence signaling** — `/vibe` commands now warn when runtime changes could not be written to `settings.json` instead of silently claiming persistence.
+- **Welcome text width truncation** — Truncation now respects `visibleWidth()` per codepoint, preventing wide-character overflow in welcome rendering.
+- **JS extension discovery parity** — `discoverLoadedCounts()` now recognizes directory `index.js` and standalone `.js` extension entries, not just TypeScript files.
+- **Package count scope parity** — Welcome extension counts now include npm packages from both global (`~/.pi/agent/settings.json`) and project (`.pi/settings.json`) settings.
+- **Dead `git` semantic color path** — Removed unused `git` semantic color wiring that was never read by segment rendering.
+- **Vibe batch count hardening** — `/vibe generate` and `generateVibesBatch()` now clamp invalid/negative/huge counts to safe bounds.
+- **Custom editor async race guard** — Late `setupCustomEditor()` async completion no longer re-attaches editor/footer/widgets after the extension has been disabled.
+- **Vibe file path sanitization** — Theme names are now slugged to safe filenames before file reads/writes, preventing path-like theme strings from producing unsafe paths.
+- **Home directory resolution hardening** — Settings/vibe path resolution now falls back to OS homedir APIs when `HOME`/`USERPROFILE` are unset.
+- **Dead `thinkingHigh` semantic path** — Removed unused `thinkingHigh` semantic color plumbing from runtime theme config/types and example theme JSON.
+- **Dead color table entries** — Removed unused ANSI color constants from `colors.ts` to match only colors actually used by welcome/editor chrome rendering.
+
 ## [0.4.2] - 2026-03-15
 
 ### Fixed

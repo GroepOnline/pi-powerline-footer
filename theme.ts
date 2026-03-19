@@ -18,11 +18,9 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   pi: "accent",
   model: "#d787af",  // Pink/mauve (matching original colors.ts)
   path: "#00afaf",  // Teal/cyan (matching original colors.ts)
-  git: "success",
   gitDirty: "warning",
   gitClean: "success",
   thinking: "muted",
-  thinkingHigh: "accent",
   context: "dim",
   contextWarn: "warning",
   contextError: "error",
@@ -42,6 +40,36 @@ const RAINBOW_COLORS = [
 let userThemeCache: ColorScheme | null = null;
 let userThemeCacheTime = 0;
 const CACHE_TTL = 5000; // 5 seconds
+const warnedInvalidThemeColors = new Set<string>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizeUserThemeOverrides(value: unknown): ColorScheme {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const sanitized: ColorScheme = {};
+  for (const [key, rawColor] of Object.entries(value)) {
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_COLORS, key)) {
+      continue;
+    }
+    if (typeof rawColor !== "string") {
+      continue;
+    }
+
+    const color = rawColor.trim();
+    if (!color) {
+      continue;
+    }
+
+    sanitized[key as SemanticColor] = color as ColorValue;
+  }
+
+  return sanitized;
+}
 
 /**
  * Get the path to the theme.json file
@@ -65,12 +93,13 @@ function loadUserTheme(): ColorScheme {
     if (existsSync(themePath)) {
       const content = readFileSync(themePath, "utf-8");
       const parsed = JSON.parse(content);
-      userThemeCache = parsed.colors ?? {};
+      const colors = isRecord(parsed) ? parsed.colors : undefined;
+      userThemeCache = sanitizeUserThemeOverrides(colors);
       userThemeCacheTime = now;
       return userThemeCache;
     }
-  } catch {
-    // Ignore errors, use defaults
+  } catch (error) {
+    console.debug(`[powerline-theme] Failed to load ${themePath}:`, error);
   }
 
   userThemeCache = {};
@@ -97,7 +126,7 @@ export function resolveColor(
  * Check if a color value is a hex color
  */
 function isHexColor(color: ColorValue): color is `#${string}` {
-  return typeof color === "string" && color.startsWith("#");
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
 }
 
 /**
@@ -122,7 +151,20 @@ export function applyColor(
   if (isHexColor(color)) {
     return `${hexToAnsi(color)}${text}\x1b[0m`;
   }
-  return theme.fg(color as ThemeColor, text);
+
+  try {
+    return theme.fg(color as ThemeColor, text);
+  } catch (error) {
+    const key = String(color);
+    if (!warnedInvalidThemeColors.has(key)) {
+      warnedInvalidThemeColors.add(key);
+      if (warnedInvalidThemeColors.size > 200) {
+        warnedInvalidThemeColors.clear();
+      }
+      console.debug(`[powerline-theme] Invalid theme color "${key}"; falling back to "text".`, error);
+    }
+    return theme.fg("text", text);
+  }
 }
 
 /**

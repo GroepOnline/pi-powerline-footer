@@ -1,5 +1,6 @@
 import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
+import { homedir as osHomedir } from "node:os";
 import type { Component } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { ansi, fgOnly, getFgAnsiCode } from "./colors.js";
@@ -83,23 +84,31 @@ function fitToWidth(str: string, width: number): string {
 }
 
 function truncateToWidth(str: string, width: number): string {
+  if (width <= 0) return "";
+
   const ellipsis = "…";
   const maxWidth = Math.max(0, width - 1);
   let truncated = "";
   let currentWidth = 0;
   let inEscape = false;
-  
+
   for (const char of str) {
     if (char === "\x1b") inEscape = true;
     if (inEscape) {
       truncated += char;
       if (char === "m") inEscape = false;
-    } else if (currentWidth < maxWidth) {
-      truncated += char;
-      currentWidth++;
+      continue;
     }
+
+    const charWidth = visibleWidth(char);
+    if (currentWidth + charWidth > maxWidth) {
+      break;
+    }
+
+    truncated += char;
+    currentWidth += charWidth;
   }
-  
+
   if (visibleWidth(str) > width) return truncated + ellipsis;
   return truncated;
 }
@@ -335,11 +344,28 @@ export class WelcomeHeader implements Component {
 // Discovery functions
 // ═══════════════════════════════════════════════════════════════════════════
 
+const loggedDiscoveryErrors = new Set<string>();
+
+function logDiscoveryError(scope: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const key = `${scope}:${message}`;
+  if (loggedDiscoveryErrors.has(key)) {
+    return;
+  }
+
+  loggedDiscoveryErrors.add(key);
+  if (loggedDiscoveryErrors.size > 500) {
+    loggedDiscoveryErrors.clear();
+  }
+
+  console.debug(`[powerline-welcome] ${scope}:`, error);
+}
+
 /**
  * Discover loaded counts by scanning filesystem.
  */
 export function discoverLoadedCounts(): LoadedCounts {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const homeDir = process.env.HOME || process.env.USERPROFILE || osHomedir();
   const cwd = process.cwd();
   
   let contextFiles = 0;
@@ -367,8 +393,16 @@ export function discoverLoadedCounts(): LoadedCounts {
 
   const countedExtensions = new Set<string>();
 
-  const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
-  if (existsSync(settingsPath)) {
+  const settingsPaths = [
+    join(homeDir, ".pi", "agent", "settings.json"),
+    join(cwd, ".pi", "settings.json"),
+  ];
+
+  for (const settingsPath of settingsPaths) {
+    if (!existsSync(settingsPath)) {
+      continue;
+    }
+
     try {
       const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
       let packages: unknown = null;
@@ -379,17 +413,29 @@ export function discoverLoadedCounts(): LoadedCounts {
       if (Array.isArray(packages)) {
         for (const pkg of packages) {
           let source: unknown = null;
+          let extensionsFilter: unknown = null;
+
           if (typeof pkg === "string") {
             source = pkg;
           } else if (typeof pkg === "object" && pkg !== null && !Array.isArray(pkg)) {
             source = (pkg as { source?: unknown }).source;
+            extensionsFilter = (pkg as { extensions?: unknown }).extensions;
           }
 
-          if (typeof source !== "string" || !source.startsWith("npm:")) {
+          if (typeof source !== "string") {
             continue;
           }
 
-          const body = source.slice(4);
+          const normalizedSource = source.trim();
+          if (!normalizedSource.startsWith("npm:")) {
+            continue;
+          }
+
+          if (Array.isArray(extensionsFilter) && extensionsFilter.length === 0) {
+            continue;
+          }
+
+          const body = normalizedSource.slice(4);
           const versionIndex = body.lastIndexOf("@");
           const name = versionIndex > 0 ? body.slice(0, versionIndex) : body;
           if (!name || countedExtensions.has(name)) {
@@ -400,7 +446,9 @@ export function discoverLoadedCounts(): LoadedCounts {
           extensions++;
         }
       }
-    } catch {}
+    } catch (error) {
+      logDiscoveryError(`Failed to read settings at ${settingsPath}`, error);
+    }
   }
 
   for (const dir of extensionDirs) {
@@ -409,24 +457,36 @@ export function discoverLoadedCounts(): LoadedCounts {
         const entries = readdirSync(dir);
         for (const entry of entries) {
           const entryPath = join(dir, entry);
-          const stats = statSync(entryPath);
-          
-          if (stats.isDirectory()) {
-            if (existsSync(join(entryPath, "index.ts")) || existsSync(join(entryPath, "package.json"))) {
-              if (!countedExtensions.has(entry)) {
-                countedExtensions.add(entry);
+
+          try {
+            const stats = statSync(entryPath);
+
+            if (stats.isDirectory()) {
+              if (
+                existsSync(join(entryPath, "index.ts")) ||
+                existsSync(join(entryPath, "index.js")) ||
+                existsSync(join(entryPath, "package.json"))
+              ) {
+                if (!countedExtensions.has(entry)) {
+                  countedExtensions.add(entry);
+                  extensions++;
+                }
+              }
+            } else if ((entry.endsWith(".ts") || entry.endsWith(".js")) && !entry.startsWith(".")) {
+              const ext = entry.endsWith(".ts") ? ".ts" : ".js";
+              const name = basename(entry, ext);
+              if (!countedExtensions.has(name)) {
+                countedExtensions.add(name);
                 extensions++;
               }
             }
-          } else if (entry.endsWith(".ts") && !entry.startsWith(".")) {
-            const name = basename(entry, ".ts");
-            if (!countedExtensions.has(name)) {
-              countedExtensions.add(name);
-              extensions++;
-            }
+          } catch (error) {
+            logDiscoveryError(`Failed to inspect extension entry ${entryPath}`, error);
           }
         }
-      } catch {}
+      } catch (error) {
+        logDiscoveryError(`Failed to scan extensions dir ${dir}`, error);
+      }
     }
   }
 
@@ -453,9 +513,13 @@ export function discoverLoadedCounts(): LoadedCounts {
                 }
               }
             }
-          } catch {}
+          } catch (error) {
+            logDiscoveryError(`Failed to inspect skill entry ${entryPath}`, error);
+          }
         }
-      } catch {}
+      } catch (error) {
+        logDiscoveryError(`Failed to scan skills dir ${dir}`, error);
+      }
     }
   }
 
@@ -485,9 +549,13 @@ export function discoverLoadedCounts(): LoadedCounts {
               promptTemplates++;
             }
           }
-        } catch {}
+        } catch (error) {
+          logDiscoveryError(`Failed to inspect prompt template entry ${entryPath}`, error);
+        }
       }
-    } catch {}
+    } catch (error) {
+      logDiscoveryError(`Failed to scan prompt template dir ${dir}`, error);
+    }
   }
   
   for (const dir of templateDirs) {
@@ -501,7 +569,7 @@ export function discoverLoadedCounts(): LoadedCounts {
  * Get recent sessions from the sessions directory.
  */
 export function getRecentSessions(maxCount: number = 3): RecentSession[] {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  const homeDir = process.env.HOME || process.env.USERPROFILE || osHomedir();
   
   const sessionsDirs = [
     join(homeDir, ".pi", "agent", "sessions"),
@@ -529,9 +597,13 @@ export function getRecentSessions(maxCount: number = 3): RecentSession[] {
             }
             sessions.push({ name: projectName, mtime: stats.mtimeMs });
           }
-        } catch {}
+        } catch (error) {
+          logDiscoveryError(`Failed to inspect session entry ${entryPath}`, error);
+        }
       }
-    } catch {}
+    } catch (error) {
+      logDiscoveryError(`Failed to scan sessions dir ${dir}`, error);
+    }
   }
   
   for (const sessionsDir of sessionsDirs) {
