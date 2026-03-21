@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-03-19
+
+### Added
+- **Stash history overlay** — Added `ctrl+alt+h` stash history picker showing up to 12 recent stashed prompts (newest first).
+- **Stash history slash command** — Added `/stash-history` to open the same stash history picker from the command prompt.
+- **Persistent stash history storage** — Stash history now saves to `~/.pi/agent/powerline-footer/stash-history.json`.
+- **Insert mode prompt for stash history** — Selecting a stash history entry now supports `Replace`, `Append`, or `Cancel` when the editor already has text.
+- **Editor-wide clipboard shortcuts** — Added `ctrl+alt+c` to copy all editor text and `ctrl+alt+x` to cut all editor text.
+- **Configurable powerline shortcuts** — Added `powerlineShortcuts` settings support for `stashHistory`, `copyEditor`, and `cutEditor` bindings.
+
+### Changed
+- **Stash lifecycle consistency** — Active stash resets on session switch and when `powerline` is disabled, while stash history persists to disk for reuse across restarts.
+- **Stash update behavior** — Pressing `Alt+S` while both editor text and an active stash exist now updates the stash with the current editor text and clears the editor (no swap-back into the editor).
+- **Shortcut override hardening** — Invalid shortcut override values are rejected, and conflicting shortcuts auto-fallback so `Alt+S` stash behavior and all three powerline shortcuts remain usable.
+
 ## [0.4.4] - 2026-03-19
 
 ### Removed

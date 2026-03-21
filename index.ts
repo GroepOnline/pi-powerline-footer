@@ -1,6 +1,11 @@
-import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
+import {
+  copyToClipboard,
+  type ExtensionAPI,
+  type ReadonlyFooterDataProvider,
+  type Theme,
+} from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { type SelectItem, SelectList, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -41,6 +46,33 @@ interface PowerlineConfig {
 let config: PowerlineConfig = {
   preset: "default",
 };
+
+interface PowerlineShortcuts {
+  stashHistory: string;
+  copyEditor: string;
+  cutEditor: string;
+}
+
+type PowerlineShortcutKey = keyof PowerlineShortcuts;
+
+const STASH_HISTORY_LIMIT = 12;
+const STASH_PREVIEW_WIDTH = 72;
+const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
+  stashHistory: "ctrl+alt+h",
+  copyEditor: "ctrl+alt+c",
+  cutEditor: "ctrl+alt+x",
+};
+const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor"];
+const RESERVED_SHORTCUTS = new Set(["alt+s"]);
+const SHORTCUT_MODIFIERS = new Set(["ctrl", "alt", "shift"]);
+const SHORTCUT_NAMED_KEYS = new Set([
+  "escape", "esc", "enter", "return", "tab", "space", "backspace", "delete", "insert", "clear",
+  "home", "end", "pageup", "pagedown", "up", "down", "left", "right",
+]);
+const SHORTCUT_SYMBOL_KEYS = new Set([
+  "`", "-", "=", "[", "]", "\\", ";", "'", ",", ".", "/",
+  "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "|", "~", "{", "}", ":", "<", ">", "?",
+]);
 
 const PROMPT_HISTORY_LIMIT = 100;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
@@ -112,6 +144,75 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function getStashHistoryPath(): string {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
+  return join(homeDir, ".pi", "agent", "powerline-footer", "stash-history.json");
+}
+
+function normalizeStashHistoryEntries(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const history: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+
+    if (!hasNonWhitespaceText(entry)) {
+      continue;
+    }
+
+    if (history[history.length - 1] === entry) {
+      continue;
+    }
+
+    history.push(entry);
+    if (history.length >= STASH_HISTORY_LIMIT) {
+      break;
+    }
+  }
+
+  return history;
+}
+
+function readPersistedStashHistory(): string[] {
+  const stashHistoryPath = getStashHistoryPath();
+
+  try {
+    if (!existsSync(stashHistoryPath)) {
+      return [];
+    }
+
+    const parsed = JSON.parse(readFileSync(stashHistoryPath, "utf-8"));
+    if (!isRecord(parsed)) {
+      console.debug(`[powerline-footer] Ignoring invalid stash history at ${stashHistoryPath}`);
+      return [];
+    }
+
+    return normalizeStashHistoryEntries(parsed.history);
+  } catch (error) {
+    console.debug(`[powerline-footer] Failed to read stash history from ${stashHistoryPath}:`, error);
+    return [];
+  }
+}
+
+function persistStashHistory(history: string[]): void {
+  const stashHistoryPath = getStashHistoryPath();
+  const payload = {
+    version: 1,
+    history: history.slice(0, STASH_HISTORY_LIMIT),
+  };
+
+  try {
+    mkdirSync(dirname(stashHistoryPath), { recursive: true });
+    writeFileSync(stashHistoryPath, JSON.stringify(payload, null, 2) + "\n");
+  } catch (error) {
+    console.debug(`[powerline-footer] Failed to persist stash history to ${stashHistoryPath}:`, error);
+  }
+}
+
 function readSettings(): Record<string, unknown> {
   const settingsPath = getSettingsPath();
   try {
@@ -172,6 +273,138 @@ function normalizePreset(value: unknown): StatusLinePreset | null {
 
   const preset = value.trim().toLowerCase();
   return isValidPreset(preset) ? preset : null;
+}
+
+function hasNonWhitespaceText(text: string): boolean {
+  return text.trim().length > 0;
+}
+
+function getCurrentEditorText(ctx: any, editor: any): string {
+  return editor?.getExpandedText?.() ?? ctx.ui.getEditorText();
+}
+
+function buildStashPreview(text: string, maxWidth: number): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) return "(empty)";
+  return truncateWithEllipsisByWidth(compact, maxWidth);
+}
+
+function pushStashHistory(history: string[], text: string): boolean {
+  if (!hasNonWhitespaceText(text)) return false;
+  if (history[0] === text) return false;
+
+  history.unshift(text);
+  if (history.length > STASH_HISTORY_LIMIT) {
+    history.length = STASH_HISTORY_LIMIT;
+  }
+
+  return true;
+}
+
+function normalizeShortcut(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isValidShortcutKeyPart(keyPart: string): boolean {
+  const lowerKeyPart = keyPart.toLowerCase();
+
+  if (/^[a-z0-9]$/i.test(keyPart)) return true;
+  if (/^f([1-9]|1[0-2])$/i.test(keyPart)) return true;
+  if (SHORTCUT_NAMED_KEYS.has(lowerKeyPart)) return true;
+
+  return SHORTCUT_SYMBOL_KEYS.has(keyPart);
+}
+
+function parseShortcutOverride(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || /\s/.test(trimmed)) {
+    return null;
+  }
+
+  const parts = trimmed.split("+");
+  if (parts.some((part) => part.length === 0)) {
+    return null;
+  }
+
+  const modifierParts = parts.slice(0, -1).map((part) => part.toLowerCase());
+  if (new Set(modifierParts).size !== modifierParts.length) {
+    return null;
+  }
+
+  for (const modifier of modifierParts) {
+    if (!SHORTCUT_MODIFIERS.has(modifier)) {
+      return null;
+    }
+  }
+
+  const keyPart = parts[parts.length - 1];
+  if (!isValidShortcutKeyPart(keyPart)) {
+    return null;
+  }
+
+  const normalizedKey = SHORTCUT_SYMBOL_KEYS.has(keyPart) ? keyPart : keyPart.toLowerCase();
+  return [...modifierParts, normalizedKey].join("+");
+}
+
+function findShortcutReplacement(key: PowerlineShortcutKey, used: Set<string>): string | null {
+  const preferred = DEFAULT_SHORTCUTS[key];
+  if (!used.has(normalizeShortcut(preferred))) {
+    return preferred;
+  }
+
+  for (const shortcutKey of SHORTCUT_KEYS) {
+    const candidate = DEFAULT_SHORTCUTS[shortcutKey];
+    if (!used.has(normalizeShortcut(candidate))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveShortcutConfig(settings: Record<string, unknown>): PowerlineShortcuts {
+  const resolved: PowerlineShortcuts = { ...DEFAULT_SHORTCUTS };
+  const shortcutSettings = settings.powerlineShortcuts;
+
+  if (isRecord(shortcutSettings)) {
+    for (const key of SHORTCUT_KEYS) {
+      const override = parseShortcutOverride(shortcutSettings[key]);
+      if (override) {
+        resolved[key] = override;
+      }
+    }
+  }
+
+  const used = new Set<string>([...RESERVED_SHORTCUTS]);
+
+  for (const key of SHORTCUT_KEYS) {
+    const configured = resolved[key];
+    const normalizedConfigured = normalizeShortcut(configured);
+
+    if (!used.has(normalizedConfigured)) {
+      used.add(normalizedConfigured);
+      continue;
+    }
+
+    const replacement = findShortcutReplacement(key, used);
+    if (!replacement) {
+      console.debug(`[powerline-footer] Shortcut conflict for ${key}: "${configured}" is already in use`);
+      continue;
+    }
+
+    console.debug(
+      `[powerline-footer] Shortcut conflict for ${key}: "${configured}" replaced with "${replacement}"`,
+    );
+
+    resolved[key] = replacement;
+    used.add(normalizeShortcut(replacement));
+  }
+
+  return resolved;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -298,6 +531,9 @@ function computeResponsiveLayout(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function powerlineFooter(pi: ExtensionAPI) {
+  const startupSettings = readSettings();
+  const resolvedShortcuts = resolveShortcutConfig(startupSettings);
+
   let enabled = true;
   let sessionStartTime = Date.now();
   let currentCtx: any = null;
@@ -311,6 +547,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let lastUserPrompt = ""; // Last user message for prompt reminder widget
   let showLastPrompt = true; // Cached setting for last prompt visibility
   let stashedEditorText: string | null = null;
+  let stashedPromptHistory: string[] = readPersistedStashHistory();
   let currentEditor: any = null;
   
   // Cache for responsive layout (shared between editor and widget for consistency)
@@ -328,6 +565,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const settings = readSettings();
     showLastPrompt = settings.showLastPrompt !== false;
     config.preset = normalizePreset(settings.powerline) ?? "default";
+    stashedPromptHistory = readPersistedStashHistory();
 
     getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
       ? () => ctx.getThinkingLevel()
@@ -455,6 +693,132 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
+  function addStashHistoryEntry(text: string): void {
+    const changed = pushStashHistory(stashedPromptHistory, text);
+    if (!changed) {
+      return;
+    }
+
+    persistStashHistory(stashedPromptHistory);
+  }
+
+  function copyTextToClipboard(ctx: any, text: string, successMessage?: string): void {
+    copyToClipboard(text);
+    if (successMessage) {
+      ctx.ui.notify(successMessage, "info");
+    }
+  }
+
+  function getEditorTextForClipboard(ctx: any): string | null {
+    const text = getCurrentEditorText(ctx, currentEditor);
+    if (hasNonWhitespaceText(text)) {
+      return text;
+    }
+
+    ctx.ui.notify("Editor is empty", "info");
+    return null;
+  }
+
+  async function selectStashedPromptFromHistory(ctx: any): Promise<string | null> {
+    const historyItems = [...stashedPromptHistory];
+    const items: SelectItem[] = historyItems.map((entry, index) => ({
+      value: String(index),
+      label: `#${index + 1} ${buildStashPreview(entry, STASH_PREVIEW_WIDTH)}`,
+    }));
+
+    return ctx.ui.custom<string | null>(
+      (tui: any, theme: Theme, _keybindings: any, done: (result: string | null) => void) => {
+        const selectList = new SelectList(items, Math.min(items.length, 10), {
+          selectedPrefix: (text: string) => theme.fg("accent", text),
+          selectedText: (text: string) => theme.fg("accent", text),
+          description: (text: string) => theme.fg("muted", text),
+          scrollInfo: (text: string) => theme.fg("dim", text),
+          noMatch: (text: string) => theme.fg("warning", text),
+        });
+
+        const border = (text: string) => theme.fg("dim", text);
+
+        const wrapRow = (text: string, innerWidth: number): string => {
+          return `${border("│")}${truncateToWidth(text, innerWidth, "…", true)}${border("│")}`;
+        };
+
+        selectList.onSelect = (item) => {
+          const selectedIndex = Number.parseInt(item.value, 10);
+          done(historyItems[selectedIndex] ?? null);
+        };
+        selectList.onCancel = () => done(null);
+
+        return {
+          render: (width: number) => {
+            const innerWidth = Math.max(1, width - 2);
+            const lines: string[] = [];
+
+            lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
+            lines.push(wrapRow(theme.fg("accent", theme.bold("Stash history")), innerWidth));
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+
+            for (const line of selectList.render(innerWidth)) {
+              lines.push(wrapRow(line, innerWidth));
+            }
+
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+            lines.push(wrapRow(theme.fg("dim", "↑↓ navigate • enter insert • esc cancel"), innerWidth));
+            lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
+
+            return lines;
+          },
+          invalidate: () => selectList.invalidate(),
+          handleInput: (data: string) => {
+            selectList.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: () => ({
+          verticalAlign: "center",
+          horizontalAlign: "center",
+        }),
+      },
+    );
+  }
+
+  async function insertSelectedStash(ctx: any, selected: string): Promise<void> {
+    const currentText = getCurrentEditorText(ctx, currentEditor);
+    if (!hasNonWhitespaceText(currentText)) {
+      ctx.ui.setEditorText(selected);
+      ctx.ui.notify("Inserted stashed prompt", "info");
+      return;
+    }
+
+    const action = await ctx.ui.select("Insert stashed prompt", ["Replace", "Append", "Cancel"]);
+
+    if (action === "Replace") {
+      ctx.ui.setEditorText(selected);
+      ctx.ui.notify("Replaced editor with stashed prompt", "info");
+      return;
+    }
+
+    if (action === "Append") {
+      const separator = currentText.endsWith("\n") || selected.startsWith("\n") ? "" : "\n";
+      ctx.ui.setEditorText(`${currentText}${separator}${selected}`);
+      ctx.ui.notify("Appended stashed prompt", "info");
+    }
+  }
+
+  async function openStashHistory(ctx: any): Promise<void> {
+    if (stashedPromptHistory.length === 0) {
+      ctx.ui.notify("No stashed prompt history yet", "info");
+      return;
+    }
+
+    const selected = await selectStashedPromptFromHistory(ctx);
+    if (!selected) return;
+
+    await insertSelectedStash(ctx, selected);
+  }
+
   pi.on("agent_end", async (_event, ctx) => {
     isStreaming = false;
     if (ctx.hasUI) {
@@ -466,7 +830,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setStatus("stash", undefined);
           ctx.ui.notify("Stash restored", "info");
         } else {
-          ctx.ui.notify("Stash preserved — Alt+S to swap", "info");
+          ctx.ui.notify("Stash preserved — clear editor then Alt+S to restore", "info");
         }
       }
     }
@@ -480,11 +844,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : null;
     lastUserPrompt = "";
     isStreaming = false;
-    if (stashedEditorText !== null) {
-      stashedEditorText = null;
-      if (ctx.hasUI) {
-        ctx.ui.setStatus("stash", undefined);
-      }
+    stashedEditorText = null;
+    stashedPromptHistory = readPersistedStashHistory();
+    if (ctx.hasUI) {
+      ctx.ui.setStatus("stash", undefined);
     }
     dismissWelcome(ctx);
   });
@@ -504,6 +867,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.notify("Powerline enabled", "info");
         } else {
           getPromptHistoryState().savedPromptHistory = [];
+          stashedEditorText = null;
+          ctx.ui.setStatus("stash", undefined);
           // Clear all custom UI components
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
@@ -543,15 +908,31 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("stash-history", {
+    description: "Open stashed prompt history picker",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) return;
+      if (!enabled) {
+        ctx.ui.notify("Powerline is disabled", "info");
+        return;
+      }
+
+      await openStashHistory(ctx);
+    },
+  });
+
   pi.registerShortcut("alt+s", {
     description: "Stash/restore editor text",
     handler: async (ctx) => {
-      const rawText = currentEditor?.getExpandedText?.() ?? ctx.ui.getEditorText();
-      const hasText = rawText.trim().length > 0;
+      if (!enabled || !ctx.hasUI) return;
+
+      const rawText = getCurrentEditorText(ctx, currentEditor);
+      const hasText = hasNonWhitespaceText(rawText);
       const hasStash = stashedEditorText !== null;
 
       if (hasText && !hasStash) {
         stashedEditorText = rawText;
+        addStashHistoryEntry(rawText);
         ctx.ui.setEditorText("");
         ctx.ui.setStatus("stash", "📋 stash");
         ctx.ui.notify("Text stashed", "info");
@@ -566,16 +947,50 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return;
       }
 
-      if (hasText && hasStash) {
-        const prev = stashedEditorText;
+      if (hasText && stashedEditorText !== null) {
         stashedEditorText = rawText;
-        ctx.ui.setEditorText(prev);
+        addStashHistoryEntry(rawText);
+        ctx.ui.setEditorText("");
         ctx.ui.setStatus("stash", "📋 stash");
-        ctx.ui.notify("Stash swapped", "info");
+        ctx.ui.notify("Stash updated", "info");
         return;
       }
 
       ctx.ui.notify("Nothing to stash", "info");
+    },
+  });
+
+  pi.registerShortcut(resolvedShortcuts.stashHistory, {
+    description: "Open stash history picker",
+    handler: async (ctx) => {
+      if (!enabled || !ctx.hasUI) return;
+      await openStashHistory(ctx);
+    },
+  });
+
+  pi.registerShortcut(resolvedShortcuts.copyEditor, {
+    description: "Copy full editor text",
+    handler: async (ctx) => {
+      if (!enabled || !ctx.hasUI) return;
+
+      const text = getEditorTextForClipboard(ctx);
+      if (!text) return;
+
+      copyTextToClipboard(ctx, text, "Copied editor text");
+    },
+  });
+
+  pi.registerShortcut(resolvedShortcuts.cutEditor, {
+    description: "Cut full editor text",
+    handler: async (ctx) => {
+      if (!enabled || !ctx.hasUI) return;
+
+      const text = getEditorTextForClipboard(ctx);
+      if (!text) return;
+
+      copyTextToClipboard(ctx, text);
+      ctx.ui.setEditorText("");
+      ctx.ui.notify("Cut editor text", "info");
     },
   });
 

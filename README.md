@@ -10,7 +10,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 ## Features
 
-**Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and swap. A `📋 stash` indicator appears in the powerline bar while text is stashed.
+**Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and update-existing-stash. A `📋 stash` indicator appears in the powerline bar while text is stashed.
 
 **Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
 
@@ -56,18 +56,50 @@ Run `/powerline default` to switch back to the default preset.
 
 ## Editor Stash
 
-Midway through typing a long prompt and need to send something quick first? Press `Alt+S` to stash your editor content, type and submit the quick message, and your stashed text auto-restores when the agent finishes.
+Use `Alt+S` as a quick stash toggle while drafting. It keeps one active stash and clears the editor when stashing.
 
-| Editor | Stash | Alt+S result |
-|--------|-------|-------------|
-| Has text | Empty | Stash text, clear editor |
-| Empty | Has stash | Pop stash into editor |
-| Has text | Has stash | Swap editor and stash |
-| Empty | Empty | "Nothing to stash" |
+| Editor | Stash | `Alt+S` result |
+|--------|-------|----------------|
+| Has text | Empty | Stash current text, clear editor |
+| Empty | Has stash | Restore stash into editor |
+| Has text | Has stash | Update stash with current text, clear editor |
+| Empty | Empty | Show "Nothing to stash" |
 
-Auto-restore only happens when the editor is empty — if you started typing while the agent worked, the stash is preserved and you're notified to `Alt+S` to swap.
+Auto-restore after an agent run only happens when the editor is still empty. If you typed meanwhile, the stash is preserved.
 
-The `📋 stash` indicator appears in the powerline bar (on presets with `extension_statuses`). Stash is ephemeral — it clears on session switch and isn't persisted to disk.
+The `📋 stash` indicator appears in the powerline bar (on presets with `extension_statuses`). Active stash is still session-local and resets on session switch / disable, but stash history is persisted to `~/.pi/agent/powerline-footer/stash-history.json` so it survives restarts.
+
+### Stash history
+
+Open stash history with either:
+
+- `ctrl+alt+h`
+- `/stash-history`
+
+History keeps up to 12 recent stashed prompts (newest first). Selecting an entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
+
+### Editor clipboard shortcuts
+
+- `ctrl+alt+c` — copy full editor content
+- `ctrl+alt+x` — cut full editor content (copy, then clear)
+
+Copy/cut actions do not modify stash state or stash history.
+
+### Shortcut configuration
+
+You can override shortcut keys in `~/.pi/agent/settings.json`:
+
+```json
+{
+  "powerlineShortcuts": {
+    "stashHistory": "ctrl+alt+h",
+    "copyEditor": "ctrl+alt+c",
+    "cutEditor": "ctrl+alt+x"
+  }
+}
+```
+
+After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts (like `Alt+S`), or duplicate conflicts automatically fall back to safe defaults.
 
 ## Working Vibes
 
