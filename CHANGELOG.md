@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-03-22
+
+### Added
+- **Model profiles** — Added saved model + thinking combos via `modelProfiles` in settings. When active, profiles with a label show the label in the model segment; profiles without a label append a `(P#)` indicator to the model name.
+- **Profile shortcuts** — Added `alt+shift+tab` profile cycling and `ctrl+alt+m` profile selector overlay, both configurable through `powerlineShortcuts`.
+- **`/model-switcher` command** — Added profile management commands for listing, adding (interactive picker or direct text), removing, and switching by profile number, with immediate persistence to `settings.json`.
+
 ## [0.4.5] - 2026-03-19
 
 ### Added
