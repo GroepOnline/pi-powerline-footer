@@ -5,7 +5,7 @@ import {
   type Theme,
 } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { type SelectItem, SelectList, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { type SelectItem, SelectList, truncateToWidth, visibleWidth, Input, fuzzyFilter } from "@mariozechner/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -34,6 +34,18 @@ import {
   getVibeFileCount,
   generateVibesBatch,
 } from "./working-vibes.js";
+import {
+  type ProfileConfig,
+  findMatchingProfileIndex,
+  getActiveProfileIndex,
+  getProfileDisplayName,
+  getProfilesCache,
+  isThinkingLevel,
+  parseModelSpec,
+  reloadProfiles,
+  saveProfiles,
+  setActiveProfileIndex,
+} from "./profiles.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -51,6 +63,8 @@ interface PowerlineShortcuts {
   stashHistory: string;
   copyEditor: string;
   cutEditor: string;
+  profileCycle: string;
+  profileSelect: string;
 }
 
 type PowerlineShortcutKey = keyof PowerlineShortcuts;
@@ -61,8 +75,10 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   stashHistory: "ctrl+alt+h",
   copyEditor: "ctrl+alt+c",
   cutEditor: "ctrl+alt+x",
+  profileCycle: "alt+shift+tab",
+  profileSelect: "ctrl+alt+m",
 };
-const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor"];
+const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "profileCycle", "profileSelect"];
 const RESERVED_SHORTCUTS = new Set(["alt+s"]);
 const SHORTCUT_MODIFIERS = new Set(["ctrl", "alt", "shift"]);
 const SHORTCUT_NAMED_KEYS = new Set([
@@ -73,7 +89,6 @@ const SHORTCUT_SYMBOL_KEYS = new Set([
   "`", "-", "=", "[", "]", "\\", ";", "'", ",", ".", "/",
   "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "|", "~", "{", "}", ":", "<", ">", "?",
 ]);
-
 const PROMPT_HISTORY_LIMIT = 100;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
@@ -554,6 +569,98 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let lastLayoutWidth = 0;
   let lastLayoutResult: { topContent: string; secondaryContent: string } | null = null;
   let lastLayoutTimestamp = 0;
+  let profileSwitchInProgress = false;
+
+  function overlaySelectListTheme(theme: Theme) {
+    return {
+      selectedPrefix: (text: string) => theme.fg("accent", text),
+      selectedText: (text: string) => theme.fg("accent", text),
+      description: (text: string) => theme.fg("muted", text),
+      scrollInfo: (text: string) => theme.fg("dim", text),
+      noMatch: (text: string) => theme.fg("warning", text),
+    };
+  }
+
+  async function showSelectOverlay(
+    ctx: any,
+    title: string,
+    hint: string,
+    items: SelectItem[],
+    maxVisible: number,
+  ): Promise<SelectItem | null> {
+    return ctx.ui.custom<SelectItem | null>(
+      (tui: any, theme: Theme, _keybindings: any, done: (result: SelectItem | null) => void) => {
+        const selectList = new SelectList(items, maxVisible, overlaySelectListTheme(theme));
+        const border = (text: string) => theme.fg("dim", text);
+        const wrapRow = (text: string, innerWidth: number): string => {
+          return `${border("│")}${truncateToWidth(text, innerWidth, "…", true)}${border("│")}`;
+        };
+
+        selectList.onSelect = (item) => done(item);
+        selectList.onCancel = () => done(null);
+
+        return {
+          render: (width: number) => {
+            const innerWidth = Math.max(1, width - 2);
+            const lines: string[] = [];
+
+            lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
+            lines.push(wrapRow(theme.fg("accent", theme.bold(title)), innerWidth));
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+
+            for (const line of selectList.render(innerWidth)) {
+              lines.push(wrapRow(line, innerWidth));
+            }
+
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+            lines.push(wrapRow(theme.fg("dim", hint), innerWidth));
+            lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
+
+            return lines;
+          },
+          invalidate: () => selectList.invalidate(),
+          handleInput: (data: string) => {
+            selectList.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: () => ({
+          verticalAlign: "center",
+          horizontalAlign: "center",
+        }),
+      },
+    );
+  }
+
+  function getLiveProfileMatchIndex(ctx: any, profiles: ProfileConfig[]): number | null {
+    if (!ctx.model?.provider || !ctx.model?.id) {
+      return null;
+    }
+
+    return findMatchingProfileIndex(profiles, ctx.model.provider, ctx.model.id, pi.getThinkingLevel());
+  }
+
+  function reloadAndSyncActiveProfile(ctx: any): void {
+    const profiles = reloadProfiles();
+    const activeIndex = getLiveProfileMatchIndex(ctx, profiles);
+    setActiveProfileIndex(activeIndex);
+  }
+
+  async function runWithProfileSwitchLock(action: () => Promise<void>): Promise<void> {
+    if (profileSwitchInProgress) {
+      return;
+    }
+
+    profileSwitchInProgress = true;
+    try {
+      await action();
+    } finally {
+      profileSwitchInProgress = false;
+    }
+  }
 
   // Track session start
   pi.on("session_start", async (_event, ctx) => {
@@ -582,6 +689,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         setupWelcomeOverlay(ctx);
       }
     }
+
+    reloadAndSyncActiveProfile(ctx);
   });
 
   // Check if a bash command might change git branch
@@ -726,62 +835,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       label: `#${index + 1} ${buildStashPreview(entry, STASH_PREVIEW_WIDTH)}`,
     }));
 
-    return ctx.ui.custom<string | null>(
-      (tui: any, theme: Theme, _keybindings: any, done: (result: string | null) => void) => {
-        const selectList = new SelectList(items, Math.min(items.length, 10), {
-          selectedPrefix: (text: string) => theme.fg("accent", text),
-          selectedText: (text: string) => theme.fg("accent", text),
-          description: (text: string) => theme.fg("muted", text),
-          scrollInfo: (text: string) => theme.fg("dim", text),
-          noMatch: (text: string) => theme.fg("warning", text),
-        });
+    const selected = await showSelectOverlay(
+      ctx, "Stash history", "↑↓ navigate • enter insert • esc cancel",
+      items, Math.min(items.length, 10));
+    if (!selected) return null;
 
-        const border = (text: string) => theme.fg("dim", text);
-
-        const wrapRow = (text: string, innerWidth: number): string => {
-          return `${border("│")}${truncateToWidth(text, innerWidth, "…", true)}${border("│")}`;
-        };
-
-        selectList.onSelect = (item) => {
-          const selectedIndex = Number.parseInt(item.value, 10);
-          done(historyItems[selectedIndex] ?? null);
-        };
-        selectList.onCancel = () => done(null);
-
-        return {
-          render: (width: number) => {
-            const innerWidth = Math.max(1, width - 2);
-            const lines: string[] = [];
-
-            lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
-            lines.push(wrapRow(theme.fg("accent", theme.bold("Stash history")), innerWidth));
-            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
-
-            for (const line of selectList.render(innerWidth)) {
-              lines.push(wrapRow(line, innerWidth));
-            }
-
-            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
-            lines.push(wrapRow(theme.fg("dim", "↑↓ navigate • enter insert • esc cancel"), innerWidth));
-            lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
-
-            return lines;
-          },
-          invalidate: () => selectList.invalidate(),
-          handleInput: (data: string) => {
-            selectList.handleInput(data);
-            tui.requestRender();
-          },
-        };
-      },
-      {
-        overlay: true,
-        overlayOptions: () => ({
-          verticalAlign: "center",
-          horizontalAlign: "center",
-        }),
-      },
-    );
+    const i = Number.parseInt(selected.value, 10);
+    return historyItems[i] ?? null;
   }
 
   async function insertSelectedStash(ctx: any, selected: string): Promise<void> {
@@ -819,6 +879,219 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     await insertSelectedStash(ctx, selected);
   }
 
+  async function switchToProfile(ctx: any, profiles: ProfileConfig[], index: number): Promise<boolean> {
+    const profile = profiles[index];
+    if (!profile) {
+      return false;
+    }
+
+    const modelSpec = parseModelSpec(profile.model);
+    if (!modelSpec) {
+      return false;
+    }
+
+    const model = ctx.modelRegistry.find(modelSpec.provider, modelSpec.modelId);
+    if (!model) {
+      ctx.ui.notify(`Model not found: ${profile.model}`, "warning");
+      return false;
+    }
+
+    const switched = await pi.setModel(model);
+    if (!switched) {
+      ctx.ui.notify(`No API key for model: ${profile.model}`, "warning");
+      return false;
+    }
+
+    pi.setThinkingLevel(profile.thinking);
+    setActiveProfileIndex(index);
+
+    const effectiveThinking = pi.getThinkingLevel();
+    const displayName = getProfileDisplayName(profile, model.name);
+    ctx.ui.notify(`Switched to: ${displayName} [${effectiveThinking}]`, "info");
+    return true;
+  }
+
+  function getProfileLabel(ctx: any, profile: ProfileConfig): string {
+    const modelSpec = parseModelSpec(profile.model);
+    const model = modelSpec ? ctx.modelRegistry.find(modelSpec.provider, modelSpec.modelId) : undefined;
+    return getProfileDisplayName(profile, model?.name);
+  }
+
+  async function selectProfileFromList(ctx: any, profiles: ProfileConfig[]): Promise<number | null> {
+    const activeIndex = getLiveProfileMatchIndex(ctx, profiles);
+    const items: SelectItem[] = profiles.map((profile, index) => {
+      const num = `#${index + 1}`;
+      const name = getProfileLabel(ctx, profile);
+      const active = index === activeIndex ? " ✓" : "";
+      return {
+        value: String(index),
+        label: `${num}  ${name}${active}`,
+        description: `${profile.model}  [${profile.thinking}]`,
+      };
+    });
+
+    const selected = await showSelectOverlay(
+      ctx, "Model profiles", "↑↓ navigate • enter switch • esc close",
+      items, Math.min(items.length, 12));
+    if (!selected) return null;
+
+    const i = Number.parseInt(selected.value, 10);
+    return Number.isFinite(i) ? i : null;
+  }
+
+  async function pickModelFromRegistry(ctx: any): Promise<{ provider: string; id: string; name: string } | null> {
+    const available = ctx.modelRegistry.getAvailable();
+    if (available.length === 0) {
+      ctx.ui.notify("No models available", "warning");
+      return null;
+    }
+
+    interface ModelEntry { provider: string; id: string; name: string; key: string }
+    const allEntries: ModelEntry[] = available.map((m: any) => ({
+      provider: m.provider,
+      id: m.id,
+      name: m.name || m.id,
+      key: `${m.provider}/${m.id}`,
+    }));
+
+    function entriesToItems(entries: ModelEntry[]): SelectItem[] {
+      return entries.map((e) => ({ value: e.key, label: e.name, description: e.provider }));
+    }
+
+    return ctx.ui.custom<{ provider: string; id: string; name: string } | null>(
+      (tui: any, theme: Theme, _keybindings: any, done: (result: ModelEntry | null) => void) => {
+        const listTheme = overlaySelectListTheme(theme);
+        const border = (text: string) => theme.fg("dim", text);
+        const wrapRow = (text: string, innerWidth: number): string => {
+          return `${border("│")}${truncateToWidth(text, innerWidth, "…", true)}${border("│")}`;
+        };
+
+        const searchInput = new Input();
+        let searchValue = "";
+        let filteredEntries = allEntries;
+        let selectList = new SelectList(entriesToItems(allEntries), Math.min(allEntries.length, 12), listTheme);
+
+        function wireSelectList() {
+          selectList.onSelect = (item) => {
+            done(filteredEntries.find((e) => e.key === item.value) ?? null);
+          };
+          selectList.onCancel = () => done(null);
+        }
+        wireSelectList();
+
+        function applyFilter(query: string) {
+          filteredEntries = query
+            ? fuzzyFilter(allEntries, query, (e) => `${e.name} ${e.provider} ${e.id}`)
+            : allEntries;
+          selectList = new SelectList(entriesToItems(filteredEntries), Math.min(filteredEntries.length, 12), listTheme);
+          wireSelectList();
+        }
+
+        return {
+          render: (width: number) => {
+            const innerWidth = Math.max(1, width - 2);
+            const lines: string[] = [];
+
+            lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
+            lines.push(wrapRow(theme.fg("accent", theme.bold("Select model")), innerWidth));
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+
+            const searchLine = ` ${theme.fg("muted", "/")} ${searchValue}`;
+            lines.push(wrapRow(searchLine, innerWidth));
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+
+            for (const line of selectList.render(innerWidth)) {
+              lines.push(wrapRow(line, innerWidth));
+            }
+
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+            lines.push(wrapRow(theme.fg("dim", "type to filter • enter select • esc cancel"), innerWidth));
+            lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
+
+            return lines;
+          },
+          invalidate: () => selectList.invalidate(),
+          handleInput: (data: string) => {
+            const before = selectList.getSelectedItem();
+            selectList.handleInput(data);
+            const after = selectList.getSelectedItem();
+
+            // If selectList didn't consume the key, route to search input
+            if (before === after) {
+              searchInput.handleInput(data);
+              const nextValue = searchInput.getValue();
+              if (nextValue !== searchValue) {
+                searchValue = nextValue;
+                applyFilter(searchValue);
+              }
+            }
+
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: () => ({
+          verticalAlign: "center",
+          horizontalAlign: "center",
+        }),
+      },
+    );
+  }
+
+  async function pickThinkingLevel(ctx: any): Promise<ProfileConfig["thinking"] | null> {
+    const levels: ProfileConfig["thinking"][] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+    const items: SelectItem[] = levels.map((level) => ({ value: level, label: level }));
+
+    const selected = await showSelectOverlay(
+      ctx, "Select thinking level", "↑↓ navigate • enter select • esc cancel",
+      items, items.length);
+    return selected ? selected.value as ProfileConfig["thinking"] : null;
+  }
+
+  async function pickLabel(ctx: any): Promise<string | undefined> {
+    return ctx.ui.input("Profile label (optional)", "e.g. Opus Deep");
+  }
+
+  async function interactiveAddProfile(ctx: any): Promise<void> {
+    const model = await pickModelFromRegistry(ctx);
+    if (!model) return;
+
+    const thinking = await pickThinkingLevel(ctx);
+    if (!thinking) return;
+
+    const label = await pickLabel(ctx);
+
+    const modelSpec = `${model.provider}/${model.id}`;
+    const profiles = reloadProfiles();
+    const profile: ProfileConfig = { model: modelSpec, thinking, ...(label ? { label } : {}) };
+    const nextProfiles = [...profiles, profile];
+
+    const saved = saveProfiles(nextProfiles);
+    if (!saved) {
+      ctx.ui.notify("Failed to save profile", "warning");
+      return;
+    }
+
+    const displayName = label || model.name;
+    ctx.ui.notify(`Added profile #${nextProfiles.length}: ${displayName} [${thinking}]`, "info");
+  }
+
+  async function openProfileList(ctx: any, profiles: ProfileConfig[]): Promise<void> {
+    if (profiles.length === 0) {
+      ctx.ui.notify("No profiles configured. Use /model-switcher add to create one.", "info");
+      return;
+    }
+
+    const selectedIndex = await selectProfileFromList(ctx, profiles);
+    if (selectedIndex === null) return;
+
+    await runWithProfileSwitchLock(async () => {
+      await switchToProfile(ctx, profiles, selectedIndex);
+    });
+  }
+
   pi.on("agent_end", async (_event, ctx) => {
     isStreaming = false;
     if (ctx.hasUI) {
@@ -850,6 +1123,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       ctx.ui.setStatus("stash", undefined);
     }
     dismissWelcome(ctx);
+    reloadAndSyncActiveProfile(ctx);
   });
 
   // Command to toggle/configure
@@ -868,6 +1142,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         } else {
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
+          setActiveProfileIndex(null);
           ctx.ui.setStatus("stash", undefined);
           // Clear all custom UI components
           ctx.ui.setEditorComponent(undefined);
@@ -991,6 +1266,156 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       copyTextToClipboard(ctx, text);
       ctx.ui.setEditorText("");
       ctx.ui.notify("Cut editor text", "info");
+    },
+  });
+
+  pi.registerShortcut(resolvedShortcuts.profileCycle, {
+    description: "Cycle to next model profile",
+    handler: async (ctx) => {
+      if (!enabled || !ctx.hasUI) return;
+
+      await runWithProfileSwitchLock(async () => {
+        const profiles = reloadProfiles();
+        if (profiles.length === 0) return;
+
+        const currentMatch = getLiveProfileMatchIndex(ctx, profiles);
+
+        const startIndex = currentMatch !== null ? (currentMatch + 1) % profiles.length : 0;
+        for (let attempt = 0; attempt < profiles.length; attempt++) {
+          const candidateIndex = (startIndex + attempt) % profiles.length;
+          const switched = await switchToProfile(ctx, profiles, candidateIndex);
+          if (switched) {
+            return;
+          }
+        }
+
+        ctx.ui.notify("No available profiles", "warning");
+      });
+    },
+  });
+
+  pi.registerShortcut(resolvedShortcuts.profileSelect, {
+    description: "Select and switch model profile",
+    handler: async (ctx) => {
+      if (!enabled || !ctx.hasUI) return;
+
+      await runWithProfileSwitchLock(async () => {
+        const profiles = reloadProfiles();
+        if (profiles.length === 0) return;
+
+        const selectedIndex = await selectProfileFromList(ctx, profiles);
+        if (selectedIndex === null) return;
+
+        await switchToProfile(ctx, profiles, selectedIndex);
+      });
+    },
+  });
+
+  pi.registerCommand("model-switcher", {
+    description: "Manage model profiles. Usage: /model-switcher [add|remove|<number>]",
+    handler: async (args, ctx) => {
+      const trimmed = args?.trim() ?? "";
+      const profiles = reloadProfiles();
+
+      if (!trimmed) {
+        await openProfileList(ctx, profiles);
+        return;
+      }
+
+      const parts = trimmed.split(/\s+/);
+      const subcommand = parts[0]?.toLowerCase();
+
+      if (subcommand === "add") {
+        // No additional args → interactive picker flow
+        if (parts.length === 1) {
+          await interactiveAddProfile(ctx);
+          return;
+        }
+
+        // Text-based: /model-switcher add <model> <thinking> [label...]
+        const addMatch = trimmed.match(/^add\s+(\S+)\s+(\S+)([\s\S]*)$/i);
+        if (!addMatch) {
+          ctx.ui.notify("Usage: /model-switcher add [<model> <thinking> [label...]]", "error");
+          return;
+        }
+
+        const model = addMatch[1];
+        const thinking = addMatch[2].toLowerCase();
+        if (!parseModelSpec(model)) {
+          ctx.ui.notify("Invalid model format. Use: provider/modelId", "error");
+          return;
+        }
+        if (!isThinkingLevel(thinking)) {
+          ctx.ui.notify("Invalid thinking level. Use: off|minimal|low|medium|high|xhigh", "error");
+          return;
+        }
+
+        const label = (addMatch[3] ?? "").trim();
+        const nextProfiles: ProfileConfig[] = [...profiles, { model, thinking, ...(label ? { label } : {}) }];
+        const saved = saveProfiles(nextProfiles);
+        if (!saved) {
+          ctx.ui.notify("Failed to save profiles", "warning");
+          return;
+        }
+
+        ctx.ui.notify(`Added profile #${nextProfiles.length}`, "info");
+        return;
+      }
+
+      if (subcommand === "remove") {
+        if (parts.length !== 2) {
+          ctx.ui.notify("Usage: /model-switcher remove <number>", "error");
+          return;
+        }
+
+        const indexValue = Number.parseInt(parts[1], 10);
+        if (!Number.isFinite(indexValue) || indexValue < 1 || indexValue > profiles.length) {
+          ctx.ui.notify("Invalid profile number", "error");
+          return;
+        }
+
+        const removeIndex = indexValue - 1;
+        const nextProfiles = profiles.filter((_, index) => index !== removeIndex);
+        let nextActiveIndex = getActiveProfileIndex();
+        if (nextActiveIndex !== null) {
+          if (nextActiveIndex === removeIndex) {
+            nextActiveIndex = null;
+          } else if (removeIndex < nextActiveIndex) {
+            nextActiveIndex -= 1;
+          }
+          if (nextActiveIndex !== null && nextActiveIndex >= nextProfiles.length) {
+            nextActiveIndex = null;
+          }
+        }
+
+        const saved = saveProfiles(nextProfiles);
+        if (!saved) {
+          ctx.ui.notify("Failed to save profiles", "warning");
+          return;
+        }
+
+        setActiveProfileIndex(nextActiveIndex);
+        ctx.ui.notify(`Removed profile #${indexValue}`, "info");
+        return;
+      }
+
+      const indexValue = Number.parseInt(subcommand, 10);
+      if (Number.isFinite(indexValue) && parts.length === 1) {
+        if (indexValue < 1 || indexValue > profiles.length) {
+          ctx.ui.notify("Invalid profile number", "error");
+          return;
+        }
+
+        await runWithProfileSwitchLock(async () => {
+          await switchToProfile(ctx, profiles, indexValue - 1);
+        });
+        return;
+      }
+
+      ctx.ui.notify(
+        "Usage: /model-switcher | /model-switcher add | /model-switcher remove <N> | /model-switcher <N>",
+        "error",
+      );
     },
   });
 
@@ -1159,9 +1584,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       ? ctx.modelRegistry?.isUsingOAuth?.(ctx.model) ?? false
       : false;
 
+    const thinkingLevel = thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off";
+    const profilesCache = getProfilesCache();
+    const activeProfileMatch = ctx.model?.provider && ctx.model?.id
+      ? findMatchingProfileIndex(profilesCache, ctx.model.provider, ctx.model.id, thinkingLevel)
+      : null;
+    const activeProfileLabel = activeProfileMatch !== null
+      ? profilesCache[activeProfileMatch]?.label ?? null
+      : null;
+
     return {
       model: ctx.model,
-      thinkingLevel: thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off",
+      thinkingLevel,
+      activeProfileIndex: activeProfileMatch,
+      activeProfileLabel,
       sessionId: ctx.sessionManager?.getSessionId?.(),
       usageStats: { input, output, cacheRead, cacheWrite, cost },
       contextPercent,

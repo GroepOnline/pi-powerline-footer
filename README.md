@@ -94,12 +94,47 @@ You can override shortcut keys in `~/.pi/agent/settings.json`:
   "powerlineShortcuts": {
     "stashHistory": "ctrl+alt+h",
     "copyEditor": "ctrl+alt+c",
-    "cutEditor": "ctrl+alt+x"
+    "cutEditor": "ctrl+alt+x",
+    "profileCycle": "alt+shift+tab",
+    "profileSelect": "ctrl+alt+m"
   }
 }
 ```
 
 After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts (like `Alt+S`), or duplicate conflicts automatically fall back to safe defaults.
+
+## Model Profiles
+
+Model profiles are saved model + thinking combinations stored in `~/.pi/agent/settings.json`:
+
+```json
+{
+  "modelProfiles": [
+    { "model": "anthropic/claude-opus-4.6", "thinking": "xhigh", "label": "Opus Deep" },
+    { "model": "openai/codex-5.3", "thinking": "low", "label": "Codex Fast" },
+    { "model": "google/gemini-3-pro", "thinking": "medium" }
+  ]
+}
+```
+
+### Shortcuts
+
+- `alt+shift+tab` — cycle to the next profile
+- `ctrl+alt+m` — open profile selector overlay
+
+Both bindings are configurable via `powerlineShortcuts.profileCycle` and `powerlineShortcuts.profileSelect`.
+
+### `/model-switcher` command
+
+```text
+/model-switcher                                          — open profiles overlay (select to switch)
+/model-switcher add                                      — interactive picker (model → thinking → label)
+/model-switcher add <model> <thinking> [label...]        — direct add
+/model-switcher remove <number>                          — remove by number
+/model-switcher <number>                                 — switch to profile
+```
+
+`/model-switcher` opens the same profile selector overlay as `ctrl+alt+m`. Use `↑↓` to move, `enter` to switch, and `esc` to close. Active profile is marked in the list. `/model-switcher add` with no arguments opens an interactive flow: pick a model from available models with fuzzy search, pick a thinking level, then optionally enter a label. With arguments, it adds directly. `remove` and switch persist immediately to `settings.json`.
 
 ## Working Vibes
 
