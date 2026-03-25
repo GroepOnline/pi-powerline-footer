@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-03-22
+
+### Fixed
+- **Stale footer after profile switch** — Invalidated layout cache after switching profiles so the powerline updates immediately instead of lagging behind the notification.
+
 ## [0.4.6] - 2026-03-22
 
 ### Added
