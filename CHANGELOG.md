@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-03-27
+
+### Fixed
+- **Broken vibe generation after pi update** — Migrated from removed `modelRegistry.getApiKey()` to `getApiKeyAndHeaders()`, passing both `apiKey` and `headers` through to `complete()` so OAuth and custom proxy providers work correctly.
+
 ## [0.4.7] - 2026-03-22
 
 ### Fixed
