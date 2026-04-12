@@ -56,32 +56,22 @@ const modelSegment: StatusLineSegment = {
     const icons = getIcons();
     const opts = ctx.options.model ?? {};
 
-    let content: string;
+    let modelName = ctx.model?.name || ctx.model?.id || "no-model";
+    // Strip "Claude " prefix for brevity
+    if (modelName.startsWith("Claude ")) {
+      modelName = modelName.slice(7);
+    }
 
-    if (ctx.activeProfileIndex !== null && ctx.activeProfileLabel) {
-      content = withIcon(icons.model, ctx.activeProfileLabel);
-    } else {
-      let modelName = ctx.model?.name || ctx.model?.id || "no-model";
-      // Strip "Claude " prefix for brevity
-      if (modelName.startsWith("Claude ")) {
-        modelName = modelName.slice(7);
-      }
+    let content = withIcon(icons.model, modelName);
 
-      content = withIcon(icons.model, modelName);
-
-      // Add thinking level with dot separator
-      if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
-        const level = ctx.thinkingLevel || "off";
-        if (level !== "off") {
-          const thinkingText = getThinkingText(level);
-          if (thinkingText) {
-            content += `${SEP_DOT}${thinkingText}`;
-          }
+    // Add thinking level with dot separator
+    if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
+      const level = ctx.thinkingLevel || "off";
+      if (level !== "off") {
+        const thinkingText = getThinkingText(level);
+        if (thinkingText) {
+          content += `${SEP_DOT}${thinkingText}`;
         }
-      }
-
-      if (ctx.activeProfileIndex !== null) {
-        content += ` (P${ctx.activeProfileIndex + 1})`;
       }
     }
 

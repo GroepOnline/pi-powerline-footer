@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-04-12
+
+### Changed
+- **Model segment simplified** — Footer model segment now shows model info only (plus thinking), without profile labels.
+
+### Removed
+- **Profile switching surface** — Removed `/model-switcher`, profile cycle/select shortcuts, and profile persistence wiring from this extension.
+
 ## [0.4.9] - 2026-04-03
 
 ### Added
