@@ -72,7 +72,7 @@ export const NERD_ICONS: IconSet = {
 export const ASCII_ICONS: IconSet = {
   pi: "π",
   model: "◈",
-  folder: "📁",
+  folder: "dir",
   branch: "⎇",
   git: "⎇",
   tokens: "⊛",
@@ -85,8 +85,8 @@ export const ASCII_ICONS: IconSet = {
   output: "out:",
   host: "host",
   session: "id",
-  auto: "⚡",
-  warning: "⚠",
+  auto: "AC",
+  warning: "!",
 };
 
 // Separator characters

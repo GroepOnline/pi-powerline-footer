@@ -2,7 +2,7 @@ import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir as osHomedir } from "node:os";
 import type { Component } from "@mariozechner/pi-tui";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth as tuiTruncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { ansi, fgOnly, getFgAnsiCode } from "./colors.js";
 
 export interface RecentSession {
@@ -46,10 +46,6 @@ function dim(text: string): string {
   return getFgAnsiCode("sep") + text + ansi.reset;
 }
 
-function checkmark(): string {
-  return fgOnly("gitClean", "✓");
-}
-
 function gradientLine(line: string): string {
   const reset = ansi.reset;
   let result = "";
@@ -70,7 +66,7 @@ function gradientLine(line: string): string {
 
 function centerText(text: string, width: number): string {
   const visLen = visibleWidth(text);
-  if (visLen > width) return truncateToWidth(text, width);
+  if (visLen > width) return tuiTruncateToWidth(text, width, "…");
   if (visLen === width) return text;
   const leftPad = Math.floor((width - visLen) / 2);
   const rightPad = width - visLen - leftPad;
@@ -79,38 +75,8 @@ function centerText(text: string, width: number): string {
 
 function fitToWidth(str: string, width: number): string {
   const visLen = visibleWidth(str);
-  if (visLen > width) return truncateToWidth(str, width);
+  if (visLen > width) return tuiTruncateToWidth(str, width, "…");
   return str + " ".repeat(width - visLen);
-}
-
-function truncateToWidth(str: string, width: number): string {
-  if (width <= 0) return "";
-
-  const ellipsis = "…";
-  const maxWidth = Math.max(0, width - 1);
-  let truncated = "";
-  let currentWidth = 0;
-  let inEscape = false;
-
-  for (const char of str) {
-    if (char === "\x1b") inEscape = true;
-    if (inEscape) {
-      truncated += char;
-      if (char === "m") inEscape = false;
-      continue;
-    }
-
-    const charWidth = visibleWidth(char);
-    if (currentWidth + charWidth > maxWidth) {
-      break;
-    }
-
-    truncated += char;
-    currentWidth += charWidth;
-  }
-
-  if (visibleWidth(str) > width) return truncated + ellipsis;
-  return truncated;
 }
 
 interface WelcomeData {
@@ -153,19 +119,20 @@ function buildRightColumn(data: WelcomeData, colWidth: number): string[] {
   // Loaded counts lines
   const countLines: string[] = [];
   const { contextFiles, extensions, skills, promptTemplates } = data.loadedCounts;
+  const itemPrefix = dim("- ");
   
   if (contextFiles > 0 || extensions > 0 || skills > 0 || promptTemplates > 0) {
     if (contextFiles > 0) {
-      countLines.push(` ${checkmark()} ${fgOnly("gitClean", `${contextFiles}`)} context file${contextFiles !== 1 ? "s" : ""}`);
+      countLines.push(` ${itemPrefix}${fgOnly("gitClean", `${contextFiles}`)} context file${contextFiles !== 1 ? "s" : ""}`);
     }
     if (extensions > 0) {
-      countLines.push(` ${checkmark()} ${fgOnly("gitClean", `${extensions}`)} extension${extensions !== 1 ? "s" : ""}`);
+      countLines.push(` ${itemPrefix}${fgOnly("gitClean", `${extensions}`)} extension${extensions !== 1 ? "s" : ""}`);
     }
     if (skills > 0) {
-      countLines.push(` ${checkmark()} ${fgOnly("gitClean", `${skills}`)} skill${skills !== 1 ? "s" : ""}`);
+      countLines.push(` ${itemPrefix}${fgOnly("gitClean", `${skills}`)} skill${skills !== 1 ? "s" : ""}`);
     }
     if (promptTemplates > 0) {
-      countLines.push(` ${checkmark()} ${fgOnly("gitClean", `${promptTemplates}`)} prompt template${promptTemplates !== 1 ? "s" : ""}`);
+      countLines.push(` ${itemPrefix}${fgOnly("gitClean", `${promptTemplates}`)} prompt template${promptTemplates !== 1 ? "s" : ""}`);
     }
   } else {
     countLines.push(` ${dim("No extensions loaded")}`);

@@ -78,8 +78,36 @@ const PROMPT_HISTORY_LIMIT = 100;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
-function getPromptHistoryState(): { savedPromptHistory: string[] } {
-  const globalState = globalThis as any;
+type PromptHistoryState = { savedPromptHistory: string[] };
+type PromptHistoryGlobal = typeof globalThis & { [PROMPT_HISTORY_STATE_KEY]?: PromptHistoryState };
+type SessionAssistantUsage = AssistantMessage["usage"];
+
+function hasSessionAssistantUsage(value: unknown): value is SessionAssistantUsage {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    typeof value.input !== "number" ||
+    typeof value.output !== "number" ||
+    typeof value.cacheRead !== "number" ||
+    typeof value.cacheWrite !== "number"
+  ) {
+    return false;
+  }
+
+  return isRecord(value.cost) && typeof value.cost.total === "number";
+}
+
+function isSessionAssistantMessage(value: unknown): value is AssistantMessage {
+  return isRecord(value)
+    && value.role === "assistant"
+    && hasSessionAssistantUsage(value.usage)
+    && (value.stopReason === undefined || typeof value.stopReason === "string");
+}
+
+function getPromptHistoryState(): PromptHistoryState {
+  const globalState = globalThis as PromptHistoryGlobal;
   if (!globalState[PROMPT_HISTORY_STATE_KEY]) {
     globalState[PROMPT_HISTORY_STATE_KEY] = { savedPromptHistory: [] };
   }
@@ -385,7 +413,7 @@ function getCurrentEditorText(ctx: any, editor: any): string {
 function buildStashPreview(text: string, maxWidth: number): string {
   const compact = text.replace(/\s+/g, " ").trim();
   if (!compact) return "(empty)";
-  return truncateWithEllipsisByWidth(compact, maxWidth);
+  return truncateToWidth(compact, maxWidth, "…");
 }
 
 function pushStashHistory(history: string[], text: string): boolean {
@@ -532,25 +560,6 @@ function buildContentFromParts(
   const sepAnsi = getFgAnsiCode("sep");
   const sep = separatorDef.left;
   return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
-}
-
-function truncateWithEllipsisByWidth(text: string, maxWidth: number): string {
-  if (maxWidth <= 0) return "";
-  if (visibleWidth(text) <= maxWidth) return text;
-  if (maxWidth === 1) return "…";
-
-  const targetWidth = maxWidth - 1;
-  let truncated = "";
-  let truncatedWidth = 0;
-
-  for (const char of text) {
-    const charWidth = visibleWidth(char);
-    if (truncatedWidth + charWidth > targetWidth) break;
-    truncated += char;
-    truncatedWidth += charWidth;
-  }
-
-  return truncated.trimEnd() + "…";
 }
 
 /**
@@ -1112,7 +1121,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         stashedEditorText = rawText;
         addStashHistoryEntry(rawText);
         ctx.ui.setEditorText("");
-        ctx.ui.setStatus("stash", "📋 stash");
+        ctx.ui.setStatus("stash", "stash");
         ctx.ui.notify("Text stashed", "info");
         return;
       }
@@ -1129,7 +1138,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         stashedEditorText = rawText;
         addStashHistoryEntry(rawText);
         ctx.ui.setEditorText("");
-        ctx.ui.setStatus("stash", "📋 stash");
+        ctx.ui.setStatus("stash", "stash");
         ctx.ui.notify("Stash updated", "info");
         return;
       }
@@ -1302,22 +1311,29 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
     for (const e of sessionEvents) {
+      if (!isRecord(e)) {
+        continue;
+      }
+
       // Check for thinking level change entries
-      if (e.type === "thinking_level_change" && e.thinkingLevel) {
+      if (e.type === "thinking_level_change" && typeof e.thinkingLevel === "string") {
         thinkingLevelFromSession = e.thinkingLevel;
       }
-      if (e.type === "message" && e.message.role === "assistant") {
-        const m = e.message as AssistantMessage;
-        if (m.stopReason === "error" || m.stopReason === "aborted") {
-          continue;
-        }
-        input += m.usage.input;
-        output += m.usage.output;
-        cacheRead += m.usage.cacheRead;
-        cacheWrite += m.usage.cacheWrite;
-        cost += m.usage.cost.total;
-        lastAssistant = m;
+
+      if (e.type !== "message" || !isSessionAssistantMessage(e.message)) {
+        continue;
       }
+
+      const m = e.message;
+      if (m.stopReason === "error" || m.stopReason === "aborted") {
+        continue;
+      }
+      input += m.usage.input;
+      output += m.usage.output;
+      cacheRead += m.usage.cacheRead;
+      cacheWrite += m.usage.cacheWrite;
+      cost += m.usage.cost.total;
+      lastAssistant = m;
     }
 
     // Calculate context percentage (total tokens used in last turn)
@@ -1398,7 +1414,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         
         const originalHandleInput = editor.handleInput.bind(editor);
         editor.handleInput = (data: string) => {
-          if (!autocompleteFixed && !(editor as any).autocompleteProvider) {
+          if (!autocompleteFixed && !editor.autocompleteProvider) {
             autocompleteFixed = true;
             snapshotPromptHistory(editor);
             ctx.ui.setEditorComponent(editorFactory);
@@ -1541,10 +1557,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             const notifications: string[] = [];
             for (const value of statuses.values()) {
               if (value && value.trimStart().startsWith('[')) {
-                // Account for leading space when checking width
                 const lineContent = ` ${value}`;
-                const contentWidth = visibleWidth(lineContent);
-                if (contentWidth <= width) {
+                if (visibleWidth(lineContent) <= width) {
                   notifications.push(lineContent);
                 }
               }
@@ -1563,18 +1577,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           render(width: number): string[] {
             if (!showLastPrompt || !lastUserPrompt) return [];
             
-            const prefix = `${getFgAnsiCode("sep")}↳${ansi.reset} `;
-            const prefixWidth = 2; // "↳ "
-            const availableWidth = width - prefixWidth - 1;
+            const prefix = ` ${getFgAnsiCode("sep")}↳${ansi.reset} `;
+            const availableWidth = width - visibleWidth(prefix);
             if (availableWidth < 10) return [];
-            
+
             let promptText = lastUserPrompt.replace(/\s+/g, " ").trim();
             if (!promptText) return [];
 
-            promptText = truncateWithEllipsisByWidth(promptText, availableWidth);
+            promptText = truncateToWidth(promptText, availableWidth, "…");
 
             const styledPrompt = `${getFgAnsiCode("sep")}${promptText}${ansi.reset}`;
-            return [` ${prefix}${styledPrompt}`];
+            const line = `${prefix}${styledPrompt}`;
+            return [truncateToWidth(line, width, "…")];
           },
         };
       }, { placement: "belowEditor" });

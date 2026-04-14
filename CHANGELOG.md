@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-04-14
+
+### Fixed
+- **Prompt-width crash on pasted unicode text** — Replaced manual truncation in the last-prompt widget and welcome helpers with pi-tui truncation so pasted text containing grapheme clusters no longer overflows terminal width and crashes the UI.
+- **Session usage typing cleanup** — Replaced broad session assistant-message casts with local type narrowing in footer context building.
+
+### Changed
+- **Status copy simplified** — Removed emoji-based stash and fallback status markers from the current UI and docs.
+
 ## [0.4.10] - 2026-04-12
 
 ### Changed
@@ -87,7 +96,7 @@
 ## [0.4.0] - 2026-03-11
 
 ### Added
-- **Editor stash** — Press `Alt+S` to save editor content and clear the editor, type a quick prompt, and have the stashed text auto-restored when the agent finishes. Toggles: stash, pop, swap, or "nothing to stash" depending on editor/stash state. Status indicator (`📋 stash`) shown in the powerline bar on presets that include `extension_statuses`. Auto-restore only happens when the editor is empty (won't overwrite text you started typing).
+- **Editor stash** — Press `Alt+S` to save editor content and clear the editor, type a quick prompt, and have the stashed text auto-restored when the agent finishes. Toggles: stash, pop, swap, or "nothing to stash" depending on editor/stash state. Status indicator (`stash`) shown in the powerline bar on presets that include `extension_statuses`. Auto-restore only happens when the editor is empty (won't overwrite text you started typing).
 
 ### Fixed
 - **Stale state on session switch** — `/new` and `/resume` now properly reset session timer, context, last prompt, streaming flag, and dismiss any active welcome overlay/header. Previously these carried over from the old session because `session_start` only fires on initial load and `/reload`, not on session changes.
