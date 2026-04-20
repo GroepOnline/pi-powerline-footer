@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-04-20
+
 ### Added
 - **Sticky bash mode** — Added `/bash-mode`, `/bash-reset`, a configurable `ctrl+shift+b` toggle, a persistent per-session shell runtime, and an embedded shell transcript below the editor.
 - **Shell-aware completion pipeline** — Added project/global shell history ranking, git-aware completions, PATH/path completions, active-shell native completion adapters, and ghost suggestions for bash mode.
@@ -27,6 +29,8 @@
 - **One-off `!` / `!!` shell predictions** — Default one-off bash commands now reuse the shell completion pipeline too, so typing `!` or `!!` shows ghost suggestions immediately and Right Arrow accepts them just like sticky bash mode.
 - **Bang-command completion alignment** — One-off shell predictions now only activate for real `!` / `!!` commands at the start of the prompt, matching pi’s actual submission behavior instead of also triggering after leading whitespace.
 - **Hidden ghost acceptance** — Right Arrow no longer accepts a ghost suggestion when the cursor is not at the end of the line, so moving around inside a command behaves normally.
+- **Working vibe generation on `openai-codex/*` and similar providers** — Vibe generation now sends a minimal system prompt to providers that require instructions, batch generation preserves provider error messages instead of collapsing them into `Empty response from model`, and the default vibe model now uses `openai-codex/gpt-5.4-mini` instead of an Anthropic default.
+- **Multiline paste submission regression** — The custom editor no longer misreads bracketed multiline paste chunks as submit keys, so pasted text stays in the editor instead of getting split into separate submitted prompts.
 
 ## [0.4.11] - 2026-04-14
 

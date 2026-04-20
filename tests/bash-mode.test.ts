@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { appendProjectHistory, matchHistoryEntries, readGlobalShellHistory } from "../bash-mode/history.ts";
 import { BashTranscriptStore } from "../bash-mode/transcript.ts";
 import { BashCompletionEngine, getOneOffBashCommandContext, OneOffBashAutocompleteProvider } from "../bash-mode/completion.ts";
@@ -406,9 +406,74 @@ test("bash editor autocomplete trigger keeps the editor instance binding", async
         rmSync(link, { recursive: true, force: true });
       }
     }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
+  }
+});
+
+test("bash editor does not submit pasted multiline input while bracketed paste is active", async () => {
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  mkdirSync(nodeModulesDir, { recursive: true });
+  const links = [
+    {
+      link: join(nodeModulesDir, "pi-coding-agent"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+    },
+    {
+      link: join(nodeModulesDir, "pi-tui"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+    },
+  ];
+
+  for (const { link, target } of links) {
+    if (!existsSync(link)) {
+      symlinkSync(target, link);
+    }
+  }
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { CustomEditor } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
+
+    let delegated = 0;
+    let submitted = 0;
+    const superHandleInput = CustomEditor.prototype.handleInput;
+    CustomEditor.prototype.handleInput = function handleInput() {
+      delegated += 1;
+    };
+
+    try {
+      (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+        isInPaste: true,
+        optionsRef: {
+          isBashModeActive: () => true,
+          isShellRunning: () => false,
+          onExitBashMode() {},
+          onInterrupt() {},
+          onNotify() {},
+          onSubmitCommand() {
+            submitted += 1;
+          },
+          getHistoryEntries() {
+            return [];
+          },
+          resolveGhostSuggestion: async () => null,
+        },
+        keybindingsRef: {
+          matches(data: string, id: string) {
+            return data === "\r" && id === "tui.input.submit";
+          },
+        },
+      }, "\r");
+    } finally {
+      CustomEditor.prototype.handleInput = superHandleInput;
+    }
+
+    assert.equal(submitted, 0);
+    assert.equal(delegated, 1);
+  } finally {
+    for (const { link } of links.reverse()) {
+      if (existsSync(link)) {
+        rmSync(link, { recursive: true, force: true });
+      }
     }
   }
 });
@@ -493,10 +558,6 @@ test("bash editor refreshGhostSuggestion reuses the ghost scheduling path", asyn
         rmSync(link, { recursive: true, force: true });
       }
     }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
-    }
   }
 });
 
@@ -561,10 +622,6 @@ test("bash editor dismiss clears autocomplete when mode turns off", async () => 
         rmSync(link, { recursive: true, force: true });
       }
     }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
-    }
   }
 });
 
@@ -619,10 +676,6 @@ test("bash editor shell history state does not clobber the base prompt history i
         rmSync(link, { recursive: true, force: true });
       }
     }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
-    }
   }
 });
 
@@ -676,10 +729,6 @@ test("bash editor escape exits bash mode", async () => {
       if (existsSync(link)) {
         rmSync(link, { recursive: true, force: true });
       }
-    }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
     }
   }
 });
@@ -742,10 +791,6 @@ test("bash editor right arrow accepts an empty-prompt ghost suggestion without s
         rmSync(link, { recursive: true, force: true });
       }
     }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
-    }
   }
 });
 
@@ -800,10 +845,6 @@ test("bash editor right arrow accepts ghost text for one-off bang commands", asy
       if (existsSync(link)) {
         rmSync(link, { recursive: true, force: true });
       }
-    }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
     }
   }
 });
@@ -871,10 +912,6 @@ test("bash editor enter does not accept ghost text while a shell command is runn
         rmSync(link, { recursive: true, force: true });
       }
     }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
-    }
   }
 });
 
@@ -920,10 +957,6 @@ test("bash editor does not accept a hidden ghost suggestion when the cursor is n
       if (existsSync(link)) {
         rmSync(link, { recursive: true, force: true });
       }
-    }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
     }
   }
 });
@@ -999,10 +1032,6 @@ test("bash editor submit clears the prompt and refreshes the empty ghost suggest
       if (existsSync(link)) {
         rmSync(link, { recursive: true, force: true });
       }
-    }
-    const rootNodeModules = dirname(nodeModulesDir);
-    if (existsSync(rootNodeModules)) {
-      rmSync(rootNodeModules, { recursive: true, force: true });
     }
   }
 });

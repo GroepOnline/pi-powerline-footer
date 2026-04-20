@@ -173,7 +173,7 @@ In `~/.pi/agent/settings.json`:
 {
   "workingVibe": "star trek",                              // Theme phrase
   "workingVibeMode": "generate",                           // "generate" (on-demand) or "file" (pre-generated)
-  "workingVibeModel": "anthropic/claude-haiku-4-5",        // Optional: model to use (default)
+  "workingVibeModel": "openai-codex/gpt-5.4-mini",         // Optional: model to use (default)
   "workingVibeFallback": "Working",                        // Optional: fallback message
   "workingVibeRefreshInterval": 30,                        // Optional: seconds between refreshes (default 30)
   "workingVibePrompt": "Generate a {theme} loading message for: {task}",  // Optional: custom prompt template
@@ -185,7 +185,7 @@ In `~/.pi/agent/settings.json`:
 
 | Mode | Description | Pros | Cons |
 |------|-------------|------|------|
-| `generate` | On-demand AI generation (default) | Contextual, hints at actual task | ~$0.000015/msg, 500ms latency |
+| `generate` | On-demand AI generation (default) | Contextual, hints at actual task | Model-dependent cost and latency |
 | `file` | Pull from pre-generated file | Instant, zero cost, works offline | Not contextual |
 
 **File mode setup:**
@@ -211,7 +211,7 @@ In `~/.pi/agent/settings.json`:
 2. AI generates a themed message in the background (3s timeout)
 3. Message updates to the themed version (e.g., "Engaging warp drive...")
 4. During long tasks, refreshes on tool calls (rate-limited, default 30s)
-5. Cost: ~$0.000015 per generation (60 tokens @ haiku pricing)
+5. Cost and latency depend on your configured `workingVibeModel`
 
 ## Thinking Level Display
 

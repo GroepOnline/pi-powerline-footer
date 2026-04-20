@@ -1427,7 +1427,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
         // Validate format (provider/modelId)
         if (!modelSpec.includes("/")) {
-          ctx.ui.notify("Invalid model format. Use: provider/modelId (e.g., anthropic/claude-haiku-4-5)", "error");
+          ctx.ui.notify("Invalid model format. Use: provider/modelId (e.g., openai-codex/gpt-5.4-mini)", "error");
           return;
         }
         const persisted = setVibeModel(modelSpec);

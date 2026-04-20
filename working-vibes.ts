@@ -14,7 +14,7 @@ type VibeMode = "generate" | "file";
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-const DEFAULT_MODEL = "anthropic/claude-haiku-4-5";
+const DEFAULT_MODEL = "openai-codex/gpt-5.4-mini";
 
 const DEFAULT_PROMPT = `Generate a 2-4 word "{theme}" themed loading message ending in "...".
 
@@ -30,6 +30,8 @@ Each message should end with "..."
 Be creative, varied, and thematic. No duplicates.
 Output one message per line, nothing else. No numbering, no bullets.`;
 
+const VIBE_SYSTEM_PROMPT = "You generate short themed loading messages and reply with the requested text only.";
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════════════════
@@ -37,7 +39,7 @@ Output one message per line, nothing else. No numbering, no bullets.`;
 interface VibeConfig {
   theme: string | null;        // null = disabled
   mode: VibeMode;              // "generate" (on-demand) or "file" (pre-generated)
-  modelSpec: string;           // default: "anthropic/claude-haiku-4-5"
+  modelSpec: string;           // default: "openai-codex/gpt-5.4-mini"
   fallback: string;            // default: "Working"
   timeout: number;             // default: 3000ms
   refreshInterval: number;     // default: 30000ms (30s)
@@ -351,6 +353,17 @@ function parseVibeResponse(response: string, fallback: string): string {
   return vibe;
 }
 
+function buildAiContext(prompt: string): Context {
+  return {
+    systemPrompt: VIBE_SYSTEM_PROMPT,
+    messages: [{
+      role: "user",
+      content: [{ type: "text", text: prompt }],
+      timestamp: Date.now(),
+    }],
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // AI Generation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -388,20 +401,15 @@ async function generateVibe(
     return `${config.fallback}...`;
   }
   
-  // Build minimal context (just a user message, no system prompt or tools)
-  const aiContext: Context = {
-    messages: [{
-      role: "user",
-      content: [{ type: "text", text: buildVibePrompt(ctx) }],
-      timestamp: Date.now(),
-    }],
-  };
+  // Build the prompt context with the minimal system instructions some providers require.
+  const aiContext = buildAiContext(buildVibePrompt(ctx));
   
-  // Call model with timeout
   const response = await complete(model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, signal });
-  
-  // Extract and parse response
+
   const textContent = response.content.find(c => c.type === "text");
+  if (!textContent?.text && response.stopReason === "error" && response.errorMessage) {
+    console.debug(`[working-vibes] Vibe generation failed for ${config.modelSpec}: ${response.errorMessage}`);
+  }
   return parseVibeResponse(textContent?.text || "", config.fallback);
 }
 
@@ -639,13 +647,7 @@ export async function generateVibesBatch(
     .replace(/\{theme\}/g, theme)
     .replace(/\{count\}/g, String(safeCount));
   
-  const aiContext: Context = {
-    messages: [{
-      role: "user",
-      content: [{ type: "text", text: prompt }],
-      timestamp: Date.now(),
-    }],
-  };
+  const aiContext = buildAiContext(prompt);
   
   try {
     // Use longer timeout for batch generation (30 seconds)
@@ -654,7 +656,10 @@ export async function generateVibesBatch(
     
     const textContent = response.content.find(c => c.type === "text");
     if (!textContent?.text) {
-      return { success: false, count: 0, filePath, error: "Empty response from model" };
+      const error = response.stopReason === "error" && response.errorMessage
+        ? response.errorMessage
+        : "Empty response from model";
+      return { success: false, count: 0, filePath, error };
     }
     
     // Parse response: one vibe per line

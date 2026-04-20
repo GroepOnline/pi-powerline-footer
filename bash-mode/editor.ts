@@ -74,6 +74,11 @@ export class BashModeEditor extends CustomEditor {
   }
 
   handleInput(data: string): void {
+    if (data.includes("\x1b[200~") || Reflect.get(this, "isInPaste") === true) {
+      super.handleInput(data);
+      return;
+    }
+
     const bashMode = this.optionsRef.isBashModeActive();
     const oneOffBashCommand = !bashMode && this.isOneOffBashCommandContext();
 
