@@ -23,6 +23,12 @@ interface TokenContext {
   previousTokens: string[];
 }
 
+export interface OneOffBashCommandContext {
+  prefix: string;
+  command: string;
+  offset: number;
+}
+
 const GIT_SUBCOMMANDS = [
   "add", "bisect", "branch", "checkout", "cherry-pick", "clean", "clone", "commit", "diff", "fetch",
   "grep", "init", "log", "merge", "mv", "pull", "push", "rebase", "reset", "restore", "revert", "rm",
@@ -115,6 +121,43 @@ function getTokenContext(line: string, cursorCol: number): TokenContext {
 
 function shellNameFromPath(shellPath: string): string {
   return basename(shellPath).toLowerCase();
+}
+
+export function getOneOffBashCommandContext(line: string): OneOffBashCommandContext | null {
+  if (line.startsWith("!!")) {
+    return {
+      prefix: "!!",
+      command: line.slice(2),
+      offset: 2,
+    };
+  }
+
+  if (line.startsWith("!")) {
+    return {
+      prefix: "!",
+      command: line.slice(1),
+      offset: 1,
+    };
+  }
+
+  return null;
+}
+
+function supportsShouldTriggerFileCompletion(
+  provider: AutocompleteProvider,
+): provider is AutocompleteProvider & {
+  shouldTriggerFileCompletion(lines: string[], cursorLine: number, cursorCol: number): boolean;
+} {
+  return "shouldTriggerFileCompletion" in provider && typeof provider.shouldTriggerFileCompletion === "function";
+}
+
+function isExtendedCompletionItem(item: AutocompleteItem): item is ExtendedCompletionItem {
+  return "replacement" in item
+    && typeof item.replacement === "string"
+    && "startCol" in item
+    && typeof item.startCol === "number"
+    && "endCol" in item
+    && typeof item.endCol === "number";
 }
 
 function uniqueByReplacement(items: ExtendedCompletionItem[]): ExtendedCompletionItem[] {
@@ -295,11 +338,33 @@ export class BashCompletionEngine {
   private readonly adapters: NativeCompletionAdapter[] = createNativeCompletionAdapters();
 
   async getGhostSuggestion(line: string, cwd: string, shellPath: string, signal: AbortSignal): Promise<GhostSuggestion | null> {
+    const projectHistoryEntries = readProjectHistory(cwd);
+    const globalHistoryEntries = readGlobalShellHistory(shellPath);
+
+    if (line.trim().length === 0) {
+      const prefix = line;
+      const projectHistory = matchHistoryEntries(
+        projectHistoryEntries.map((entry) => entry.command),
+        line,
+        1,
+      );
+      if (projectHistory.length > 0) {
+        return { value: `${prefix}${projectHistory[0]!}`, source: "project-history" };
+      }
+
+      const globalHistory = matchHistoryEntries(globalHistoryEntries, line, 1);
+      if (globalHistory.length > 0) {
+        return { value: `${prefix}${globalHistory[0]!}`, source: "global-history" };
+      }
+
+      return null;
+    }
+
     const ctx = getTokenContext(line, line.length);
     if (!canUseHistorySuggestion(ctx)) return null;
 
     const projectHistory = matchHistoryEntries(
-      readProjectHistory(cwd).map((entry) => entry.command),
+      projectHistoryEntries.map((entry) => entry.command),
       line,
       10,
     );
@@ -307,7 +372,7 @@ export class BashCompletionEngine {
       return { value: projectHistory[0]!, source: "project-history" };
     }
 
-    const globalHistory = matchHistoryEntries(readGlobalShellHistory(shellPath), line, 10);
+    const globalHistory = matchHistoryEntries(globalHistoryEntries, line, 10);
     if (globalHistory.length > 0) {
       return { value: globalHistory[0]!, source: "global-history" };
     }
@@ -392,7 +457,7 @@ export class BashCompletionEngine {
     try {
       return await adapter.getCompletions(request);
     } catch (error) {
-      if ((error as Error).message !== "aborted") {
+      if (!(error instanceof Error) || error.message !== "aborted") {
         console.debug(`[powerline-footer] Native completion failed for ${shellName}:`, error);
       }
       return [];
@@ -434,7 +499,7 @@ export class BashAutocompleteProvider implements AutocompleteProvider {
     const prefix = ctx.token || line;
     return {
       prefix,
-      items: items as unknown as AutocompleteItem[],
+      items,
     };
   }
 
@@ -443,18 +508,11 @@ export class BashAutocompleteProvider implements AutocompleteProvider {
     cursorLine: number;
     cursorCol: number;
   } {
-    const extended = item as ExtendedCompletionItem;
-    const currentLine = lines[cursorLine] || "";
-    const startCol = Math.max(0, Math.min(extended.startCol, currentLine.length));
-    const endCol = Math.max(startCol, Math.min(extended.endCol, currentLine.length));
-    const nextLine = currentLine.slice(0, startCol) + extended.replacement + currentLine.slice(endCol);
-    const nextLines = [...lines];
-    nextLines[cursorLine] = nextLine;
-    return {
-      lines: nextLines,
-      cursorLine,
-      cursorCol: startCol + extended.replacement.length,
-    };
+    if (!isExtendedCompletionItem(item)) {
+      throw new Error("Expected an extended completion item for bash autocomplete");
+    }
+
+    return applyExtendedCompletion(lines, cursorLine, item);
   }
 
   shouldTriggerFileCompletion(): boolean {
@@ -462,18 +520,102 @@ export class BashAutocompleteProvider implements AutocompleteProvider {
   }
 }
 
+function applyExtendedCompletion(lines: string[], cursorLine: number, item: ExtendedCompletionItem): {
+  lines: string[];
+  cursorLine: number;
+  cursorCol: number;
+} {
+    const currentLine = lines[cursorLine] || "";
+    const startCol = Math.max(0, Math.min(item.startCol, currentLine.length));
+    const endCol = Math.max(startCol, Math.min(item.endCol, currentLine.length));
+    const nextLine = currentLine.slice(0, startCol) + item.replacement + currentLine.slice(endCol);
+    const nextLines = [...lines];
+    nextLines[cursorLine] = nextLine;
+    return {
+      lines: nextLines,
+      cursorLine,
+      cursorCol: startCol + item.replacement.length,
+    };
+  }
+
+export class OneOffBashAutocompleteProvider implements AutocompleteProvider {
+  private readonly engine: BashCompletionEngine;
+  private readonly getShellPath: () => string;
+  private readonly getCwd: () => string;
+
+  constructor(engine: BashCompletionEngine, getShellPath: () => string, getCwd: () => string) {
+    this.engine = engine;
+    this.getShellPath = getShellPath;
+    this.getCwd = getCwd;
+  }
+
+  async getSuggestions(
+    lines: string[],
+    cursorLine: number,
+    cursorCol: number,
+    options: { signal: AbortSignal; force?: boolean },
+  ): Promise<AutocompleteSuggestions | null> {
+    if (cursorLine !== 0) return null;
+
+    const bang = getOneOffBashCommandContext(lines[0] || "");
+    if (!bang || bang.command.trim().length === 0 || cursorCol < bang.offset) return null;
+
+    const commandCursorCol = Math.max(0, cursorCol - bang.offset);
+    const items = await this.engine.getDropdownSuggestions({
+      line: bang.command,
+      cursorCol: commandCursorCol,
+      cwd: this.getCwd(),
+      shellPath: this.getShellPath(),
+      signal: options.signal,
+    });
+
+    if (items.length === 0) return null;
+
+    const ctx = getTokenContext(bang.command, commandCursorCol);
+    const prefixedItems = items.map((item) => ({
+      ...item,
+      startCol: item.startCol + bang.offset,
+      endCol: item.endCol + bang.offset,
+    }));
+    return {
+      prefix: ctx.token || bang.command,
+      items: prefixedItems,
+    };
+  }
+
+  applyCompletion(lines: string[], cursorLine: number, cursorCol: number, item: AutocompleteItem): {
+    lines: string[];
+    cursorLine: number;
+    cursorCol: number;
+  } {
+    if (!isExtendedCompletionItem(item)) {
+      throw new Error("Expected an extended completion item for one-off bash autocomplete");
+    }
+
+    return applyExtendedCompletion(lines, cursorLine, item);
+  }
+
+  shouldTriggerFileCompletion(lines: string[], cursorLine: number, cursorCol: number): boolean {
+    const bang = cursorLine === 0 ? getOneOffBashCommandContext(lines[0] || "") : null;
+    return bang !== null && cursorCol >= bang.offset;
+  }
+}
+
 export class ModeAwareAutocompleteProvider implements AutocompleteProvider {
   private readonly defaultProvider: AutocompleteProvider | undefined;
   private readonly bashProvider: AutocompleteProvider;
+  private readonly oneOffBashProvider: AutocompleteProvider;
   private readonly isBashModeActive: () => boolean;
 
   constructor(
     defaultProvider: AutocompleteProvider | undefined,
     bashProvider: AutocompleteProvider,
+    oneOffBashProvider: AutocompleteProvider,
     isBashModeActive: () => boolean,
   ) {
     this.defaultProvider = defaultProvider;
     this.bashProvider = bashProvider;
+    this.oneOffBashProvider = oneOffBashProvider;
     this.isBashModeActive = isBashModeActive;
   }
 
@@ -486,6 +628,12 @@ export class ModeAwareAutocompleteProvider implements AutocompleteProvider {
     if (this.isBashModeActive()) {
       return this.bashProvider.getSuggestions(lines, cursorLine, cursorCol, options);
     }
+
+    const oneOffSuggestions = await this.oneOffBashProvider.getSuggestions(lines, cursorLine, cursorCol, options);
+    if (oneOffSuggestions) {
+      return oneOffSuggestions;
+    }
+
     return this.defaultProvider?.getSuggestions(lines, cursorLine, cursorCol, options) ?? null;
   }
 
@@ -493,6 +641,13 @@ export class ModeAwareAutocompleteProvider implements AutocompleteProvider {
     if (this.isBashModeActive()) {
       return this.bashProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
     }
+
+    const shouldUseOneOffBash = supportsShouldTriggerFileCompletion(this.oneOffBashProvider)
+      && this.oneOffBashProvider.shouldTriggerFileCompletion(lines, cursorLine, cursorCol);
+    if (shouldUseOneOffBash) {
+      return this.oneOffBashProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+    }
+
     if (!this.defaultProvider) {
       return { lines, cursorLine, cursorCol };
     }
@@ -501,10 +656,23 @@ export class ModeAwareAutocompleteProvider implements AutocompleteProvider {
 
   shouldTriggerFileCompletion(lines: string[], cursorLine: number, cursorCol: number): boolean {
     if (this.isBashModeActive()) {
-      return (this.bashProvider as AutocompleteProvider & { shouldTriggerFileCompletion?: typeof this.shouldTriggerFileCompletion })
-        .shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
+      if (!supportsShouldTriggerFileCompletion(this.bashProvider)) {
+        return true;
+      }
+
+      return this.bashProvider.shouldTriggerFileCompletion(lines, cursorLine, cursorCol);
     }
-    return (this.defaultProvider as AutocompleteProvider & { shouldTriggerFileCompletion?: typeof this.shouldTriggerFileCompletion })
-      ?.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? false;
+
+    const shouldUseOneOffBash = supportsShouldTriggerFileCompletion(this.oneOffBashProvider)
+      && this.oneOffBashProvider.shouldTriggerFileCompletion(lines, cursorLine, cursorCol);
+    if (shouldUseOneOffBash) {
+      return true;
+    }
+
+    if (!this.defaultProvider || !supportsShouldTriggerFileCompletion(this.defaultProvider)) {
+      return false;
+    }
+
+    return this.defaultProvider.shouldTriggerFileCompletion(lines, cursorLine, cursorCol);
   }
 }

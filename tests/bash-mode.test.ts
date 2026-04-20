@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { appendProjectHistory, readGlobalShellHistory } from "../bash-mode/history.ts";
+import { appendProjectHistory, matchHistoryEntries, readGlobalShellHistory } from "../bash-mode/history.ts";
 import { BashTranscriptStore } from "../bash-mode/transcript.ts";
-import { BashCompletionEngine } from "../bash-mode/completion.ts";
+import { BashCompletionEngine, getOneOffBashCommandContext, OneOffBashAutocompleteProvider } from "../bash-mode/completion.ts";
 import { ManagedShellSession } from "../bash-mode/shell-session.ts";
 import type { ExtendedCompletionItem } from "../bash-mode/types.ts";
 
@@ -27,6 +27,34 @@ test("project history is stored newest-first and global zsh history parses histf
 
   const global = readGlobalShellHistory("/bin/zsh");
   assert.deepEqual(global, ["plain-command", "git pull", "git fetch"]);
+});
+
+test("matchHistoryEntries returns newest entries when the prefix is empty", () => {
+  const matches = matchHistoryEntries([
+    "git stash",
+    "git status",
+    "git stash",
+    "git fetch",
+  ], "", 10);
+
+  assert.deepEqual(matches, ["git stash", "git status", "git fetch"]);
+});
+
+test("one-off bash command context strips ! and !! prefixes", () => {
+  assert.deepEqual(getOneOffBashCommandContext("!git status"), {
+    prefix: "!",
+    command: "git status",
+    offset: 1,
+  });
+
+  assert.deepEqual(getOneOffBashCommandContext("!!git status"), {
+    prefix: "!!",
+    command: "git status",
+    offset: 2,
+  });
+
+  assert.equal(getOneOffBashCommandContext("  !!git status"), null);
+  assert.equal(getOneOffBashCommandContext("git status"), null);
 });
 
 test("transcript store truncates oldest commands at command boundaries", () => {
@@ -115,6 +143,76 @@ test("ghost suggestion prefers project history over global history", async () =>
 
   assert.equal(suggestion?.value, "git stash");
   assert.equal(suggestion?.source, "project-history");
+});
+
+test("ghost suggestion shows newest project history on an empty prompt", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-empty-project-ghost-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, ": 1711111111:0;git pull\n");
+  appendProjectHistory(cwd, "git status", cwd);
+  appendProjectHistory(cwd, "git stash", cwd);
+
+  const engine = new BashCompletionEngine();
+  const suggestion = await engine.getGhostSuggestion(
+    "",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "git stash");
+  assert.equal(suggestion?.source, "project-history");
+});
+
+test("ghost suggestion falls back to global history on an empty prompt", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-empty-global-ghost-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, [
+    ": 1711111111:0;git fetch",
+    ": 1711111112:0;git pull",
+  ].join("\n"));
+
+  const engine = new BashCompletionEngine();
+  const suggestion = await engine.getGhostSuggestion(
+    "",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "git pull");
+  assert.equal(suggestion?.source, "global-history");
+});
+
+test("ghost suggestion stays empty when the prompt is empty and no history exists", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-empty-no-history-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, "");
+
+  const engine = new BashCompletionEngine() as BashCompletionEngine & {
+    getNativeSuggestions: (request: any) => Promise<ExtendedCompletionItem[]>;
+  };
+  engine.getNativeSuggestions = async () => [{
+    value: "develop",
+    label: "develop",
+    replacement: "develop",
+    startCol: 0,
+    endCol: 0,
+    source: "native",
+    score: 99,
+  }];
+
+  const suggestion = await engine.getGhostSuggestion(
+    "",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion, null);
 });
 
 test("ghost suggestion can extend the current token from deterministic path completions", async () => {
@@ -315,6 +413,93 @@ test("bash editor autocomplete trigger keeps the editor instance binding", async
   }
 });
 
+test("one-off bash autocomplete provider applies completions after the bang prefix", async () => {
+  const engine = new BashCompletionEngine() as BashCompletionEngine & {
+    getDropdownSuggestions: (request: any) => Promise<ExtendedCompletionItem[]>;
+  };
+  engine.getDropdownSuggestions = async () => [{
+    value: "git status",
+    label: "git status",
+    replacement: "git status",
+    startCol: 0,
+    endCol: 2,
+    source: "project-history",
+    score: 100,
+  }];
+
+  const provider = new OneOffBashAutocompleteProvider(engine, () => "/bin/zsh", () => process.cwd());
+  const suggestions = await provider.getSuggestions(
+    ["!!gi"],
+    0,
+    4,
+    { signal: new AbortController().signal },
+  );
+
+  assert.equal(suggestions?.prefix, "gi");
+  const item = suggestions?.items[0] as ExtendedCompletionItem | undefined;
+  assert.equal(item?.startCol, 2);
+  assert.equal(item?.endCol, 4);
+
+  const applied = provider.applyCompletion(["!!gi"], 0, 4, item as ExtendedCompletionItem);
+  assert.equal(applied.lines[0], "!!git status");
+  assert.equal(applied.cursorCol, "!!git status".length);
+});
+
+test("one-off bash autocomplete provider stays inactive before the bang command starts", async () => {
+  const engine = new BashCompletionEngine();
+  const provider = new OneOffBashAutocompleteProvider(engine, () => "/bin/zsh", () => process.cwd());
+
+  assert.equal(provider.shouldTriggerFileCompletion(["!git status"], 0, 0), false);
+  assert.equal(
+    await provider.getSuggestions(["!git status"], 0, 0, { signal: new AbortController().signal }),
+    null,
+  );
+});
+
+test("bash editor refreshGhostSuggestion reuses the ghost scheduling path", async () => {
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  mkdirSync(nodeModulesDir, { recursive: true });
+  const links = [
+    {
+      link: join(nodeModulesDir, "pi-coding-agent"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+    },
+    {
+      link: join(nodeModulesDir, "pi-tui"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+    },
+  ];
+
+  for (const { link, target } of links) {
+    if (!existsSync(link)) {
+      symlinkSync(target, link);
+    }
+  }
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    let scheduled = false;
+
+    (BashModeEditor.prototype as Record<string, unknown>)["refreshGhostSuggestion"].call({
+      scheduleGhostUpdate() {
+        scheduled = true;
+      },
+    });
+
+    assert.equal(scheduled, true);
+  } finally {
+    for (const { link } of links.reverse()) {
+      if (existsSync(link)) {
+        rmSync(link, { recursive: true, force: true });
+      }
+    }
+    const rootNodeModules = dirname(nodeModulesDir);
+    if (existsSync(rootNodeModules)) {
+      rmSync(rootNodeModules, { recursive: true, force: true });
+    }
+  }
+});
+
 test("bash editor dismiss clears autocomplete when mode turns off", async () => {
   const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
   mkdirSync(nodeModulesDir, { recursive: true });
@@ -499,6 +684,130 @@ test("bash editor escape exits bash mode", async () => {
   }
 });
 
+test("bash editor right arrow accepts an empty-prompt ghost suggestion without submitting", async () => {
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  mkdirSync(nodeModulesDir, { recursive: true });
+  const links = [
+    {
+      link: join(nodeModulesDir, "pi-coding-agent"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+    },
+    {
+      link: join(nodeModulesDir, "pi-tui"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+    },
+  ];
+
+  for (const { link, target } of links) {
+    if (!existsSync(link)) {
+      symlinkSync(target, link);
+    }
+  }
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    let accepted = false;
+    let submitted = false;
+
+    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+      optionsRef: {
+        isBashModeActive: () => true,
+        isShellRunning: () => false,
+        onExitBashMode: () => {},
+        onSubmitCommand: () => {
+          submitted = true;
+        },
+        onInterrupt: () => {},
+        onNotify: () => {},
+      },
+      keybindingsRef: {
+        matches(data: string, id: string) {
+          return data === "right" && id === "tui.editor.cursorRight";
+        },
+      },
+      isShowingAutocomplete() {
+        return false;
+      },
+      acceptGhostSuggestion(submitAfter: boolean) {
+        accepted = submitAfter === false;
+        return true;
+      },
+    }, "right");
+
+    assert.equal(accepted, true);
+    assert.equal(submitted, false);
+  } finally {
+    for (const { link } of links.reverse()) {
+      if (existsSync(link)) {
+        rmSync(link, { recursive: true, force: true });
+      }
+    }
+    const rootNodeModules = dirname(nodeModulesDir);
+    if (existsSync(rootNodeModules)) {
+      rmSync(rootNodeModules, { recursive: true, force: true });
+    }
+  }
+});
+
+test("bash editor right arrow accepts ghost text for one-off bang commands", async () => {
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  mkdirSync(nodeModulesDir, { recursive: true });
+  const links = [
+    {
+      link: join(nodeModulesDir, "pi-coding-agent"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+    },
+    {
+      link: join(nodeModulesDir, "pi-tui"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+    },
+  ];
+
+  for (const { link, target } of links) {
+    if (!existsSync(link)) {
+      symlinkSync(target, link);
+    }
+  }
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    let accepted = false;
+
+    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+      optionsRef: {
+        isBashModeActive: () => false,
+      },
+      keybindingsRef: {
+        matches(data: string, id: string) {
+          return data === "right" && id === "tui.editor.cursorRight";
+        },
+      },
+      getExpandedText() {
+        return "!git st";
+      },
+      isOneOffBashCommandContext() {
+        return true;
+      },
+      acceptGhostSuggestion(submitAfter: boolean) {
+        accepted = submitAfter === false;
+        return true;
+      },
+    }, "right");
+
+    assert.equal(accepted, true);
+  } finally {
+    for (const { link } of links.reverse()) {
+      if (existsSync(link)) {
+        rmSync(link, { recursive: true, force: true });
+      }
+    }
+    const rootNodeModules = dirname(nodeModulesDir);
+    if (existsSync(rootNodeModules)) {
+      rmSync(rootNodeModules, { recursive: true, force: true });
+    }
+  }
+});
+
 test("bash editor enter does not accept ghost text while a shell command is running", async () => {
   const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
   mkdirSync(nodeModulesDir, { recursive: true });
@@ -556,6 +865,135 @@ test("bash editor enter does not accept ghost text while a shell command is runn
 
     assert.equal(warned, true);
     assert.equal(submitted, false);
+  } finally {
+    for (const { link } of links.reverse()) {
+      if (existsSync(link)) {
+        rmSync(link, { recursive: true, force: true });
+      }
+    }
+    const rootNodeModules = dirname(nodeModulesDir);
+    if (existsSync(rootNodeModules)) {
+      rmSync(rootNodeModules, { recursive: true, force: true });
+    }
+  }
+});
+
+test("bash editor does not accept a hidden ghost suggestion when the cursor is not at the end", async () => {
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  mkdirSync(nodeModulesDir, { recursive: true });
+  const links = [
+    {
+      link: join(nodeModulesDir, "pi-coding-agent"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+    },
+    {
+      link: join(nodeModulesDir, "pi-tui"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+    },
+  ];
+
+  for (const { link, target } of links) {
+    if (!existsSync(link)) {
+      symlinkSync(target, link);
+    }
+  }
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const accepted = (BashModeEditor.prototype as Record<string, unknown>)["acceptGhostSuggestion"].call({
+      ghost: { value: "git status", source: "project-history" },
+      getExpandedText() {
+        return "git st";
+      },
+      getCursor() {
+        return { line: 0, col: 3 };
+      },
+      setText() {
+        throw new Error("hidden ghost should not be accepted");
+      },
+      clearGhostSuggestion() {},
+    }, false);
+
+    assert.equal(accepted, false);
+  } finally {
+    for (const { link } of links.reverse()) {
+      if (existsSync(link)) {
+        rmSync(link, { recursive: true, force: true });
+      }
+    }
+    const rootNodeModules = dirname(nodeModulesDir);
+    if (existsSync(rootNodeModules)) {
+      rmSync(rootNodeModules, { recursive: true, force: true });
+    }
+  }
+});
+
+test("bash editor submit clears the prompt and refreshes the empty ghost suggestion", async () => {
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  mkdirSync(nodeModulesDir, { recursive: true });
+  const links = [
+    {
+      link: join(nodeModulesDir, "pi-coding-agent"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+    },
+    {
+      link: join(nodeModulesDir, "pi-tui"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+    },
+  ];
+
+  for (const { link, target } of links) {
+    if (!existsSync(link)) {
+      symlinkSync(target, link);
+    }
+  }
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    let submitted = false;
+    let cleared = false;
+    let refreshed = false;
+
+    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+      optionsRef: {
+        isBashModeActive: () => true,
+        isShellRunning: () => false,
+        onExitBashMode: () => {},
+        onInterrupt: () => {},
+        onNotify: () => {},
+        onSubmitCommand: (command: string) => {
+          submitted = command === "git status";
+        },
+      },
+      keybindingsRef: {
+        matches(_data: string, id: string) {
+          return id === "tui.input.submit";
+        },
+      },
+      isShowingAutocomplete() {
+        return false;
+      },
+      acceptGhostSuggestion() {
+        return false;
+      },
+      getExpandedText() {
+        return "git status";
+      },
+      clearGhostSuggestion() {},
+      setText(value: string) {
+        cleared = value === "";
+      },
+      refreshGhostSuggestion() {
+        refreshed = true;
+      },
+      shellHistoryIndex: 3,
+      shellHistoryItems: ["git status"],
+      shellHistoryDraft: "git st",
+    }, "enter");
+
+    assert.equal(submitted, true);
+    assert.equal(cleared, true);
+    assert.equal(refreshed, true);
   } finally {
     for (const { link } of links.reverse()) {
       if (existsSync(link)) {

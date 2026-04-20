@@ -30,7 +30,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Sticky bash mode** — Toggle bash mode with `ctrl+shift+b` or `/bash-mode`. It keeps a managed shell session alive for the current pi session, shows a dedicated `shell_mode` segment, streams command output into an embedded transcript below the editor, and lets `cd` or exported state persist across commands.
 
-**Shell completions and ghost suggestions** — Bash mode ranks per-project shell history ahead of global shell history, uses active-shell native completions for both the dropdown and inline ghost text, and falls back to git/path/PATH completions when shell-native capture has nothing useful. Right Arrow accepts ghost text, Tab works the dropdown, and Enter runs the current shell command.
+**Shell completions and ghost suggestions** — Bash mode ranks per-project shell history ahead of global shell history, uses active-shell native completions for both the dropdown and inline ghost text, and falls back to git/path/PATH completions when shell-native capture has nothing useful. Entering bash mode on an empty prompt now shows a history-based ghost suggestion immediately, and clearing the prompt restores it. The same inline predictions and shell completions now also kick in for one-off `!command` and `!!command` prompts. Right Arrow accepts ghost text into the editor, Tab works the dropdown, and Enter runs the current shell command.
 
 ## Installation
 
@@ -72,13 +72,13 @@ Reset the managed shell with `/bash-reset`.
 While bash mode is active:
 
 - Enter runs the current shell command
-- Right Arrow accepts ghost text
+- Right Arrow accepts ghost text into the editor without running it
 - Tab opens or advances shell completions
 - Up and Down browse matching shell history
 - `escape` exits bash mode and returns to normal prompt mode
 - `ctrl+c` interrupts the active shell job before falling back to normal pi behavior
 
-The managed shell is persistent for the current pi session. Command output appears in a transcript below the editor, and shell cwd changes are reflected in the footer path and `shell_mode` segment.
+The managed shell is persistent for the current pi session. Command output appears in a transcript below the editor, and shell cwd changes are reflected in the footer path and `shell_mode` segment. If the bash prompt is empty, bash mode shows the newest history-based ghost suggestion immediately, including right after mode entry or after the prompt is cleared again. One-off `!command` and `!!command` prompts reuse the same shell prediction pipeline, including ghost text and dropdown completions. Mode entry still does not auto-open the completion dropdown.
 
 ### Bash mode configuration
 

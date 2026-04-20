@@ -12,7 +12,13 @@ import { homedir } from "node:os";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
-import { BashCompletionEngine, BashAutocompleteProvider, ModeAwareAutocompleteProvider } from "./bash-mode/completion.ts";
+import {
+  BashCompletionEngine,
+  BashAutocompleteProvider,
+  getOneOffBashCommandContext,
+  ModeAwareAutocompleteProvider,
+  OneOffBashAutocompleteProvider,
+} from "./bash-mode/completion.ts";
 import { BashModeEditor } from "./bash-mode/editor.ts";
 import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
@@ -786,6 +792,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         const session = await ensureShellSession();
         bashModeActive = true;
         currentEditor?.dismissBashModeUi?.();
+        currentEditor?.refreshGhostSuggestion?.();
         requestRender();
         ctx.ui.notify(`Bash mode enabled (${session.state.shellName})`, "info");
       } catch (error) {
@@ -1632,7 +1639,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         },
         onNotify: (message, level = "info") => ctx.ui.notify(message, level),
         getHistoryEntries: (prefix) => getShellHistoryEntries(prefix),
-        resolveGhostSuggestion: (text, signal) => bashCompletionEngine.getGhostSuggestion(text, getShellCwd(), getShellPath(), signal),
+        resolveGhostSuggestion: async (text, signal) => {
+          const oneOffBash = getOneOffBashCommandContext(text);
+          if (oneOffBash) {
+            const ghost = await bashCompletionEngine.getGhostSuggestion(
+              oneOffBash.command,
+              getShellCwd(),
+              getShellPath(),
+              signal,
+            );
+            return ghost ? { ...ghost, value: `${oneOffBash.prefix}${ghost.value}` } : null;
+          }
+
+          return bashCompletionEngine.getGhostSuggestion(text, getShellCwd(), getShellPath(), signal);
+        },
       });
 
       const attachAutocompleteProvider = (): boolean => {
@@ -1645,8 +1665,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           () => getShellPath(),
           () => getShellCwd(),
         );
+        const oneOffBashProvider = new OneOffBashAutocompleteProvider(
+          bashCompletionEngine,
+          () => getShellPath(),
+          () => getShellCwd(),
+        );
         editor.installAutocompleteProvider(
-          new ModeAwareAutocompleteProvider(defaultProvider, bashProvider, () => bashModeActive),
+          new ModeAwareAutocompleteProvider(defaultProvider, bashProvider, oneOffBashProvider, () => bashModeActive),
         );
         return true;
       };

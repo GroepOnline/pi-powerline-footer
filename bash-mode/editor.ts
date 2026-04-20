@@ -2,6 +2,7 @@ import { CustomEditor } from "@mariozechner/pi-coding-agent";
 import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent/dist/core/keybindings.js";
 import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+import { getOneOffBashCommandContext } from "./completion.ts";
 import type { GhostSuggestion } from "./types.ts";
 
 interface BashModeEditorOptions {
@@ -47,7 +48,11 @@ export class BashModeEditor extends CustomEditor {
   }
 
   getGhostSuggestion(): GhostSuggestion | null {
-    return this.optionsRef.isBashModeActive() ? this.ghost : null;
+    return this.isShellCompletionContext() ? this.ghost : null;
+  }
+
+  refreshGhostSuggestion(): void {
+    this.scheduleGhostUpdate();
   }
 
   clearGhostSuggestion(): void {
@@ -62,15 +67,15 @@ export class BashModeEditor extends CustomEditor {
     this.shellHistoryDraft = "";
     this.clearGhostSuggestion();
 
-    const editor = this as unknown as {
-      cancelAutocomplete?: () => void;
-    };
-    editor.cancelAutocomplete?.();
+    if ("cancelAutocomplete" in this && typeof this.cancelAutocomplete === "function") {
+      this.cancelAutocomplete();
+    }
     this.tui.requestRender();
   }
 
   handleInput(data: string): void {
     const bashMode = this.optionsRef.isBashModeActive();
+    const oneOffBashCommand = !bashMode && this.isOneOffBashCommandContext();
 
     if (bashMode && this.keybindingsRef.matches(data, "app.interrupt")) {
       this.optionsRef.onExitBashMode();
@@ -93,7 +98,7 @@ export class BashModeEditor extends CustomEditor {
     }
 
     if (
-      bashMode
+      (bashMode || oneOffBashCommand)
       && this.keybindingsRef.matches(data, "tui.editor.cursorRight")
       && this.acceptGhostSuggestion(false)
     ) {
@@ -115,6 +120,7 @@ export class BashModeEditor extends CustomEditor {
         this.shellHistoryDraft = "";
         this.optionsRef.onSubmitCommand(command);
         this.setText("");
+        this.refreshGhostSuggestion();
         return;
       }
 
@@ -133,12 +139,20 @@ export class BashModeEditor extends CustomEditor {
       this.shellHistoryDraft = "";
       this.optionsRef.onSubmitCommand(command);
       this.setText("");
+      this.refreshGhostSuggestion();
       return;
+    }
+
+    if (oneOffBashCommand && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
+      if (this.acceptGhostSuggestion(true)) {
+        super.handleInput(data);
+        return;
+      }
     }
 
     super.handleInput(data);
 
-    if (!this.optionsRef.isBashModeActive()) {
+    if (!this.isShellCompletionContext()) {
       this.shellHistoryIndex = -1;
       this.shellHistoryItems = [];
       this.shellHistoryDraft = "";
@@ -162,13 +176,16 @@ export class BashModeEditor extends CustomEditor {
       this.shellHistoryItems = [];
       this.shellHistoryDraft = "";
       this.scheduleGhostUpdate();
+      if (this.isShellCommandEmpty()) {
+        return;
+      }
       this.triggerBashAutocomplete();
     }
   }
 
   render(width: number): string[] {
     const lines = super.render(width);
-    if (!this.optionsRef.isBashModeActive()) return lines;
+    if (!this.isShellCompletionContext()) return lines;
     if (!this.ghost) return lines;
 
     const text = this.getText();
@@ -193,9 +210,31 @@ export class BashModeEditor extends CustomEditor {
     return lines;
   }
 
+  private isShellCompletionContext(): boolean {
+    return this.optionsRef.isBashModeActive() || this.isOneOffBashCommandContext();
+  }
+
+  private isOneOffBashCommandContext(): boolean {
+    return getOneOffBashCommandContext(this.getExpandedText()) !== null;
+  }
+
+  private isShellCommandEmpty(): boolean {
+    if (this.optionsRef.isBashModeActive()) {
+      return this.getExpandedText().trim().length === 0;
+    }
+
+    const bang = getOneOffBashCommandContext(this.getExpandedText());
+    return bang ? bang.command.trim().length === 0 : true;
+  }
+
   private acceptGhostSuggestion(submitAfter: boolean): boolean {
     if (!this.ghost) return false;
     const text = this.getExpandedText();
+    if (text.includes("\n")) return false;
+
+    const cursor = this.getCursor();
+    if (cursor.line !== 0 || cursor.col !== text.length) return false;
+
     if (!this.ghost.value.startsWith(text) || this.ghost.value === text) return false;
     this.setText(this.ghost.value);
     this.clearGhostSuggestion();
@@ -237,21 +276,15 @@ export class BashModeEditor extends CustomEditor {
   }
 
   private triggerBashAutocomplete(): void {
-    const editor = this as unknown as {
-      requestAutocomplete?: (options: { force: boolean; explicitTab: boolean }) => void;
-    };
-    editor.requestAutocomplete?.({ force: false, explicitTab: false });
+    if ("requestAutocomplete" in this && typeof this.requestAutocomplete === "function") {
+      this.requestAutocomplete({ force: false, explicitTab: false });
+    }
   }
 
   private scheduleGhostUpdate(): void {
     const text = this.getExpandedText();
     const currentToken = ++this.ghostToken;
     this.ghostAbort?.abort();
-    if (!text.trim()) {
-      this.ghost = null;
-      this.tui.requestRender();
-      return;
-    }
 
     const controller = new AbortController();
     this.ghostAbort = controller;
@@ -262,7 +295,7 @@ export class BashModeEditor extends CustomEditor {
         this.tui.requestRender();
       })
       .catch((error) => {
-        if ((error as Error).message === "aborted") return;
+        if (error instanceof Error && error.message === "aborted") return;
         console.debug("[powerline-footer] Failed to resolve bash ghost suggestion:", error);
       });
   }

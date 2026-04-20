@@ -130,15 +130,13 @@ export function readGlobalShellHistory(shellPath: string): string[] {
 
 export function matchHistoryEntries(entries: string[], prefix: string, limit: number): string[] {
   const trimmedPrefix = prefix.trim();
-  if (!trimmedPrefix) return [];
-
   const seen = new Set<string>();
   const matches: string[] = [];
 
   for (const rawEntry of entries) {
     const entry = rawEntry?.trim();
     if (!entry || seen.has(entry)) continue;
-    if (!entry.startsWith(trimmedPrefix)) continue;
+    if (trimmedPrefix && !entry.startsWith(trimmedPrefix)) continue;
     seen.add(entry);
     matches.push(entry);
     if (matches.length >= limit) break;
