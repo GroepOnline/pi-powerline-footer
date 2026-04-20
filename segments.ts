@@ -79,6 +79,25 @@ const modelSegment: StatusLineSegment = {
   },
 };
 
+const shellModeSegment: StatusLineSegment = {
+  id: "shell_mode",
+  render(ctx) {
+    if (!ctx.shellModeActive) {
+      return { content: "", visible: false };
+    }
+
+    const shellName = ctx.shellName ?? "shell";
+    const state = ctx.shellRunning ? "run" : "idle";
+    const cwd = ctx.shellCwd ? basename(ctx.shellCwd) : null;
+    const parts = [shellName, state];
+    if (cwd) {
+      parts.push(cwd);
+    }
+
+    return { content: color(ctx, "shellMode", parts.join(SEP_DOT)), visible: true };
+  },
+};
+
 const pathSegment: StatusLineSegment = {
   id: "path",
   render(ctx) {
@@ -86,7 +105,7 @@ const pathSegment: StatusLineSegment = {
     const opts = ctx.options.path ?? {};
     const mode = opts.mode ?? "basename";
 
-    let pwd = process.cwd();
+    let pwd = ctx.shellModeActive && ctx.shellCwd ? ctx.shellCwd : process.cwd();
     const home = process.env.HOME || process.env.USERPROFILE;
 
     if (mode === "basename") {
@@ -261,6 +280,8 @@ const costSegment: StatusLineSegment = {
 const contextPctSegment: StatusLineSegment = {
   id: "context_pct",
   render(ctx) {
+    if (ctx.customCompactionEnabled) return { content: "", visible: false };
+
     const icons = getIcons();
     const pct = ctx.contextPercent;
     const window = ctx.contextWindow;
@@ -285,6 +306,8 @@ const contextPctSegment: StatusLineSegment = {
 const contextTotalSegment: StatusLineSegment = {
   id: "context_total",
   render(ctx) {
+    if (ctx.customCompactionEnabled) return { content: "", visible: false };
+
     const icons = getIcons();
     const window = ctx.contextWindow;
     if (!window) return { content: "", visible: false };
@@ -421,6 +444,7 @@ const extensionStatusesSegment: StatusLineSegment = {
 export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
   pi: piSegment,
   model: modelSegment,
+  shell_mode: shellModeSegment,
   path: pathSegment,
   git: gitSegment,
   thinking: thinkingSegment,

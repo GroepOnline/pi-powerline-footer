@@ -7,6 +7,7 @@ export type ColorValue = ThemeColor | `#${string}`;
 export type SemanticColor =
   | "pi"
   | "model"
+  | "shellMode"
   | "path"
   | "gitDirty"
   | "gitClean"
@@ -26,6 +27,7 @@ export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 export type StatusLineSegmentId =
   | "pi"
   | "model"
+  | "shell_mode"
   | "path"
   | "git"
   | "subagents"
@@ -130,8 +132,13 @@ export interface SegmentContext {
   contextPercent: number;
   contextWindow: number;
   autoCompactEnabled: boolean;
+  customCompactionEnabled: boolean;
   usingSubscription: boolean;
   sessionStartTime: number;
+  shellModeActive: boolean;
+  shellRunning: boolean;
+  shellName: string | null;
+  shellCwd: string | null;
   
   // Git
   git: GitStatus;

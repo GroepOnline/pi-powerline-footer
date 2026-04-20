@@ -24,9 +24,13 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Git integration** — Async status fetching with 1s cache TTL. Automatically invalidates on file writes/edits. Shows branch, staged (+), unstaged (*), and untracked (?) counts.
 
-**Context awareness** — Color-coded warnings at 70% (yellow) and 90% (red) context usage. Auto-compact indicator when enabled.
+**Context awareness** — Color-coded warnings at 70% (yellow) and 90% (red) context usage. Auto-compact indicator when enabled. If `pi-custom-compaction` is installed and enabled, the powerline automatically hides native context segments so the footer does not show stale post-summary usage.
 
 **Token intelligence** — Smart formatting (1.2k, 45M), subscription detection (shows "(sub)" vs dollar cost).
+
+**Sticky bash mode** — Toggle bash mode with `ctrl+shift+b` or `/bash-mode`. It keeps a managed shell session alive for the current pi session, shows a dedicated `shell_mode` segment, streams command output into an embedded transcript below the editor, and lets `cd` or exported state persist across commands.
+
+**Shell completions and ghost suggestions** — Bash mode ranks per-project shell history ahead of global shell history, uses active-shell native completions for both the dropdown and inline ghost text, and falls back to git/path/PATH completions when shell-native capture has nothing useful. Right Arrow accepts ghost text, Tab works the dropdown, and Enter runs the current shell command.
 
 ## Installation
 
@@ -53,6 +57,42 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 
 Preset selection is saved to `~/.pi/agent/settings.json` under `powerline` and restored on startup.
 Run `/powerline default` to switch back to the default preset.
+
+## Bash mode
+
+Toggle bash mode with either:
+
+- `ctrl+shift+b`
+- `/bash-mode on`
+- `/bash-mode off`
+- `/bash-mode toggle`
+
+Reset the managed shell with `/bash-reset`.
+
+While bash mode is active:
+
+- Enter runs the current shell command
+- Right Arrow accepts ghost text
+- Tab opens or advances shell completions
+- Up and Down browse matching shell history
+- `escape` exits bash mode and returns to normal prompt mode
+- `ctrl+c` interrupts the active shell job before falling back to normal pi behavior
+
+The managed shell is persistent for the current pi session. Command output appears in a transcript below the editor, and shell cwd changes are reflected in the footer path and `shell_mode` segment.
+
+### Bash mode configuration
+
+In `~/.pi/agent/settings.json`:
+
+```json
+{
+  "bashMode": {
+    "toggleShortcut": "ctrl+shift+b",
+    "transcriptMaxLines": 2000,
+    "transcriptMaxBytes": 524288
+  }
+}
+```
 
 ## Editor Stash
 
@@ -200,7 +240,7 @@ Configure via preset options: `path: { mode: "full" }`
 
 ## Segments
 
-`pi` · `model` · `thinking` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
+`pi` · `model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
 
 ## Separators
 
@@ -216,6 +256,7 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 |----------|-------------|-------------|
 | `pi` | `accent` | Pi icon |
 | `model` | `#d787af` | Model name |
+| `shellMode` | `accent` | Bash mode segment |
 | `path` | `#00afaf` | Directory path |
 | `gitClean` | `success` | Git branch (clean) |
 | `gitDirty` | `warning` | Git branch (dirty) |
@@ -235,6 +276,7 @@ Create `~/.pi/agent/extensions/powerline-footer/theme.json`:
   "colors": {
     "pi": "#ff5500",
     "model": "accent",
+    "shellMode": "accent",
     "path": "#00afaf",
     "gitClean": "success"
   }

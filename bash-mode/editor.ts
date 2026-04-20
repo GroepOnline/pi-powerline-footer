@@ -1,0 +1,269 @@
+import { CustomEditor } from "@mariozechner/pi-coding-agent";
+import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import type { KeybindingsManager } from "@mariozechner/pi-coding-agent/dist/core/keybindings.js";
+import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+import type { GhostSuggestion } from "./types.ts";
+
+interface BashModeEditorOptions {
+  keybindings: KeybindingsManager;
+  isBashModeActive: () => boolean;
+  isShellRunning: () => boolean;
+  onExitBashMode: () => void;
+  onSubmitCommand: (command: string) => void;
+  onInterrupt: () => void;
+  onNotify: (message: string, level?: "info" | "warning" | "error") => void;
+  getHistoryEntries: (prefix: string) => string[];
+  resolveGhostSuggestion: (text: string, signal: AbortSignal) => Promise<GhostSuggestion | null>;
+}
+
+function isPrintableInput(data: string): boolean {
+  return data.length === 1 && data.charCodeAt(0) >= 32;
+}
+
+export class BashModeEditor extends CustomEditor {
+  private readonly keybindingsRef: KeybindingsManager;
+  private readonly optionsRef: BashModeEditorOptions;
+  private wrappedProviderInstalled = false;
+  private shellHistoryIndex = -1;
+  private shellHistoryItems: string[] = [];
+  private shellHistoryDraft = "";
+  private ghost: GhostSuggestion | null = null;
+  private ghostAbort: AbortController | null = null;
+  private ghostToken = 0;
+
+  constructor(tui: any, theme: any, keybindings: KeybindingsManager, options: BashModeEditorOptions) {
+    super(tui, theme, keybindings);
+    this.keybindingsRef = keybindings;
+    this.optionsRef = options;
+  }
+
+  installAutocompleteProvider(provider: AutocompleteProvider): void {
+    this.setAutocompleteProvider(provider);
+    this.wrappedProviderInstalled = true;
+  }
+
+  hasWrappedProvider(): boolean {
+    return this.wrappedProviderInstalled;
+  }
+
+  getGhostSuggestion(): GhostSuggestion | null {
+    return this.optionsRef.isBashModeActive() ? this.ghost : null;
+  }
+
+  clearGhostSuggestion(): void {
+    this.ghostAbort?.abort();
+    this.ghostAbort = null;
+    this.ghost = null;
+  }
+
+  dismissBashModeUi(): void {
+    this.shellHistoryIndex = -1;
+    this.shellHistoryItems = [];
+    this.shellHistoryDraft = "";
+    this.clearGhostSuggestion();
+
+    const editor = this as unknown as {
+      cancelAutocomplete?: () => void;
+    };
+    editor.cancelAutocomplete?.();
+    this.tui.requestRender();
+  }
+
+  handleInput(data: string): void {
+    const bashMode = this.optionsRef.isBashModeActive();
+
+    if (bashMode && this.keybindingsRef.matches(data, "app.interrupt")) {
+      this.optionsRef.onExitBashMode();
+      return;
+    }
+
+    if (bashMode && this.keybindingsRef.matches(data, "app.clear") && this.optionsRef.isShellRunning()) {
+      this.optionsRef.onInterrupt();
+      return;
+    }
+
+    if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorUp")) {
+      this.navigateShellHistory(-1);
+      return;
+    }
+
+    if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorDown")) {
+      this.navigateShellHistory(1);
+      return;
+    }
+
+    if (
+      bashMode
+      && this.keybindingsRef.matches(data, "tui.editor.cursorRight")
+      && this.acceptGhostSuggestion(false)
+    ) {
+      return;
+    }
+
+    if (bashMode && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
+      if (this.optionsRef.isShellRunning()) {
+        this.optionsRef.onNotify("Shell command already running", "warning");
+        return;
+      }
+
+      if (this.acceptGhostSuggestion(true)) {
+        const command = this.getExpandedText().trim();
+        if (!command) return;
+        this.clearGhostSuggestion();
+        this.shellHistoryIndex = -1;
+        this.shellHistoryItems = [];
+        this.shellHistoryDraft = "";
+        this.optionsRef.onSubmitCommand(command);
+        this.setText("");
+        return;
+      }
+
+      if (this.isShowingAutocomplete()) {
+        super.handleInput(data);
+        this.scheduleGhostUpdate();
+        return;
+      }
+
+      this.acceptGhostSuggestion(true);
+      const command = this.getExpandedText().trim();
+      if (!command) return;
+      this.clearGhostSuggestion();
+      this.shellHistoryIndex = -1;
+      this.shellHistoryItems = [];
+      this.shellHistoryDraft = "";
+      this.optionsRef.onSubmitCommand(command);
+      this.setText("");
+      return;
+    }
+
+    super.handleInput(data);
+
+    if (!this.optionsRef.isBashModeActive()) {
+      this.shellHistoryIndex = -1;
+      this.shellHistoryItems = [];
+      this.shellHistoryDraft = "";
+      this.clearGhostSuggestion();
+      return;
+    }
+
+    if (
+      isPrintableInput(data)
+      || this.keybindingsRef.matches(data, "tui.editor.deleteCharBackward")
+      || this.keybindingsRef.matches(data, "tui.editor.deleteCharForward")
+      || this.keybindingsRef.matches(data, "tui.editor.deleteWordBackward")
+      || this.keybindingsRef.matches(data, "tui.editor.deleteWordForward")
+      || this.keybindingsRef.matches(data, "tui.editor.deleteToLineStart")
+      || this.keybindingsRef.matches(data, "tui.editor.deleteToLineEnd")
+      || this.keybindingsRef.matches(data, "tui.input.newLine")
+      || this.keybindingsRef.matches(data, "tui.editor.cursorLeft")
+      || this.keybindingsRef.matches(data, "tui.editor.cursorRight")
+    ) {
+      this.shellHistoryIndex = -1;
+      this.shellHistoryItems = [];
+      this.shellHistoryDraft = "";
+      this.scheduleGhostUpdate();
+      this.triggerBashAutocomplete();
+    }
+  }
+
+  render(width: number): string[] {
+    const lines = super.render(width);
+    if (!this.optionsRef.isBashModeActive()) return lines;
+    if (!this.ghost) return lines;
+
+    const text = this.getText();
+    if (text.includes("\n")) return lines;
+    const cursor = this.getCursor();
+    if (cursor.line !== 0 || cursor.col !== text.length) return lines;
+    if (!this.ghost.value.startsWith(text) || this.ghost.value === text) return lines;
+    if (lines.length < 3) return lines;
+
+    const suffix = this.ghost.value.slice(text.length);
+    const contentLine = 1;
+    const cursorBlock = "\x1b[7m \x1b[0m";
+    const availableWidth = Math.max(0, width - visibleWidth(text) - 1);
+    if (availableWidth === 0) return lines;
+
+    const shownSuffix = truncateToWidth(suffix, availableWidth, "", true);
+    if (!shownSuffix) return lines;
+
+    const padding = " ".repeat(Math.max(0, width - visibleWidth(text) - 1 - visibleWidth(shownSuffix)));
+    const ghost = `\x1b[38;5;244m${shownSuffix}\x1b[0m`;
+    lines[contentLine] = `${text}${cursorBlock}${ghost}${padding}`;
+    return lines;
+  }
+
+  private acceptGhostSuggestion(submitAfter: boolean): boolean {
+    if (!this.ghost) return false;
+    const text = this.getExpandedText();
+    if (!this.ghost.value.startsWith(text) || this.ghost.value === text) return false;
+    this.setText(this.ghost.value);
+    this.clearGhostSuggestion();
+    if (submitAfter) {
+      this.tui.requestRender();
+    }
+    return true;
+  }
+
+  private navigateShellHistory(direction: -1 | 1): void {
+    const prefix = this.shellHistoryDraft || this.getExpandedText();
+    if (this.shellHistoryIndex === -1) {
+      this.shellHistoryDraft = prefix;
+      this.shellHistoryItems = this.optionsRef.getHistoryEntries(prefix);
+    }
+
+    if (this.shellHistoryItems.length === 0) {
+      this.optionsRef.onNotify("No shell history matches", "info");
+      return;
+    }
+
+    if (direction < 0) {
+      this.shellHistoryIndex = Math.min(this.shellHistoryItems.length - 1, this.shellHistoryIndex + 1);
+      this.setText(this.shellHistoryItems[this.shellHistoryIndex] ?? this.shellHistoryDraft);
+      this.clearGhostSuggestion();
+      return;
+    }
+
+    this.shellHistoryIndex -= 1;
+    if (this.shellHistoryIndex < 0) {
+      this.shellHistoryIndex = -1;
+      this.setText(this.shellHistoryDraft);
+      this.scheduleGhostUpdate();
+      return;
+    }
+
+    this.setText(this.shellHistoryItems[this.shellHistoryIndex] ?? this.shellHistoryDraft);
+    this.clearGhostSuggestion();
+  }
+
+  private triggerBashAutocomplete(): void {
+    const editor = this as unknown as {
+      requestAutocomplete?: (options: { force: boolean; explicitTab: boolean }) => void;
+    };
+    editor.requestAutocomplete?.({ force: false, explicitTab: false });
+  }
+
+  private scheduleGhostUpdate(): void {
+    const text = this.getExpandedText();
+    const currentToken = ++this.ghostToken;
+    this.ghostAbort?.abort();
+    if (!text.trim()) {
+      this.ghost = null;
+      this.tui.requestRender();
+      return;
+    }
+
+    const controller = new AbortController();
+    this.ghostAbort = controller;
+    this.optionsRef.resolveGhostSuggestion(text, controller.signal)
+      .then((ghost) => {
+        if (controller.signal.aborted || currentToken !== this.ghostToken) return;
+        this.ghost = ghost;
+        this.tui.requestRender();
+      })
+      .catch((error) => {
+        if ((error as Error).message === "aborted") return;
+        console.debug("[powerline-footer] Failed to resolve bash ghost suggestion:", error);
+      });
+  }
+}

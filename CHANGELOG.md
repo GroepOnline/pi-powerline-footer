@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Added
+- **Sticky bash mode** — Added `/bash-mode`, `/bash-reset`, a configurable `ctrl+shift+b` toggle, a persistent per-session shell runtime, and an embedded shell transcript below the editor.
+- **Shell-aware completion pipeline** — Added project/global shell history ranking, git-aware completions, PATH/path completions, active-shell native completion adapters, and ghost suggestions for bash mode.
+- **Shell mode status segment** — Added a dedicated `shell_mode` segment that shows when bash mode is active and whether the managed shell is idle or running.
+- **Test coverage for bash mode primitives** — Added tests for transcript truncation, history parsing, completion ranking, ghost suggestions, and managed shell cwd persistence.
+
+### Changed
+- **Auto-hide native context under custom compaction** — When `pi-custom-compaction` is installed and enabled, the powerline now hides `context_pct` and `context_total` so the footer does not show stale native context usage after virtual background summaries apply.
+
+### Fixed
+- **Newest-first shell history ranking** — Bash mode now treats project and global shell history consistently so the newest matching command wins instead of older matches surfacing first.
+- **Interrupted shell recovery** — If an interrupted shell command tears down the managed shell process, the session now marks the command as failed, clears stale process state, and starts cleanly on the next command instead of getting stuck.
+- **Escaped fallback path completions** — Deterministic path completions now escape shell-special characters like spaces before insertion while keeping the dropdown labels readable.
+- **Native completion cwd drift** — Shell-native completion probes now run from the managed shell cwd instead of the extension directory, so repo-aware and path-aware suggestions match the actual bash-mode location.
+- **Broken bash argument completions** — Bash native completion no longer suggests unrelated executables like `declare` for argument positions such as `cd d`, and directory candidates keep their trailing slash.
+- **Enter while shell is busy** — Pressing Enter with ghost text visible no longer mutates the editor when a shell command is already running.
+- **Package release contents** — The published package now includes the new `bash-mode/*.ts` runtime files instead of only the root-level extension files.
+- **Transcript eviction** — The bash transcript now keeps the active command visible even when that single command exceeds the retention cap, instead of evicting the running command entirely.
+- **Escaped native zsh directory completions** — Native zsh completions now preserve trailing directory slashes for escaped path suggestions like `My\ Folder/`.
+- **Prompt history navigation regression** — Bash mode no longer reuses pi-tui’s internal `historyIndex` slot for shell history state, so normal Up/Down prompt navigation works reliably again and Down clears the editor when returning to the live draft.
+
 ## [0.4.11] - 2026-04-14
 
 ### Fixed

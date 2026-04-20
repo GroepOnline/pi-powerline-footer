@@ -17,6 +17,7 @@ import type { ColorScheme, ColorValue, SemanticColor } from "./types.js";
 const DEFAULT_COLORS: Required<ColorScheme> = {
   pi: "accent",
   model: "#d787af",  // Pink/mauve (matching original colors.ts)
+  shellMode: "accent",
   path: "#00afaf",  // Teal/cyan (matching original colors.ts)
   gitDirty: "warning",
   gitClean: "success",
