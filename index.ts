@@ -949,7 +949,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         invalidateGitStatus();
         invalidateGitBranch();
         // Small delay to let git update, then re-render
-        setTimeout(() => tuiRef?.requestRender(), 100);
+        setTimeout(requestRender, 100);
       }
     }
   });
@@ -963,10 +963,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       invalidateGitStatus();
       invalidateGitBranch();
       // Multiple staggered re-renders to catch fast and slow commands
-      setTimeout(() => tuiRef?.requestRender(), 100);
-      setTimeout(() => tuiRef?.requestRender(), 300);
-      setTimeout(() => tuiRef?.requestRender(), 500);
+      setTimeout(requestRender, 100);
+      setTimeout(requestRender, 300);
+      setTimeout(requestRender, 500);
     }
+  });
+
+  pi.on("model_select", async (_event, ctx) => {
+    currentCtx = ctx;
+    requestRender();
   });
 
   // Generate themed working message before agent starts (has access to user's prompt)
@@ -1185,6 +1190,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   pi.on("agent_end", async (_event, ctx) => {
     isStreaming = false;
+    currentCtx = ctx;
     if (ctx.hasUI) {
       onVibeAgentEnd(ctx.ui.setWorkingMessage); // working-vibes internal state + reset message
       if (stashedEditorText !== null) {
@@ -1198,6 +1204,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
       }
     }
+    requestRender();
   });
 
   // Command to toggle/configure
@@ -1752,7 +1759,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
       footerDataRef = footerData;
       tuiRef = tui;
-      const unsub = footerData.onBranchChange(() => tui.requestRender());
+      const unsub = footerData.onBranchChange(() => requestRender());
 
       return {
         dispose: unsub,

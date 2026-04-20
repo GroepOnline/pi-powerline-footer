@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-04-20
+
+### Fixed
+- **Stale footer repaint after model changes and agent completion** — The shared footer/editor render path now invalidates its cached layout and repaints immediately on `model_select` and `agent_end`, fixing the stale model/status behavior reported in issue #11 and avoiding the incomplete direct-render approach proposed in PR #19.
+- **Bracketed paste shell UI refresh** — After multiline bracketed paste completes, bash-mode ghost suggestions and shell autocomplete now refresh normally instead of staying stale.
+
 ## [0.4.12] - 2026-04-20
 
 ### Added

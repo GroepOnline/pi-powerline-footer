@@ -401,7 +401,6 @@ async function generateVibe(
     return `${config.fallback}...`;
   }
   
-  // Build the prompt context with the minimal system instructions some providers require.
   const aiContext = buildAiContext(buildVibePrompt(ctx));
   
   const response = await complete(model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, signal });
@@ -422,10 +421,7 @@ function trackRecentVibe(vibe: string): void {
 }
 
 function updateVibeFromFile(setWorkingMessage: (msg?: string) => void): void {
-  const vibe = getNextVibeFromFile();
-  // Always set message - file mode is synchronous, no need for isStreaming check
-  // (unlike generate mode which needs to check if still streaming after async API call)
-  setWorkingMessage(vibe);
+  setWorkingMessage(getNextVibeFromFile());
 }
 
 async function generateAndUpdate(

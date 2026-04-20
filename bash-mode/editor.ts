@@ -74,49 +74,70 @@ export class BashModeEditor extends CustomEditor {
   }
 
   handleInput(data: string): void {
-    if (data.includes("\x1b[200~") || Reflect.get(this, "isInPaste") === true) {
+    const pasteInProgress = data.includes("\x1b[200~") || Reflect.get(this, "isInPaste") === true;
+    if (pasteInProgress) {
       super.handleInput(data);
-      return;
-    }
+      if (Reflect.get(this, "isInPaste") === true) {
+        return;
+      }
+    } else {
+      const bashMode = this.optionsRef.isBashModeActive();
+      const oneOffBashCommand = !bashMode && this.isOneOffBashCommandContext();
 
-    const bashMode = this.optionsRef.isBashModeActive();
-    const oneOffBashCommand = !bashMode && this.isOneOffBashCommandContext();
-
-    if (bashMode && this.keybindingsRef.matches(data, "app.interrupt")) {
-      this.optionsRef.onExitBashMode();
-      return;
-    }
-
-    if (bashMode && this.keybindingsRef.matches(data, "app.clear") && this.optionsRef.isShellRunning()) {
-      this.optionsRef.onInterrupt();
-      return;
-    }
-
-    if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorUp")) {
-      this.navigateShellHistory(-1);
-      return;
-    }
-
-    if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorDown")) {
-      this.navigateShellHistory(1);
-      return;
-    }
-
-    if (
-      (bashMode || oneOffBashCommand)
-      && this.keybindingsRef.matches(data, "tui.editor.cursorRight")
-      && this.acceptGhostSuggestion(false)
-    ) {
-      return;
-    }
-
-    if (bashMode && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
-      if (this.optionsRef.isShellRunning()) {
-        this.optionsRef.onNotify("Shell command already running", "warning");
+      if (bashMode && this.keybindingsRef.matches(data, "app.interrupt")) {
+        this.optionsRef.onExitBashMode();
         return;
       }
 
-      if (this.acceptGhostSuggestion(true)) {
+      if (bashMode && this.keybindingsRef.matches(data, "app.clear") && this.optionsRef.isShellRunning()) {
+        this.optionsRef.onInterrupt();
+        return;
+      }
+
+      if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorUp")) {
+        this.navigateShellHistory(-1);
+        return;
+      }
+
+      if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorDown")) {
+        this.navigateShellHistory(1);
+        return;
+      }
+
+      if (
+        (bashMode || oneOffBashCommand)
+        && this.keybindingsRef.matches(data, "tui.editor.cursorRight")
+        && this.acceptGhostSuggestion(false)
+      ) {
+        return;
+      }
+
+      if (bashMode && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
+        if (this.optionsRef.isShellRunning()) {
+          this.optionsRef.onNotify("Shell command already running", "warning");
+          return;
+        }
+
+        if (this.acceptGhostSuggestion(true)) {
+          const command = this.getExpandedText().trim();
+          if (!command) return;
+          this.clearGhostSuggestion();
+          this.shellHistoryIndex = -1;
+          this.shellHistoryItems = [];
+          this.shellHistoryDraft = "";
+          this.optionsRef.onSubmitCommand(command);
+          this.setText("");
+          this.refreshGhostSuggestion();
+          return;
+        }
+
+        if (this.isShowingAutocomplete()) {
+          super.handleInput(data);
+          this.scheduleGhostUpdate();
+          return;
+        }
+
+        this.acceptGhostSuggestion(true);
         const command = this.getExpandedText().trim();
         if (!command) return;
         this.clearGhostSuggestion();
@@ -129,33 +150,15 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
-      if (this.isShowingAutocomplete()) {
-        super.handleInput(data);
-        this.scheduleGhostUpdate();
-        return;
+      if (oneOffBashCommand && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
+        if (this.acceptGhostSuggestion(true)) {
+          super.handleInput(data);
+          return;
+        }
       }
 
-      this.acceptGhostSuggestion(true);
-      const command = this.getExpandedText().trim();
-      if (!command) return;
-      this.clearGhostSuggestion();
-      this.shellHistoryIndex = -1;
-      this.shellHistoryItems = [];
-      this.shellHistoryDraft = "";
-      this.optionsRef.onSubmitCommand(command);
-      this.setText("");
-      this.refreshGhostSuggestion();
-      return;
+      super.handleInput(data);
     }
-
-    if (oneOffBashCommand && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
-      if (this.acceptGhostSuggestion(true)) {
-        super.handleInput(data);
-        return;
-      }
-    }
-
-    super.handleInput(data);
 
     if (!this.isShellCompletionContext()) {
       this.shellHistoryIndex = -1;
@@ -166,6 +169,8 @@ export class BashModeEditor extends CustomEditor {
     }
 
     if (
+      pasteInProgress
+      ||
       isPrintableInput(data)
       || this.keybindingsRef.matches(data, "tui.editor.deleteCharBackward")
       || this.keybindingsRef.matches(data, "tui.editor.deleteCharForward")

@@ -9,6 +9,37 @@ import { BashCompletionEngine, getOneOffBashCommandContext, OneOffBashAutocomple
 import { ManagedShellSession } from "../bash-mode/shell-session.ts";
 import type { ExtendedCompletionItem } from "../bash-mode/types.ts";
 
+function ensureEditorModuleLinks(): { cleanup: () => void } {
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  mkdirSync(nodeModulesDir, { recursive: true });
+  const links = [
+    {
+      link: join(nodeModulesDir, "pi-coding-agent"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+    },
+    {
+      link: join(nodeModulesDir, "pi-tui"),
+      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+    },
+  ];
+
+  for (const { link, target } of links) {
+    if (!existsSync(link)) {
+      symlinkSync(target, link);
+    }
+  }
+
+  return {
+    cleanup() {
+      for (const { link } of links.reverse()) {
+        if (existsSync(link)) {
+          rmSync(link, { recursive: true, force: true });
+        }
+      }
+    },
+  };
+}
+
 test("project history is stored newest-first and global zsh history parses histfile format", () => {
   const cwd = mkdtempSync(join(tmpdir(), "powerline-history-"));
   const histfile = join(cwd, ".zsh_history");
@@ -372,24 +403,7 @@ test("managed shell session recovers cleanly after interrupt", async () => {
 });
 
 test("bash editor autocomplete trigger keeps the editor instance binding", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -401,33 +415,12 @@ test("bash editor autocomplete trigger keeps the editor instance binding", async
     });
     assert.deepEqual(calls, [{ force: false, explicitTab: false }]);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor does not submit pasted multiline input while bracketed paste is active", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -470,11 +463,74 @@ test("bash editor does not submit pasted multiline input while bracketed paste i
     assert.equal(submitted, 0);
     assert.equal(delegated, 1);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
+    links.cleanup();
+  }
+});
+
+test("bash editor refreshes shell ghost state after a bracketed paste completes", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { CustomEditor } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
+
+    let delegated = 0;
+    let scheduled = 0;
+    let autocompleteTriggered = 0;
+    const superHandleInput = CustomEditor.prototype.handleInput;
+    CustomEditor.prototype.handleInput = function handleInput() {
+      delegated += 1;
+      Reflect.set(this, "isInPaste", false);
+    };
+
+    try {
+      (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+        isInPaste: true,
+        optionsRef: {
+          isBashModeActive: () => true,
+          isShellRunning: () => false,
+          onExitBashMode() {},
+          onInterrupt() {},
+          onNotify() {},
+          onSubmitCommand() {},
+          getHistoryEntries() {
+            return [];
+          },
+          resolveGhostSuggestion: async () => null,
+        },
+        keybindingsRef: {
+          matches() {
+            return false;
+          },
+        },
+        getExpandedText() {
+          return "git status";
+        },
+        isShellCompletionContext() {
+          return true;
+        },
+        shellHistoryIndex: 3,
+        shellHistoryItems: ["git status"],
+        shellHistoryDraft: "git",
+        scheduleGhostUpdate() {
+          scheduled += 1;
+        },
+        isShellCommandEmpty() {
+          return false;
+        },
+        triggerBashAutocomplete() {
+          autocompleteTriggered += 1;
+        },
+      }, "\r");
+    } finally {
+      CustomEditor.prototype.handleInput = superHandleInput;
     }
+
+    assert.equal(delegated, 1);
+    assert.equal(scheduled, 1);
+    assert.equal(autocompleteTriggered, 1);
+  } finally {
+    links.cleanup();
   }
 });
 
@@ -522,24 +578,7 @@ test("one-off bash autocomplete provider stays inactive before the bang command 
 });
 
 test("bash editor refreshGhostSuggestion reuses the ghost scheduling path", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -553,33 +592,12 @@ test("bash editor refreshGhostSuggestion reuses the ghost scheduling path", asyn
 
     assert.equal(scheduled, true);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor dismiss clears autocomplete when mode turns off", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -617,33 +635,12 @@ test("bash editor dismiss clears autocomplete when mode turns off", async () => 
     assert.equal(fakeEditor.historyIndex, 7);
     assert.equal(fakeEditor.shellHistoryIndex, -1);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor shell history state does not clobber the base prompt history index", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -671,33 +668,12 @@ test("bash editor shell history state does not clobber the base prompt history i
     assert.equal(fakeEditor.historyIndex, 5);
     assert.equal(fakeEditor.shellHistoryIndex, 0);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor escape exits bash mode", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -725,33 +701,12 @@ test("bash editor escape exits bash mode", async () => {
     assert.equal(exited, true);
     assert.equal(interrupted, false);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor right arrow accepts an empty-prompt ghost suggestion without submitting", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -786,33 +741,12 @@ test("bash editor right arrow accepts an empty-prompt ghost suggestion without s
     assert.equal(accepted, true);
     assert.equal(submitted, false);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor right arrow accepts ghost text for one-off bang commands", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -841,33 +775,12 @@ test("bash editor right arrow accepts ghost text for one-off bang commands", asy
 
     assert.equal(accepted, true);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor enter does not accept ghost text while a shell command is running", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -907,33 +820,12 @@ test("bash editor enter does not accept ghost text while a shell command is runn
     assert.equal(warned, true);
     assert.equal(submitted, false);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor does not accept a hidden ghost suggestion when the cursor is not at the end", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -953,33 +845,12 @@ test("bash editor does not accept a hidden ghost suggestion when the cursor is n
 
     assert.equal(accepted, false);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
 
 test("bash editor submit clears the prompt and refreshes the empty ghost suggestion", async () => {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
-    },
-  ];
-
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-    }
-  }
+  const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
@@ -1028,10 +899,6 @@ test("bash editor submit clears the prompt and refreshes the empty ghost suggest
     assert.equal(cleared, true);
     assert.equal(refreshed, true);
   } finally {
-    for (const { link } of links.reverse()) {
-      if (existsSync(link)) {
-        rmSync(link, { recursive: true, force: true });
-      }
-    }
+    links.cleanup();
   }
 });
