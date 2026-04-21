@@ -1,0 +1,129 @@
+import type { BuiltinStatusLineSegmentId, ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId } from "./types.js";
+
+export interface PowerlineConfig {
+  preset: StatusLinePreset;
+  customItems: CustomStatusItem[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizePreset(value: unknown, presets: readonly StatusLinePreset[]): StatusLinePreset | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (presets as readonly string[]).includes(normalized) ? (normalized as StatusLinePreset) : null;
+}
+
+function normalizeCustomItemId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  return /^[a-zA-Z0-9_-]+$/.test(normalized) ? normalized : null;
+}
+
+function normalizeCustomItemPosition(value: unknown): CustomItemPosition {
+  if (value === "left" || value === "right" || value === "secondary") return value;
+  return "right";
+}
+
+function normalizeCustomColor(value: unknown): ColorValue | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized ? (normalized as ColorValue) : undefined;
+}
+
+function normalizeCustomPrefix(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized ? normalized : undefined;
+}
+
+function normalizeCustomStatusItem(raw: unknown, idOverride?: string): CustomStatusItem | null {
+  if (!isRecord(raw)) return null;
+  const id = normalizeCustomItemId(idOverride ?? raw.id);
+  if (!id) return null;
+
+  const statusKey = typeof raw.statusKey === "string" && raw.statusKey.trim() ? raw.statusKey.trim() : id;
+
+  return {
+    id,
+    statusKey,
+    position: normalizeCustomItemPosition(raw.position),
+    color: normalizeCustomColor(raw.color),
+    prefix: normalizeCustomPrefix(raw.prefix),
+    hideWhenMissing: raw.hideWhenMissing !== false,
+    excludeFromExtensionStatuses: raw.excludeFromExtensionStatuses !== false,
+  };
+}
+
+function normalizeCustomItems(raw: unknown): CustomStatusItem[] {
+  const normalized: CustomStatusItem[] = [];
+
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const item = normalizeCustomStatusItem(entry);
+      if (item) normalized.push(item);
+    }
+  } else if (isRecord(raw)) {
+    for (const [id, entry] of Object.entries(raw)) {
+      const item = normalizeCustomStatusItem(entry, id);
+      if (item) normalized.push(item);
+    }
+  }
+
+  const deduped = new Map<string, CustomStatusItem>();
+  for (const item of normalized) {
+    deduped.set(item.id, item);
+  }
+
+  return [...deduped.values()];
+}
+
+export function parsePowerlineConfig(value: unknown, presets: readonly StatusLinePreset[]): PowerlineConfig {
+  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [] };
+
+  const directPreset = normalizePreset(value, presets);
+  if (directPreset) return { ...defaultConfig, preset: directPreset };
+
+  if (!isRecord(value)) return defaultConfig;
+
+  return {
+    preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
+    customItems: normalizeCustomItems(value.customItems),
+  };
+}
+
+export function mergeSegmentsWithCustomItems(presetDef: PresetDef, customItems: readonly CustomStatusItem[]): {
+  leftSegments: StatusLineSegmentId[];
+  rightSegments: StatusLineSegmentId[];
+  secondarySegments: StatusLineSegmentId[];
+} {
+  const left: StatusLineSegmentId[] = [...presetDef.leftSegments];
+  const right: StatusLineSegmentId[] = [...presetDef.rightSegments];
+  const secondary: StatusLineSegmentId[] = [...(presetDef.secondarySegments ?? [])];
+
+  for (const item of customItems) {
+    const segmentId: StatusLineSegmentId = `custom:${item.id}`;
+    if (item.position === "left") left.push(segmentId);
+    else if (item.position === "secondary") secondary.push(segmentId);
+    else right.push(segmentId);
+  }
+
+  return { leftSegments: left, rightSegments: right, secondarySegments: secondary };
+}
+
+export function nextPowerlineSettingWithPreset(existingPowerlineSetting: unknown, preset: StatusLinePreset): unknown {
+  if (!isRecord(existingPowerlineSetting)) {
+    return preset;
+  }
+  return { ...existingPowerlineSetting, preset };
+}
+
+export function collectHiddenExtensionStatusKeys(customItems: readonly CustomStatusItem[]): Set<string> {
+  const hidden = new Set<string>();
+  for (const item of customItems) {
+    if (item.excludeFromExtensionStatuses) hidden.add(item.statusKey);
+  }
+  return hidden;
+}

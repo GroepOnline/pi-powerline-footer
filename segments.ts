@@ -1,7 +1,7 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import type { RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
+import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
 import { fg, rainbow, applyColor } from "./theme.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
 
@@ -415,9 +415,11 @@ const extensionStatusesSegment: StatusLineSegment = {
 
     // Join compact statuses with a separator
     // Skip: empty strings, notification-style ("[...") shown above editor,
-    // and strings that are only ANSI codes with no visible text
+    // and strings that are only ANSI codes with no visible text.
+    // Also skip statuses explicitly elevated into dedicated custom segments.
     const parts: string[] = [];
-    for (const value of statuses.values()) {
+    for (const [statusKey, value] of statuses.entries()) {
+      if (ctx.hiddenExtensionStatusKeys.has(statusKey)) continue;
       if (value && !value.trimStart().startsWith('[') && visibleWidth(value) > 0) {
         // Strip trailing separators (· | · etc.) that some extensions bake in,
         // since we add our own SEP_DOT joiner between entries.
@@ -441,7 +443,7 @@ const extensionStatusesSegment: StatusLineSegment = {
 // Segment Registry
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
+export const SEGMENTS: Record<BuiltinStatusLineSegmentId, StatusLineSegment> = {
   pi: piSegment,
   model: modelSegment,
   shell_mode: shellModeSegment,
@@ -464,7 +466,32 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
   extension_statuses: extensionStatusesSegment,
 };
 
+function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): RenderedSegment {
+  const customItemId = id.slice("custom:".length);
+  const custom = ctx.customItemsById.get(customItemId);
+  if (!custom) return { content: "", visible: false };
+
+  const rawStatus = ctx.extensionStatuses.get(custom.statusKey);
+  if (!rawStatus || visibleWidth(rawStatus) <= 0) {
+    return custom.hideWhenMissing ? { content: "", visible: false } : { content: custom.prefix ?? custom.id, visible: true };
+  }
+
+  let content = rawStatus;
+  if (custom.prefix) {
+    content = `${custom.prefix}${SEP_DOT}${content}`;
+  }
+  if (custom.color) {
+    content = applyColor(ctx.theme, custom.color, content);
+  }
+
+  return { content, visible: true };
+}
+
 export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): RenderedSegment {
+  if (id.startsWith("custom:")) {
+    return renderCustomSegment(id, ctx);
+  }
+
   const segment = SEGMENTS[id];
   if (!segment) {
     return { content: "", visible: false };
