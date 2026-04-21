@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-04-21
+
 ### Added
 - **`theme.json` icon overrides** — `theme.json` can now override footer icons alongside colors, so you can tone down or remove glyphs like the auto-compact marker without editing `icons.ts`.
 
