@@ -1,11 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendProjectHistory, matchHistoryEntries, readGlobalShellHistory } from "../bash-mode/history.ts";
 import { BashTranscriptStore } from "../bash-mode/transcript.ts";
-import { BashCompletionEngine, getOneOffBashCommandContext, OneOffBashAutocompleteProvider } from "../bash-mode/completion.ts";
+import {
+  BashAutocompleteProvider,
+  BashCompletionEngine,
+  getOneOffBashCommandContext,
+  ModeAwareAutocompleteProvider,
+  OneOffBashAutocompleteProvider,
+} from "../bash-mode/completion.ts";
+import { getIcons } from "../icons.ts";
 import { ManagedShellSession } from "../bash-mode/shell-session.ts";
 
 function getMethod(target: object, name: string): Function {
@@ -76,6 +83,34 @@ test("matchHistoryEntries returns newest entries when the prefix is empty", () =
   ], "", 10);
 
   assert.deepEqual(matches, ["git stash", "git status", "git fetch"]);
+});
+
+test("theme.json can override icons without touching colors", () => {
+  const themePath = join(process.cwd(), "theme.json");
+  const originalTheme = existsSync(themePath) ? readFileSync(themePath, "utf8") : null;
+  const originalNerdFonts = process.env.POWERLINE_NERD_FONTS;
+
+  try {
+    writeFileSync(themePath, JSON.stringify({ icons: { auto: "↯", warning: "" } }, null, 2) + "\n");
+    process.env.POWERLINE_NERD_FONTS = "0";
+
+    const icons = getIcons();
+    assert.equal(icons.auto, "↯");
+    assert.equal(icons.warning, "");
+    assert.equal(icons.folder, "dir");
+  } finally {
+    if (originalTheme === null) {
+      if (existsSync(themePath)) unlinkSync(themePath);
+    } else {
+      writeFileSync(themePath, originalTheme);
+    }
+
+    if (originalNerdFonts === undefined) {
+      delete process.env.POWERLINE_NERD_FONTS;
+    } else {
+      process.env.POWERLINE_NERD_FONTS = originalNerdFonts;
+    }
+  }
 });
 
 test("one-off bash command context strips ! and !! prefixes", () => {
@@ -574,8 +609,8 @@ test("bash editor Tab accepts the current ghost suggestion without opening autoc
       isShowingAutocomplete() {
         return false;
       },
-      acceptGhostSuggestion(submitAfter: boolean) {
-        accepted = submitAfter === false;
+      acceptGhostSuggestion() {
+        accepted = true;
         return true;
       },
     }, "tab");
@@ -703,6 +738,44 @@ test("one-off bash autocomplete provider stays inactive even inside bang command
   );
 
   assert.equal(suggestions, null);
+});
+
+test("bash autocomplete providers return null synchronously in shell contexts", () => {
+  const signal = new AbortController().signal;
+
+  const bashSuggestions = new BashAutocompleteProvider().getSuggestions(["git st"], 0, 6, { signal });
+  const oneOffSuggestions = new OneOffBashAutocompleteProvider().getSuggestions(["!git st"], 0, 7, { signal });
+
+  assert.equal(bashSuggestions, null);
+  assert.equal(oneOffSuggestions, null);
+  assert.equal(bashSuggestions instanceof Promise, false);
+  assert.equal(oneOffSuggestions instanceof Promise, false);
+});
+
+test("mode-aware autocomplete provider preserves synchronous default results", () => {
+  const signal = new AbortController().signal;
+  const syncResult = {
+    items: [{ value: "status", label: "status" }],
+    prefix: "st",
+  };
+  const provider = new ModeAwareAutocompleteProvider(
+    {
+      getSuggestions() {
+        return syncResult;
+      },
+      applyCompletion(lines: string[], cursorLine: number, cursorCol: number) {
+        return { lines, cursorLine, cursorCol };
+      },
+    },
+    new BashAutocompleteProvider(),
+    new OneOffBashAutocompleteProvider(),
+    () => false,
+  );
+
+  const suggestions = provider.getSuggestions(["st"], 0, 2, { signal });
+
+  assert.equal(suggestions, syncResult);
+  assert.equal(suggestions instanceof Promise, false);
 });
 
 test("one-off bash autocomplete provider stays inactive before the bang command starts", async () => {
@@ -870,8 +943,8 @@ test("bash editor right arrow accepts an empty-prompt ghost suggestion without s
       isShowingAutocomplete() {
         return false;
       },
-      acceptGhostSuggestion(submitAfter: boolean) {
-        accepted = submitAfter === false;
+      acceptGhostSuggestion() {
+        accepted = true;
         return true;
       },
     }, "right");
@@ -905,8 +978,8 @@ test("bash editor right arrow accepts ghost text for one-off bang commands", asy
       isOneOffBashCommandContext() {
         return true;
       },
-      acceptGhostSuggestion(submitAfter: boolean) {
-        accepted = submitAfter === false;
+      acceptGhostSuggestion() {
+        accepted = true;
         return true;
       },
     }, "right");
@@ -962,6 +1035,97 @@ test("bash editor enter does not accept ghost text while a shell command is runn
   }
 });
 
+test("bash editor enter submits the typed command without accepting ghost text", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    let submittedCommand = "";
+
+    getMethod(BashModeEditor.prototype, "handleInput").call({
+      ghost: { value: "git diff --staged", source: "project-history" },
+      optionsRef: {
+        isBashModeActive: () => true,
+        isShellRunning: () => false,
+        onExitBashMode: () => {},
+        onInterrupt: () => {},
+        onNotify: () => {},
+        onSubmitCommand: (command: string) => {
+          submittedCommand = command;
+        },
+      },
+      keybindingsRef: {
+        matches(_data: string, id: string) {
+          return id === "tui.input.submit";
+        },
+      },
+      getExpandedText() {
+        return "git diff";
+      },
+      acceptGhostSuggestion() {
+        throw new Error("enter should not accept ghost text");
+      },
+      clearGhostSuggestion() {},
+      setText() {},
+      refreshGhostSuggestion() {},
+      shellHistoryIndex: -1,
+      shellHistoryItems: [],
+      shellHistoryDraft: "",
+    }, "enter");
+
+    assert.equal(submittedCommand, "git diff");
+  } finally {
+    links.cleanup();
+  }
+});
+
+test("one-off bang submit does not accept ghost text before submitting", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { CustomEditor } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
+
+    let delegated = 0;
+    const superHandleInput = CustomEditor.prototype.handleInput;
+    CustomEditor.prototype.handleInput = function handleInput() {
+      delegated += 1;
+    };
+
+    try {
+      getMethod(BashModeEditor.prototype, "handleInput").call({
+        ghost: { value: "!git diff --staged", source: "project-history" },
+        optionsRef: {
+          isBashModeActive: () => false,
+        },
+        keybindingsRef: {
+          matches(_data: string, id: string) {
+            return id === "tui.input.submit";
+          },
+        },
+        getExpandedText() {
+          return "!git diff";
+        },
+        isOneOffBashCommandContext() {
+          return true;
+        },
+        isShellCompletionContext() {
+          return true;
+        },
+        acceptGhostSuggestion() {
+          throw new Error("enter should not accept ghost text for one-off bash commands");
+        },
+      }, "enter");
+    } finally {
+      CustomEditor.prototype.handleInput = superHandleInput;
+    }
+
+    assert.equal(delegated, 1);
+  } finally {
+    links.cleanup();
+  }
+});
+
 test("bash editor does not accept a hidden ghost suggestion when the cursor is not at the end", async () => {
   const links = ensureEditorModuleLinks();
 
@@ -979,7 +1143,7 @@ test("bash editor does not accept a hidden ghost suggestion when the cursor is n
         throw new Error("hidden ghost should not be accepted");
       },
       clearGhostSuggestion() {},
-    }, false);
+    });
 
     assert.equal(accepted, false);
   } finally {

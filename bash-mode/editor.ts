@@ -105,14 +105,14 @@ export class BashModeEditor extends CustomEditor {
       }
 
       if ((bashMode || oneOffBashCommand) && this.keybindingsRef.matches(data, "tui.input.tab")) {
-        this.acceptGhostSuggestion(false);
+        this.acceptGhostSuggestion();
         return;
       }
 
       if (
         (bashMode || oneOffBashCommand)
         && this.keybindingsRef.matches(data, "tui.editor.cursorRight")
-        && this.acceptGhostSuggestion(false)
+        && this.acceptGhostSuggestion()
       ) {
         return;
       }
@@ -120,19 +120,6 @@ export class BashModeEditor extends CustomEditor {
       if (bashMode && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
         if (this.optionsRef.isShellRunning()) {
           this.optionsRef.onNotify("Shell command already running", "warning");
-          return;
-        }
-
-        if (this.acceptGhostSuggestion(true)) {
-          const command = this.getExpandedText().trim();
-          if (!command) return;
-          this.clearGhostSuggestion();
-          this.shellHistoryIndex = -1;
-          this.shellHistoryItems = [];
-          this.shellHistoryDraft = "";
-          this.optionsRef.onSubmitCommand(command);
-          this.setText("");
-          this.refreshGhostSuggestion();
           return;
         }
 
@@ -146,13 +133,6 @@ export class BashModeEditor extends CustomEditor {
         this.setText("");
         this.refreshGhostSuggestion();
         return;
-      }
-
-      if (oneOffBashCommand && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
-        if (this.acceptGhostSuggestion(true)) {
-          super.handleInput(data);
-          return;
-        }
       }
 
       super.handleInput(data);
@@ -222,7 +202,7 @@ export class BashModeEditor extends CustomEditor {
     return getOneOffBashCommandContext(this.getExpandedText()) !== null;
   }
 
-  private acceptGhostSuggestion(submitAfter: boolean): boolean {
+  private acceptGhostSuggestion(): boolean {
     if (!this.ghost) return false;
     const text = this.getExpandedText();
     if (text.includes("\n")) return false;
@@ -233,9 +213,6 @@ export class BashModeEditor extends CustomEditor {
     if (!this.ghost.value.startsWith(text) || this.ghost.value === text) return false;
     this.setText(this.ghost.value);
     this.clearGhostSuggestion();
-    if (submitAfter) {
-      this.tui.requestRender();
-    }
     return true;
   }
 

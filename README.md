@@ -248,7 +248,7 @@ Configure via preset options: `path: { mode: "full" }`
 
 ## Theming
 
-Colors are configurable via pi's theme system. Each preset defines its own color scheme, and you can override individual colors with a `theme.json` file in the extension directory.
+Colors are configurable via pi's theme system. Each preset defines its own color scheme, and you can override individual colors and icons with a `theme.json` file in the extension directory.
 
 ### Default Colors
 
@@ -279,6 +279,10 @@ Create `~/.pi/agent/extensions/powerline-footer/theme.json`:
     "shellMode": "accent",
     "path": "#00afaf",
     "gitClean": "success"
+  },
+  "icons": {
+    "auto": "↯",
+    "warning": ""
   }
 }
 ```
@@ -286,5 +290,7 @@ Create `~/.pi/agent/extensions/powerline-footer/theme.json`:
 Colors can be:
 - **Theme color names**: `accent`, `muted`, `dim`, `text`, `success`, `warning`, `error`, `border`, `borderAccent`, `borderMuted`
 - **Hex colors**: `#ff5500`, `#d787af`
+
+Icons can be any string, including `""` when you want to suppress a specific glyph entirely.
 
 See `theme.example.json` for all available options.

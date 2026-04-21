@@ -14,5 +14,9 @@
     "tokens": "muted",
     "separator": "dim",
     "border": "borderMuted"
+  },
+  "icons": {
+    "auto": "↯",
+    "warning": ""
   }
 }

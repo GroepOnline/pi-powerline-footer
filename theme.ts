@@ -13,6 +13,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ColorScheme, ColorValue, SemanticColor } from "./types.js";
 
+export interface PowerlineThemeConfig {
+  colors?: unknown;
+  icons?: unknown;
+}
+
 // Default color scheme (uses pi theme colors)
 const DEFAULT_COLORS: Required<ColorScheme> = {
   pi: "accent",
@@ -40,6 +45,8 @@ const RAINBOW_COLORS = [
 // Cache for user theme overrides
 let userThemeCache: ColorScheme | null = null;
 let userThemeCacheTime = 0;
+let themeConfigCache: PowerlineThemeConfig | null = null;
+let themeConfigCacheTime = 0;
 const CACHE_TTL = 5000; // 5 seconds
 const warnedInvalidThemeColors = new Set<string>();
 
@@ -81,12 +88,12 @@ function getThemePath(): string {
 }
 
 /**
- * Load user theme overrides from theme.json
+ * Load user theme config from theme.json
  */
-function loadUserTheme(): ColorScheme {
+export function loadThemeConfig(): PowerlineThemeConfig {
   const now = Date.now();
-  if (userThemeCache && now - userThemeCacheTime < CACHE_TTL) {
-    return userThemeCache;
+  if (themeConfigCache && now - themeConfigCacheTime < CACHE_TTL) {
+    return themeConfigCache;
   }
 
   const themePath = getThemePath();
@@ -94,16 +101,28 @@ function loadUserTheme(): ColorScheme {
     if (existsSync(themePath)) {
       const content = readFileSync(themePath, "utf-8");
       const parsed = JSON.parse(content);
-      const colors = isRecord(parsed) ? parsed.colors : undefined;
-      userThemeCache = sanitizeUserThemeOverrides(colors);
-      userThemeCacheTime = now;
-      return userThemeCache;
+      themeConfigCache = isRecord(parsed) ? parsed : {};
+      themeConfigCacheTime = now;
+      return themeConfigCache;
     }
   } catch (error) {
+    // Theme overrides are optional. If the file is unreadable or malformed,
+    // keep rendering with built-in defaults instead of breaking the footer.
     console.debug(`[powerline-theme] Failed to load ${themePath}:`, error);
   }
 
-  userThemeCache = {};
+  themeConfigCache = {};
+  themeConfigCacheTime = now;
+  return themeConfigCache;
+}
+
+function loadUserTheme(): ColorScheme {
+  const now = Date.now();
+  if (userThemeCache && now - userThemeCacheTime < CACHE_TTL) {
+    return userThemeCache;
+  }
+
+  userThemeCache = sanitizeUserThemeOverrides(loadThemeConfig().colors);
   userThemeCacheTime = now;
   return userThemeCache;
 }

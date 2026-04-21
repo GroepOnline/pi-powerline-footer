@@ -453,12 +453,7 @@ export class BashCompletionEngine {
 }
 
 export class BashAutocompleteProvider implements AutocompleteProvider {
-  async getSuggestions(
-    lines: string[],
-    cursorLine: number,
-    cursorCol: number,
-    options: { signal: AbortSignal; force?: boolean },
-  ): Promise<AutocompleteSuggestions | null> {
+  getSuggestions(): AutocompleteSuggestions | null {
     return null;
   }
 
@@ -498,12 +493,7 @@ function applyExtendedCompletion(lines: string[], cursorLine: number, item: Exte
 }
 
 export class OneOffBashAutocompleteProvider implements AutocompleteProvider {
-  async getSuggestions(
-    lines: string[],
-    cursorLine: number,
-    cursorCol: number,
-    options: { signal: AbortSignal; force?: boolean },
-  ): Promise<AutocompleteSuggestions | null> {
+  getSuggestions(): AutocompleteSuggestions | null {
     return null;
   }
 
@@ -543,12 +533,12 @@ export class ModeAwareAutocompleteProvider implements AutocompleteProvider {
     this.isBashModeActive = isBashModeActive;
   }
 
-  async getSuggestions(
+  getSuggestions(
     lines: string[],
     cursorLine: number,
     cursorCol: number,
     options: { signal: AbortSignal; force?: boolean },
-  ): Promise<AutocompleteSuggestions | null> {
+  ): AutocompleteSuggestions | null | Promise<AutocompleteSuggestions | null> {
     if (this.isBashModeActive()) {
       return this.bashProvider.getSuggestions(lines, cursorLine, cursorCol, options);
     }

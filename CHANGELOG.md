@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- **`theme.json` icon overrides** — `theme.json` can now override footer icons alongside colors, so you can tone down or remove glyphs like the auto-compact marker without editing `icons.ts`.
+
+### Fixed
+- **Older pi autocomplete compatibility** — Bash-mode autocomplete providers now stay sync-compatible when they have no dropdown items, so wrapping the default provider no longer risks handing older hosts a `Promise` from `getSuggestions()`.
+- **Enter no longer forces ghost text** — Bash-mode Enter now submits exactly what is in the editor instead of silently accepting the current ghost suggestion first. `Tab` and Right Arrow remain the explicit ghost-accept actions.
+
 ## [0.4.14] - 2026-04-21
 
 ### Fixed

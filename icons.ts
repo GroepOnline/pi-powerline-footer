@@ -1,3 +1,5 @@
+import { loadThemeConfig } from "./theme.ts";
+
 export interface IconSet {
   pi: string;
   model: string;
@@ -89,6 +91,25 @@ export const ASCII_ICONS: IconSet = {
   warning: "!",
 };
 
+type PartialIconSet = Partial<IconSet>;
+
+function sanitizeUserIconOverrides(value: unknown): PartialIconSet {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  const sanitized: PartialIconSet = {};
+  const validKeys = Object.keys(NERD_ICONS) as Array<keyof IconSet>;
+  for (const key of validKeys) {
+    const icon = value[key];
+    if (typeof icon === "string") {
+      sanitized[key] = icon;
+    }
+  }
+
+  return sanitized;
+}
+
 // Separator characters
 export interface SeparatorChars {
   powerlineLeft: string;
@@ -148,7 +169,11 @@ export function hasNerdFonts(): boolean {
 }
 
 export function getIcons(): IconSet {
-  return hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
+  const baseIcons = hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
+  return {
+    ...baseIcons,
+    ...sanitizeUserIconOverrides(loadThemeConfig().icons),
+  };
 }
 
 export function getSeparatorChars(): SeparatorChars {
