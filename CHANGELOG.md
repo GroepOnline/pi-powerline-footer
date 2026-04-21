@@ -2,11 +2,15 @@
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-04-21
+
 ### Fixed
 - **Project-local powerline settings now apply** — The extension now merges global and project settings for `powerline`, so project `.pi/settings.json` custom items and preset overrides render correctly without requiring a matching global config.
 - **Preset changes preserve project-local custom items** — `/powerline <preset>` now writes back to the project settings file when that file owns the `powerline` key, preserving existing `customItems` instead of silently bypassing project configuration.
 - **Promoted status rendering cleanup** — Custom powerline items now normalize status text consistently, keep notification-style statuses renderable when promoted, and avoid duplicate notification display above the editor.
 - **Custom-item review cleanup** — Removed the remaining `any` escape from the custom-items test and deleted redundant narration comments in the touched segment code.
+- **Per-level thinking colors restored** — `minimal`, `low`, and `medium` thinking levels now render with their documented distinct colors again, and the theme surface now exposes only the thinking color keys that actually affect runtime rendering.
+- **Thinking-color cleanup** — Narrowed the segment theme contract to the `fg()` API it actually uses, removed the regression test cast, and cleaned the nearby thinking docs/comments to match the project’s plain-text style.
 
 ## [0.4.15] - 2026-04-21
 

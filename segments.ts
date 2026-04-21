@@ -1,10 +1,10 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
-import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.js";
-import { fg, rainbow, applyColor } from "./theme.js";
-import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
+import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
+import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
+import { fg, rainbow, applyColor } from "./theme.ts";
+import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
 
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
   return fg(ctx.theme, semantic, text, ctx.colors);
@@ -192,7 +192,6 @@ const thinkingSegment: StatusLineSegment = {
   render(ctx) {
     const level = ctx.thinkingLevel || "off";
 
-    // Text label for each level
     const levelText: Record<string, string> = {
       off: "off",
       minimal: "min",
@@ -204,12 +203,20 @@ const thinkingSegment: StatusLineSegment = {
     const label = levelText[level] || level;
     const content = `think:${label}`;
 
-    // Use rainbow effect for high/xhigh (like Claude Code ultrathink)
     if (level === "high" || level === "xhigh") {
       return { content: rainbow(content), visible: true };
     }
 
-    // Use thinking color for lower levels
+    if (level === "minimal") {
+      return { content: color(ctx, "thinkingMinimal", content), visible: true };
+    }
+    if (level === "low") {
+      return { content: color(ctx, "thinkingLow", content), visible: true };
+    }
+    if (level === "medium") {
+      return { content: color(ctx, "thinkingMedium", content), visible: true };
+    }
+
     return { content: color(ctx, "thinking", content), visible: true };
   },
 };

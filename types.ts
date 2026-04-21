@@ -2,6 +2,7 @@ import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 
 // Theme color - either a pi theme color name or a custom hex color
 export type ColorValue = ThemeColor | `#${string}`;
+export type ThemeLike = Pick<Theme, "fg">;
 
 // Semantic color names for segments
 export type SemanticColor =
@@ -12,6 +13,9 @@ export type SemanticColor =
   | "gitDirty"
   | "gitClean"
   | "thinking"
+  | "thinkingMinimal"
+  | "thinkingLow"
+  | "thinkingMedium"
   | "context"
   | "contextWarn"
   | "contextError"
@@ -167,7 +171,7 @@ export interface SegmentContext {
   options: StatusLineSegmentOptions;
   
   // Theming
-  theme: Theme;
+  theme: ThemeLike;
   colors: ColorScheme;
 }
 

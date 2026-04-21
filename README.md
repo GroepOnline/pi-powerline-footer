@@ -18,7 +18,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Live thinking level indicator** — Shows current thinking level (`thinking:off`, `thinking:med`, etc.) with color-coded gradient. High and xhigh levels get a rainbow shimmer effect inspired by Claude Code's ultrathink.
+**Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
 
 **Smart defaults** — Nerd Font auto-detection for iTerm, WezTerm, Kitty, Ghostty, and Alacritty with ASCII fallbacks. Colors matched to oh-my-pi's dark theme.
 
@@ -261,12 +261,12 @@ The thinking segment shows live updates when you change thinking level:
 
 | Level | Display | Color |
 |-------|---------|-------|
-| off | `thinking:off` | gray |
-| minimal | `thinking:min` | purple-gray |
-| low | `thinking:low` | blue |
-| medium | `thinking:med` | teal |
-| high | `thinking:high` | 🌈 rainbow |
-| xhigh | `thinking:xhigh` | 🌈 rainbow |
+| off | `think:off` | gray |
+| minimal | `think:min` | purple-gray |
+| low | `think:low` | blue |
+| medium | `think:med` | teal |
+| high | `think:high` | rainbow |
+| xhigh | `think:xhigh` | rainbow |
 
 ## Path Display
 
@@ -302,7 +302,10 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 | `path` | `#00afaf` | Directory path |
 | `gitClean` | `success` | Git branch (clean) |
 | `gitDirty` | `warning` | Git branch (dirty) |
-| `thinking` | `muted` | Thinking level |
+| `thinking` | `thinkingOff` | Thinking level (`off`) |
+| `thinkingMinimal` | `thinkingMinimal` | Thinking level (`minimal`) |
+| `thinkingLow` | `thinkingLow` | Thinking level (`low`) |
+| `thinkingMedium` | `thinkingMedium` | Thinking level (`medium`) |
 | `context` | `dim` | Context usage |
 | `contextWarn` | `warning` | Context usage >70% |
 | `contextError` | `error` | Context usage >90% |
@@ -320,7 +323,11 @@ Create `~/.pi/agent/extensions/powerline-footer/theme.json`:
     "model": "accent",
     "shellMode": "accent",
     "path": "#00afaf",
-    "gitClean": "success"
+    "gitClean": "success",
+    "thinking": "thinkingOff",
+    "thinkingMinimal": "thinkingMinimal",
+    "thinkingLow": "thinkingLow",
+    "thinkingMedium": "thinkingMedium"
   },
   "icons": {
     "auto": "↯",

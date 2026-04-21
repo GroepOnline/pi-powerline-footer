@@ -11,7 +11,7 @@ import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ColorScheme, ColorValue, SemanticColor } from "./types.js";
+import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "./types.ts";
 
 export interface PowerlineThemeConfig {
   colors?: unknown;
@@ -26,7 +26,10 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   path: "#00afaf",  // Teal/cyan (matching original colors.ts)
   gitDirty: "warning",
   gitClean: "success",
-  thinking: "muted",
+  thinking: "thinkingOff",
+  thinkingMinimal: "thinkingMinimal",
+  thinkingLow: "thinkingLow",
+  thinkingMedium: "thinkingMedium",
   context: "dim",
   contextWarn: "warning",
   contextError: "error",
@@ -164,7 +167,7 @@ function hexToAnsi(hex: string): string {
  * Apply a color to text using the pi theme or custom hex
  */
 export function applyColor(
-  theme: Theme,
+  theme: ThemeLike,
   color: ColorValue,
   text: string
 ): string {
@@ -191,7 +194,7 @@ export function applyColor(
  * Apply a semantic color to text
  */
 export function fg(
-  theme: Theme,
+  theme: ThemeLike,
   semantic: SemanticColor,
   text: string,
   presetColors?: ColorScheme

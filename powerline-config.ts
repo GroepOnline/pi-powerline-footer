@@ -1,5 +1,5 @@
 import { visibleWidth } from "@mariozechner/pi-tui";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId } from "./types.js";
+import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
