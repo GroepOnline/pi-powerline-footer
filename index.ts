@@ -99,7 +99,6 @@ const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
 type PromptHistoryState = { savedPromptHistory: string[] };
-type PromptHistoryGlobal = typeof globalThis & { [PROMPT_HISTORY_STATE_KEY]?: PromptHistoryState };
 type SessionAssistantUsage = AssistantMessage["usage"];
 
 function hasSessionAssistantUsage(value: unknown): value is SessionAssistantUsage {
@@ -126,12 +125,21 @@ function isSessionAssistantMessage(value: unknown): value is AssistantMessage {
     && (value.stopReason === undefined || typeof value.stopReason === "string");
 }
 
+function isPromptHistoryState(value: unknown): value is PromptHistoryState {
+  return isRecord(value)
+    && Array.isArray(value.savedPromptHistory)
+    && value.savedPromptHistory.every((entry) => typeof entry === "string");
+}
+
 function getPromptHistoryState(): PromptHistoryState {
-  const globalState = globalThis as PromptHistoryGlobal;
-  if (!globalState[PROMPT_HISTORY_STATE_KEY]) {
-    globalState[PROMPT_HISTORY_STATE_KEY] = { savedPromptHistory: [] };
+  const existing = Reflect.get(globalThis, PROMPT_HISTORY_STATE_KEY);
+  if (isPromptHistoryState(existing)) {
+    return existing;
   }
-  return globalState[PROMPT_HISTORY_STATE_KEY];
+
+  const state: PromptHistoryState = { savedPromptHistory: [] };
+  Reflect.set(globalThis, PROMPT_HISTORY_STATE_KEY, state);
+  return state;
 }
 
 function readPromptHistory(editor: any): string[] {
@@ -1662,21 +1670,27 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         },
       });
 
+      const getInstalledAutocompleteProvider = (): AutocompleteProvider | undefined => {
+        const candidate = Reflect.get(editor, "autocompleteProvider");
+        if (!candidate || typeof candidate !== "object") {
+          return undefined;
+        }
+        if (typeof Reflect.get(candidate, "getSuggestions") !== "function") {
+          return undefined;
+        }
+        if (typeof Reflect.get(candidate, "applyCompletion") !== "function") {
+          return undefined;
+        }
+        return candidate;
+      };
+
       const attachAutocompleteProvider = (): boolean => {
         if (editor.hasWrappedProvider()) return true;
-        const defaultProvider = (editor as unknown as { autocompleteProvider?: AutocompleteProvider }).autocompleteProvider;
+        const defaultProvider = getInstalledAutocompleteProvider();
         if (!defaultProvider) return false;
 
-        const bashProvider = new BashAutocompleteProvider(
-          bashCompletionEngine,
-          () => getShellPath(),
-          () => getShellCwd(),
-        );
-        const oneOffBashProvider = new OneOffBashAutocompleteProvider(
-          bashCompletionEngine,
-          () => getShellPath(),
-          () => getShellCwd(),
-        );
+        const bashProvider = new BashAutocompleteProvider();
+        const oneOffBashProvider = new OneOffBashAutocompleteProvider();
         editor.installAutocompleteProvider(
           new ModeAwareAutocompleteProvider(defaultProvider, bashProvider, oneOffBashProvider, () => bashModeActive),
         );
@@ -1690,7 +1704,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
       const originalHandleInput = editor.handleInput.bind(editor);
       editor.handleInput = (data: string) => {
-        if (!autocompleteFixed && !(editor as unknown as { autocompleteProvider?: AutocompleteProvider }).autocompleteProvider) {
+        if (!autocompleteFixed && !getInstalledAutocompleteProvider()) {
           autocompleteFixed = true;
           snapshotPromptHistory(editor);
           ctx.ui.setEditorComponent(editorFactory);

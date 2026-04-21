@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-04-21
+
+### Fixed
+- **Ghost-first bash predictions** — Bash mode no longer opens or relies on a shell autocomplete dropdown. Typing now updates only the inline ghost suggestion, and `Tab` accepts that ghost instead of surfacing a menu.
+- **Irrelevant command-position suggestions** — Command stems now resolve from successful project history first, can use guarded global Git history as a backup, and fall back to a tiny curated default set when history is absent. Today that means `g` → `git status` and `c` → `cd ..`, while generic command noise like `g++` stays out of the shell UI.
+- **Empty-prompt global-history ghosts** — When bash mode starts on an empty prompt without a successful project-history match, it now stays empty instead of promoting an unvalidated global-history command.
+
 ## [0.4.13] - 2026-04-20
 
 ### Fixed

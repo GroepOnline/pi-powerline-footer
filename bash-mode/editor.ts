@@ -94,13 +94,18 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
-      if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorUp")) {
+      if (bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorUp")) {
         this.navigateShellHistory(-1);
         return;
       }
 
-      if (bashMode && !this.isShowingAutocomplete() && this.keybindingsRef.matches(data, "tui.editor.cursorDown")) {
+      if (bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorDown")) {
         this.navigateShellHistory(1);
+        return;
+      }
+
+      if ((bashMode || oneOffBashCommand) && this.keybindingsRef.matches(data, "tui.input.tab")) {
+        this.acceptGhostSuggestion(false);
         return;
       }
 
@@ -131,13 +136,6 @@ export class BashModeEditor extends CustomEditor {
           return;
         }
 
-        if (this.isShowingAutocomplete()) {
-          super.handleInput(data);
-          this.scheduleGhostUpdate();
-          return;
-        }
-
-        this.acceptGhostSuggestion(true);
         const command = this.getExpandedText().trim();
         if (!command) return;
         this.clearGhostSuggestion();
@@ -186,10 +184,6 @@ export class BashModeEditor extends CustomEditor {
       this.shellHistoryItems = [];
       this.shellHistoryDraft = "";
       this.scheduleGhostUpdate();
-      if (this.isShellCommandEmpty()) {
-        return;
-      }
-      this.triggerBashAutocomplete();
     }
   }
 
@@ -226,15 +220,6 @@ export class BashModeEditor extends CustomEditor {
 
   private isOneOffBashCommandContext(): boolean {
     return getOneOffBashCommandContext(this.getExpandedText()) !== null;
-  }
-
-  private isShellCommandEmpty(): boolean {
-    if (this.optionsRef.isBashModeActive()) {
-      return this.getExpandedText().trim().length === 0;
-    }
-
-    const bang = getOneOffBashCommandContext(this.getExpandedText());
-    return bang ? bang.command.trim().length === 0 : true;
   }
 
   private acceptGhostSuggestion(submitAfter: boolean): boolean {
@@ -283,12 +268,6 @@ export class BashModeEditor extends CustomEditor {
 
     this.setText(this.shellHistoryItems[this.shellHistoryIndex] ?? this.shellHistoryDraft);
     this.clearGhostSuggestion();
-  }
-
-  private triggerBashAutocomplete(): void {
-    if ("requestAutocomplete" in this && typeof this.requestAutocomplete === "function") {
-      this.requestAutocomplete({ force: false, explicitTab: false });
-    }
   }
 
   private scheduleGhostUpdate(): void {

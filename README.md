@@ -30,7 +30,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Sticky bash mode** — Toggle bash mode with `ctrl+shift+b` or `/bash-mode`. It keeps a managed shell session alive for the current pi session, shows a dedicated `shell_mode` segment, streams command output into an embedded transcript below the editor, and lets `cd` or exported state persist across commands.
 
-**Shell completions and ghost suggestions** — Bash mode ranks per-project shell history ahead of global shell history, uses active-shell native completions for both the dropdown and inline ghost text, and falls back to git/path/PATH completions when shell-native capture has nothing useful. Entering bash mode on an empty prompt now shows a history-based ghost suggestion immediately, and clearing the prompt restores it. The same inline predictions and shell completions now also kick in for one-off `!command` and `!!command` prompts. Right Arrow accepts ghost text into the editor, Tab works the dropdown, and Enter runs the current shell command.
+**Shell ghost suggestions** — Bash mode is now ghost-first. Successful per-project shell history is the primary source, contextual shell-native/path/git continuations can still extend an existing command, and generic dropdown autocomplete is gone. At command position, short stems first resolve from the newest successful local command, can use guarded global shell history for high-confidence heads like `git`, and finally fall back to a tiny curated default set when history is absent. Right now that curated set is `g` → `git status` and `c` → `cd ..`. If the bash prompt is empty, bash mode shows the newest successful project-history ghost suggestion when one exists, otherwise it stays empty. The same inline predictions now also kick in for one-off `!command` and `!!command` prompts. Right Arrow or Tab accepts ghost text into the editor, and Enter runs the current shell command.
 
 ## Installation
 
@@ -73,12 +73,12 @@ While bash mode is active:
 
 - Enter runs the current shell command
 - Right Arrow accepts ghost text into the editor without running it
-- Tab opens or advances shell completions
+- Tab accepts the current ghost suggestion when one exists; otherwise it does nothing
 - Up and Down browse matching shell history
 - `escape` exits bash mode and returns to normal prompt mode
 - `ctrl+c` interrupts the active shell job before falling back to normal pi behavior
 
-The managed shell is persistent for the current pi session. Command output appears in a transcript below the editor, and shell cwd changes are reflected in the footer path and `shell_mode` segment. If the bash prompt is empty, bash mode shows the newest history-based ghost suggestion immediately, including right after mode entry or after the prompt is cleared again. One-off `!command` and `!!command` prompts reuse the same shell prediction pipeline, including ghost text and dropdown completions. Mode entry still does not auto-open the completion dropdown.
+The managed shell is persistent for the current pi session. Command output appears in a transcript below the editor, and shell cwd changes are reflected in the footer path and `shell_mode` segment. If the bash prompt is empty, bash mode shows the newest successful project-history ghost suggestion immediately when one exists, including right after mode entry or after the prompt is cleared again. One-off `!command` and `!!command` prompts reuse the same shell prediction pipeline, including ghost text. Mode entry stays quiet: there is no automatic or manual dropdown completion surface anymore.
 
 ### Bash mode configuration
 

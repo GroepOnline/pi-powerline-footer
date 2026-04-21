@@ -7,7 +7,14 @@ import { appendProjectHistory, matchHistoryEntries, readGlobalShellHistory } fro
 import { BashTranscriptStore } from "../bash-mode/transcript.ts";
 import { BashCompletionEngine, getOneOffBashCommandContext, OneOffBashAutocompleteProvider } from "../bash-mode/completion.ts";
 import { ManagedShellSession } from "../bash-mode/shell-session.ts";
-import type { ExtendedCompletionItem } from "../bash-mode/types.ts";
+
+function getMethod(target: object, name: string): Function {
+  const method = Reflect.get(target, name);
+  if (typeof method !== "function") {
+    throw new Error(`Expected ${name} to be a function`);
+  }
+  return method;
+}
 
 function ensureEditorModuleLinks(): { cleanup: () => void } {
   const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
@@ -115,47 +122,6 @@ test("transcript store keeps the active command even when it alone exceeds limit
   assert.deepEqual(snapshot.commands[0]?.output, ["1", "2", "3", "4"]);
 });
 
-test("completion engine ranks project history above global history and deterministic sources", async () => {
-  const cwd = mkdtempSync(join(tmpdir(), "powerline-completion-"));
-  const binDir = join(cwd, "bin");
-  mkdirSync(binDir, { recursive: true });
-  writeFileSync(join(binDir, "gitish"), "#!/bin/sh\n", { mode: 0o755 });
-  process.env.PATH = `${binDir}:${process.env.PATH || ""}`;
-
-  const histfile = join(cwd, ".zsh_history");
-  process.env.HISTFILE = histfile;
-  writeFileSync(histfile, ": 1711111111:0;git switch\n");
-
-  appendProjectHistory(cwd, "git status", cwd);
-  appendProjectHistory(cwd, "git stash", cwd);
-
-  const engine = new BashCompletionEngine() as BashCompletionEngine & {
-    getNativeSuggestions: (request: any) => Promise<ExtendedCompletionItem[]>;
-  };
-  engine.getNativeSuggestions = async () => [{
-    value: "status",
-    label: "status",
-    replacement: "status",
-    startCol: 0,
-    endCol: 0,
-    source: "native",
-    score: 60,
-  }];
-
-  const items = await engine.getDropdownSuggestions({
-    line: "git st",
-    cursorCol: 6,
-    cwd,
-    shellPath: "/bin/zsh",
-    signal: new AbortController().signal,
-  });
-
-  assert.equal(items[0]?.replacement, "git stash");
-  assert.equal(items[0]?.source, "project-history");
-  assert.ok(items.some((item) => item.source === "native"));
-  assert.ok(items.some((item) => item.source === "git"));
-});
-
 test("ghost suggestion prefers project history over global history", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "powerline-ghost-"));
   const histfile = join(cwd, ".zsh_history");
@@ -196,7 +162,7 @@ test("ghost suggestion shows newest project history on an empty prompt", async (
   assert.equal(suggestion?.source, "project-history");
 });
 
-test("ghost suggestion falls back to global history on an empty prompt", async () => {
+test("ghost suggestion stays empty on an empty prompt when only global history exists", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "powerline-empty-global-ghost-"));
   const histfile = join(cwd, ".zsh_history");
   process.env.HISTFILE = histfile;
@@ -213,8 +179,7 @@ test("ghost suggestion falls back to global history on an empty prompt", async (
     new AbortController().signal,
   );
 
-  assert.equal(suggestion?.value, "git pull");
-  assert.equal(suggestion?.source, "global-history");
+  assert.equal(suggestion, null);
 });
 
 test("ghost suggestion stays empty when the prompt is empty and no history exists", async () => {
@@ -223,10 +188,8 @@ test("ghost suggestion stays empty when the prompt is empty and no history exist
   process.env.HISTFILE = histfile;
   writeFileSync(histfile, "");
 
-  const engine = new BashCompletionEngine() as BashCompletionEngine & {
-    getNativeSuggestions: (request: any) => Promise<ExtendedCompletionItem[]>;
-  };
-  engine.getNativeSuggestions = async () => [{
+  const engine = new BashCompletionEngine();
+  Reflect.set(engine, "getNativeSuggestions", async () => [{
     value: "develop",
     label: "develop",
     replacement: "develop",
@@ -234,7 +197,7 @@ test("ghost suggestion stays empty when the prompt is empty and no history exist
     endCol: 0,
     source: "native",
     score: 99,
-  }];
+  }]);
 
   const suggestion = await engine.getGhostSuggestion(
     "",
@@ -275,10 +238,8 @@ test("ghost suggestion uses shell-native completions before deterministic fallba
   const cwd = mkdtempSync(join(tmpdir(), "powerline-native-ghost-"));
   mkdirSync(join(cwd, "dev"), { recursive: true });
 
-  const engine = new BashCompletionEngine() as BashCompletionEngine & {
-    getNativeSuggestions: (request: any) => Promise<ExtendedCompletionItem[]>;
-  };
-  engine.getNativeSuggestions = async () => [{
+  const engine = new BashCompletionEngine();
+  Reflect.set(engine, "getNativeSuggestions", async () => [{
     value: "develop",
     label: "develop",
     replacement: "develop",
@@ -286,7 +247,7 @@ test("ghost suggestion uses shell-native completions before deterministic fallba
     endCol: 0,
     source: "native",
     score: 99,
-  }];
+  }]);
 
   const suggestion = await engine.getGhostSuggestion(
     "cd d",
@@ -296,6 +257,193 @@ test("ghost suggestion uses shell-native completions before deterministic fallba
   );
 
   assert.equal(suggestion?.value, "cd develop");
+  assert.equal(suggestion?.source, "native");
+});
+
+test("command-position ghost prefers the newest successful project-history command", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-command-project-history-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, "");
+  appendProjectHistory(cwd, "git status", cwd);
+
+  const engine = new BashCompletionEngine();
+  const suggestion = await engine.getGhostSuggestion(
+    "g",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "git status");
+  assert.equal(suggestion?.source, "project-history");
+});
+
+test("command-position ghost uses guarded global git history when project history is absent", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-command-global-history-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, ": 1711111111:0;git stash\n");
+
+  const engine = new BashCompletionEngine();
+  Reflect.set(engine, "getNativeSuggestions", async () => [{
+    value: "git",
+    label: "git",
+    replacement: "git",
+    startCol: 0,
+    endCol: 0,
+    source: "native",
+    score: 60,
+  }]);
+
+  const suggestion = await engine.getGhostSuggestion(
+    "g",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "git stash");
+  assert.equal(suggestion?.source, "global-history");
+});
+
+test("command-position ghost falls back to git status when git is likely but history is absent", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-command-git-default-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, "");
+
+  const engine = new BashCompletionEngine();
+  Reflect.set(engine, "getNativeSuggestions", async () => [{
+    value: "git",
+    label: "git",
+    replacement: "git",
+    startCol: 0,
+    endCol: 0,
+    source: "native",
+    score: 60,
+  }]);
+
+  const suggestion = await engine.getGhostSuggestion(
+    "g",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "git status");
+  assert.equal(suggestion?.source, "git");
+});
+
+test("command-position ghost falls back to cd dot-dot for the cd stem", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-command-cd-default-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, "");
+
+  const engine = new BashCompletionEngine();
+  const suggestion = await engine.getGhostSuggestion(
+    "c",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "cd ..");
+  assert.equal(suggestion?.source, "path");
+});
+
+test("command-position ghost stays empty when there is no supported history-backed stem", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-command-empty-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, "");
+
+  const engine = new BashCompletionEngine();
+  Reflect.set(engine, "getNativeSuggestions", async () => [{
+    value: "xxd",
+    label: "xxd",
+    replacement: "xxd",
+    startCol: 0,
+    endCol: 0,
+    source: "native",
+    score: 60,
+  }]);
+
+  const suggestion = await engine.getGhostSuggestion(
+    "x",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion, null);
+});
+
+test("ghost suggestion ignores invalid raw global history and picks a validated candidate", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-global-history-ghost-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, ": 1711111111:0;git statis\n");
+
+  const engine = new BashCompletionEngine();
+  Reflect.set(engine, "getNativeSuggestions", async () => [{
+    value: "status",
+    label: "status",
+    replacement: "status",
+    startCol: 0,
+    endCol: 0,
+    source: "native",
+    score: 60,
+  }]);
+
+  const suggestion = await engine.getGhostSuggestion(
+    "git st",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "git status");
+  assert.equal(suggestion?.source, "native");
+});
+
+test("global history breaks ties among already-valid native ghost candidates", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-global-history-tiebreak-ghost-"));
+  const histfile = join(cwd, ".zsh_history");
+  process.env.HISTFILE = histfile;
+  writeFileSync(histfile, ": 1711111111:0;git stash\n");
+
+  const engine = new BashCompletionEngine();
+  Reflect.set(engine, "getNativeSuggestions", async () => [
+    {
+      value: "status",
+      label: "status",
+      replacement: "status",
+      startCol: 0,
+      endCol: 0,
+      source: "native",
+      score: 60,
+    },
+    {
+      value: "stash",
+      label: "stash",
+      replacement: "stash",
+      startCol: 0,
+      endCol: 0,
+      source: "native",
+      score: 60,
+    },
+  ]);
+
+  const suggestion = await engine.getGhostSuggestion(
+    "git st",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
+
+  assert.equal(suggestion?.value, "git stash");
   assert.equal(suggestion?.source, "native");
 });
 
@@ -402,18 +550,37 @@ test("managed shell session recovers cleanly after interrupt", async () => {
   }
 });
 
-test("bash editor autocomplete trigger keeps the editor instance binding", async () => {
+test("bash editor Tab accepts the current ghost suggestion without opening autocomplete", async () => {
   const links = ensureEditorModuleLinks();
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const calls: Array<{ force: boolean; explicitTab: boolean }> = [];
-    (BashModeEditor.prototype as Record<string, unknown>)["triggerBashAutocomplete"].call({
-      requestAutocomplete(options: { force: boolean; explicitTab: boolean }) {
-        calls.push(options);
+    let accepted = false;
+
+    getMethod(BashModeEditor.prototype, "handleInput").call({
+      optionsRef: {
+        isBashModeActive: () => true,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onInterrupt() {},
+        onNotify() {},
+        onSubmitCommand() {},
       },
-    });
-    assert.deepEqual(calls, [{ force: false, explicitTab: false }]);
+      keybindingsRef: {
+        matches(_data: string, id: string) {
+          return id === "tui.input.tab";
+        },
+      },
+      isShowingAutocomplete() {
+        return false;
+      },
+      acceptGhostSuggestion(submitAfter: boolean) {
+        accepted = submitAfter === false;
+        return true;
+      },
+    }, "tab");
+
+    assert.equal(accepted, true);
   } finally {
     links.cleanup();
   }
@@ -434,7 +601,7 @@ test("bash editor does not submit pasted multiline input while bracketed paste i
     };
 
     try {
-      (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+      getMethod(BashModeEditor.prototype, "handleInput").call({
         isInPaste: true,
         optionsRef: {
           isBashModeActive: () => true,
@@ -476,7 +643,6 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
 
     let delegated = 0;
     let scheduled = 0;
-    let autocompleteTriggered = 0;
     const superHandleInput = CustomEditor.prototype.handleInput;
     CustomEditor.prototype.handleInput = function handleInput() {
       delegated += 1;
@@ -484,7 +650,7 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
     };
 
     try {
-      (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+      getMethod(BashModeEditor.prototype, "handleInput").call({
         isInPaste: true,
         optionsRef: {
           isBashModeActive: () => true,
@@ -515,12 +681,6 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
         scheduleGhostUpdate() {
           scheduled += 1;
         },
-        isShellCommandEmpty() {
-          return false;
-        },
-        triggerBashAutocomplete() {
-          autocompleteTriggered += 1;
-        },
       }, "\r");
     } finally {
       CustomEditor.prototype.handleInput = superHandleInput;
@@ -528,27 +688,13 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
 
     assert.equal(delegated, 1);
     assert.equal(scheduled, 1);
-    assert.equal(autocompleteTriggered, 1);
   } finally {
     links.cleanup();
   }
 });
 
-test("one-off bash autocomplete provider applies completions after the bang prefix", async () => {
-  const engine = new BashCompletionEngine() as BashCompletionEngine & {
-    getDropdownSuggestions: (request: any) => Promise<ExtendedCompletionItem[]>;
-  };
-  engine.getDropdownSuggestions = async () => [{
-    value: "git status",
-    label: "git status",
-    replacement: "git status",
-    startCol: 0,
-    endCol: 2,
-    source: "project-history",
-    score: 100,
-  }];
-
-  const provider = new OneOffBashAutocompleteProvider(engine, () => "/bin/zsh", () => process.cwd());
+test("one-off bash autocomplete provider stays inactive even inside bang commands", async () => {
+  const provider = new OneOffBashAutocompleteProvider();
   const suggestions = await provider.getSuggestions(
     ["!!gi"],
     0,
@@ -556,19 +702,11 @@ test("one-off bash autocomplete provider applies completions after the bang pref
     { signal: new AbortController().signal },
   );
 
-  assert.equal(suggestions?.prefix, "gi");
-  const item = suggestions?.items[0] as ExtendedCompletionItem | undefined;
-  assert.equal(item?.startCol, 2);
-  assert.equal(item?.endCol, 4);
-
-  const applied = provider.applyCompletion(["!!gi"], 0, 4, item as ExtendedCompletionItem);
-  assert.equal(applied.lines[0], "!!git status");
-  assert.equal(applied.cursorCol, "!!git status".length);
+  assert.equal(suggestions, null);
 });
 
 test("one-off bash autocomplete provider stays inactive before the bang command starts", async () => {
-  const engine = new BashCompletionEngine();
-  const provider = new OneOffBashAutocompleteProvider(engine, () => "/bin/zsh", () => process.cwd());
+  const provider = new OneOffBashAutocompleteProvider();
 
   assert.equal(provider.shouldTriggerFileCompletion(["!git status"], 0, 0), false);
   assert.equal(
@@ -584,7 +722,7 @@ test("bash editor refreshGhostSuggestion reuses the ghost scheduling path", asyn
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     let scheduled = false;
 
-    (BashModeEditor.prototype as Record<string, unknown>)["refreshGhostSuggestion"].call({
+    getMethod(BashModeEditor.prototype, "refreshGhostSuggestion").call({
       scheduleGhostUpdate() {
         scheduled = true;
       },
@@ -627,7 +765,7 @@ test("bash editor dismiss clears autocomplete when mode turns off", async () => 
       },
     };
 
-    (BashModeEditor.prototype as Record<string, unknown>)["dismissBashModeUi"].call(fakeEditor);
+    getMethod(BashModeEditor.prototype, "dismissBashModeUi").call(fakeEditor);
 
     assert.equal(aborted, true);
     assert.equal(cancelled, true);
@@ -663,7 +801,7 @@ test("bash editor shell history state does not clobber the base prompt history i
       scheduleGhostUpdate() {},
     };
 
-    (BashModeEditor.prototype as Record<string, unknown>)["navigateShellHistory"].call(fakeEditor, -1);
+    getMethod(BashModeEditor.prototype, "navigateShellHistory").call(fakeEditor, -1);
 
     assert.equal(fakeEditor.historyIndex, 5);
     assert.equal(fakeEditor.shellHistoryIndex, 0);
@@ -680,7 +818,7 @@ test("bash editor escape exits bash mode", async () => {
     let exited = false;
     let interrupted = false;
 
-    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+    getMethod(BashModeEditor.prototype, "handleInput").call({
       optionsRef: {
         isBashModeActive: () => true,
         onExitBashMode: () => {
@@ -713,7 +851,7 @@ test("bash editor right arrow accepts an empty-prompt ghost suggestion without s
     let accepted = false;
     let submitted = false;
 
-    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+    getMethod(BashModeEditor.prototype, "handleInput").call({
       optionsRef: {
         isBashModeActive: () => true,
         isShellRunning: () => false,
@@ -752,7 +890,7 @@ test("bash editor right arrow accepts ghost text for one-off bang commands", asy
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     let accepted = false;
 
-    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+    getMethod(BashModeEditor.prototype, "handleInput").call({
       optionsRef: {
         isBashModeActive: () => false,
       },
@@ -787,7 +925,7 @@ test("bash editor enter does not accept ghost text while a shell command is runn
     let warned = false;
     let submitted = false;
 
-    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+    getMethod(BashModeEditor.prototype, "handleInput").call({
       ghost: { value: "git status", source: "project-history" },
       optionsRef: {
         isBashModeActive: () => true,
@@ -829,7 +967,7 @@ test("bash editor does not accept a hidden ghost suggestion when the cursor is n
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const accepted = (BashModeEditor.prototype as Record<string, unknown>)["acceptGhostSuggestion"].call({
+    const accepted = getMethod(BashModeEditor.prototype, "acceptGhostSuggestion").call({
       ghost: { value: "git status", source: "project-history" },
       getExpandedText() {
         return "git st";
@@ -858,7 +996,7 @@ test("bash editor submit clears the prompt and refreshes the empty ghost suggest
     let cleared = false;
     let refreshed = false;
 
-    (BashModeEditor.prototype as Record<string, unknown>)["handleInput"].call({
+    getMethod(BashModeEditor.prototype, "handleInput").call({
       optionsRef: {
         isBashModeActive: () => true,
         isShellRunning: () => false,
