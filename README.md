@@ -58,6 +58,48 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 Preset selection is saved to `~/.pi/agent/settings.json` under `powerline` and restored on startup.
 Run `/powerline default` to switch back to the default preset.
 
+### Custom items from extension statuses
+
+You can promote any extension status key into its own dedicated powerline item. This gives you a general way to register your own status items without changing this extension.
+
+1. Any extension can publish status text through `ctx.ui.setStatus("my-key", "...value...")`.
+2. Configure `powerline.customItems` to place those keys on the left, right, or secondary row.
+
+```json
+{
+  "powerline": {
+    "preset": "default",
+    "customItems": [
+      {
+        "id": "ci",
+        "statusKey": "ci-status",
+        "position": "right",
+        "prefix": "CI",
+        "color": "warning"
+      },
+      {
+        "id": "review",
+        "position": "secondary",
+        "hideWhenMissing": false,
+        "prefix": "review"
+      }
+    ]
+  }
+}
+```
+
+`customItems` fields:
+
+- `id` (required): unique item id (`a-z`, `A-Z`, `0-9`, `_`, `-`)
+- `statusKey` (optional): extension status key to read, defaults to `id`
+- `position` (optional): `left`, `right`, or `secondary` (default `right`)
+- `prefix` (optional): text shown before the live status value
+- `color` (optional): any Pi theme color (`warning`, `accent`, etc.) or hex (`#RRGGBB`)
+- `hideWhenMissing` (optional): hide item when no status is present (default `true`)
+- `excludeFromExtensionStatuses` (optional): omit this key from the aggregate `extension_statuses` segment (default `true`)
+
+If you still prefer the old style, `"powerline": "default"` continues to work.
+
 ## Bash mode
 
 Toggle bash mode with either:

@@ -23,8 +23,8 @@ export type SemanticColor =
 // Color scheme mapping semantic names to actual colors
 export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 
-// Segment identifiers
-export type StatusLineSegmentId =
+// Built-in segment identifiers
+export type BuiltinStatusLineSegmentId =
   | "pi"
   | "model"
   | "shell_mode"
@@ -45,6 +45,9 @@ export type StatusLineSegmentId =
   | "cache_write"
   | "thinking"
   | "extension_statuses";
+
+// Segment identifiers (built-in + dynamically registered custom items)
+export type StatusLineSegmentId = BuiltinStatusLineSegmentId | `custom:${string}`;
 
 // Separator styles
 export type StatusLineSeparatorStyle =
@@ -80,12 +83,24 @@ export interface StatusLineSegmentOptions {
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
 
+export type CustomItemPosition = "left" | "right" | "secondary";
+
+export interface CustomStatusItem {
+  id: string;
+  statusKey: string;
+  position: CustomItemPosition;
+  color?: ColorValue;
+  prefix?: string;
+  hideWhenMissing: boolean;
+  excludeFromExtensionStatuses: boolean;
+}
+
 // Preset definition
 export interface PresetDef {
-  leftSegments: StatusLineSegmentId[];
-  rightSegments: StatusLineSegmentId[];
+  leftSegments: BuiltinStatusLineSegmentId[];
+  rightSegments: BuiltinStatusLineSegmentId[];
   /** Secondary row segments (shown in footer, above sub bar) */
-  secondarySegments?: StatusLineSegmentId[];
+  secondarySegments?: BuiltinStatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;
   /** Color scheme for this preset */
@@ -145,6 +160,8 @@ export interface SegmentContext {
   
   // Extension statuses
   extensionStatuses: ReadonlyMap<string, string>;
+  hiddenExtensionStatusKeys: ReadonlySet<string>;
+  customItemsById: ReadonlyMap<string, CustomStatusItem>;
   
   // Options
   options: StatusLineSegmentOptions;
@@ -162,6 +179,6 @@ export interface RenderedSegment {
 
 // Segment definition
 export interface StatusLineSegment {
-  id: StatusLineSegmentId;
+  id: BuiltinStatusLineSegmentId;
   render(ctx: SegmentContext): RenderedSegment;
 }

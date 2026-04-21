@@ -11,6 +11,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
+import type { PowerlineConfig } from "./powerline-config.js";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
   BashCompletionEngine,
@@ -24,6 +25,7 @@ import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
 import { getPreset, PRESETS } from "./presets.js";
+import { collectHiddenExtensionStatusKeys, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
@@ -51,12 +53,9 @@ import {
 // Configuration
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface PowerlineConfig {
-  preset: StatusLinePreset;
-}
-
 let config: PowerlineConfig = {
   preset: "default",
+  customItems: [],
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -436,7 +435,7 @@ function writePowerlinePresetSetting(preset: StatusLinePreset): boolean {
     }
   }
 
-  settings.powerline = preset;
+  settings.powerline = nextPowerlineSettingWithPreset(settings.powerline, preset);
 
   try {
     mkdirSync(dirname(settingsPath), { recursive: true });
@@ -447,6 +446,8 @@ function writePowerlinePresetSetting(preset: StatusLinePreset): boolean {
     return false;
   }
 }
+
+const PRESET_NAMES = Object.keys(PRESETS) as StatusLinePreset[];
 
 function isValidPreset(value: unknown): value is StatusLinePreset {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(PRESETS, value);
@@ -653,8 +654,9 @@ function computeResponsiveLayout(
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
   
   // Get all segments: primary first, then secondary
-  const primaryIds = [...presetDef.leftSegments, ...presetDef.rightSegments];
-  const secondaryIds = presetDef.secondarySegments ?? [];
+  const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems);
+  const primaryIds = [...mergedSegments.leftSegments, ...mergedSegments.rightSegments];
+  const secondaryIds = mergedSegments.secondarySegments;
   const allSegmentIds = [...primaryIds, ...secondaryIds];
   
   // Render all segments and get their widths
@@ -717,6 +719,7 @@ function computeResponsiveLayout(
 
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
+  config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
   const resolvedShortcuts = resolveShortcutConfig(startupSettings);
   let bashModeSettings = parseBashModeSettings(startupSettings);
 
@@ -898,7 +901,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const settings = readSettings();
     bashModeSettings = parseBashModeSettings(settings);
     showLastPrompt = settings.showLastPrompt !== false;
-    config.preset = normalizePreset(settings.powerline) ?? "default";
+    config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
     bashTranscript = new BashTranscriptStore(bashModeSettings);
@@ -1579,6 +1582,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const gitBranch = footerDataRef?.getGitBranch() ?? null;
     const gitStatus = getGitStatus(gitBranch);
     const extensionStatuses = footerDataRef?.getExtensionStatuses() ?? new Map();
+    const customItemsById = new Map(config.customItems.map((item) => [item.id, item]));
+    const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
 
     // Check if using OAuth subscription
     const usingSubscription = ctx.model
@@ -1604,6 +1609,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       shellCwd: shellSession?.state.cwd ?? null,
       git: gitStatus,
       extensionStatuses,
+      hiddenExtensionStatusKeys,
+      customItemsById,
       options: presetDef.segmentOptions ?? {},
       theme,
       colors,
