@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectHiddenExtensionStatusKeys, parsePowerlineConfig, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset } from "../powerline-config.ts";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
 
 test("parsePowerlineConfig supports object config with custom items", () => {
   const config = parsePowerlineConfig(
@@ -43,7 +43,17 @@ test("mergeSegmentsWithCustomItems appends custom segment ids by position", () =
 });
 
 test("nextPowerlineSettingWithPreset preserves object settings", () => {
-  const updated = nextPowerlineSettingWithPreset({ preset: "default", customItems: [{ id: "ci" }] }, "compact") as any;
+  const updated = nextPowerlineSettingWithPreset({ preset: "default", customItems: [{ id: "ci" }] }, "compact");
+  if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
+    assert.fail("expected an object powerline setting");
+  }
+  if (!("preset" in updated)) {
+    assert.fail("expected preset to be preserved on the updated powerline setting");
+  }
+  if (!("customItems" in updated)) {
+    assert.fail("expected customItems to be preserved on the updated powerline setting");
+  }
+
   assert.equal(updated.preset, "compact");
   assert.deepEqual(updated.customItems, [{ id: "ci" }]);
 });
@@ -56,4 +66,25 @@ test("collectHiddenExtensionStatusKeys includes default custom status keys", () 
 
   assert.equal(hidden.has("ci-status"), true);
   assert.equal(hidden.has("review"), false);
+});
+
+test("normalizeCompactExtensionStatus strips baked-in trailing separators", () => {
+  assert.equal(normalizeCompactExtensionStatus("CI ok · "), "CI ok");
+  assert.equal(normalizeCompactExtensionStatus("CI ok |   "), "CI ok");
+  assert.equal(normalizeCompactExtensionStatus("[notice] queued"), null);
+});
+
+test("normalizeExtensionStatusValue keeps notification-style statuses renderable for custom items", () => {
+  assert.equal(normalizeExtensionStatusValue("[review] queued · "), "[review] queued");
+});
+
+test("getNotificationExtensionStatuses skips promoted hidden status keys", () => {
+  const statuses = new Map<string, string>([
+    ["ci-status", "[ci] queued"],
+    ["review", "[review] running"],
+    ["plain", "plain status"],
+  ]);
+  const hidden = new Set(["ci-status"]);
+
+  assert.deepEqual(getNotificationExtensionStatuses(statuses, hidden), ["[review] running"]);
 });

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Project-local powerline settings now apply** — The extension now merges global and project settings for `powerline`, so project `.pi/settings.json` custom items and preset overrides render correctly without requiring a matching global config.
+- **Preset changes preserve project-local custom items** — `/powerline <preset>` now writes back to the project settings file when that file owns the `powerline` key, preserving existing `customItems` instead of silently bypassing project configuration.
+- **Promoted status rendering cleanup** — Custom powerline items now normalize status text consistently, keep notification-style statuses renderable when promoted, and avoid duplicate notification display above the editor.
+- **Custom-item review cleanup** — Removed the remaining `any` escape from the custom-items test and deleted redundant narration comments in the touched segment code.
+
 ## [0.4.15] - 2026-04-21
 
 ### Added

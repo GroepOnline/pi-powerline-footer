@@ -25,7 +25,7 @@ import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
 import { getPreset, PRESETS } from "./presets.js";
-import { collectHiddenExtensionStatusKeys, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
@@ -195,6 +195,10 @@ function getSettingsPath(): string {
   return join(homeDir, ".pi", "agent", "settings.json");
 }
 
+function getProjectSettingsPath(cwd: string): string {
+  return join(cwd, ".pi", "settings.json");
+}
+
 function getGlobalCompactionPolicyPath(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(homeDir, ".pi", "agent", "compaction-policy.json");
@@ -203,6 +207,61 @@ function getGlobalCompactionPolicyPath(): string {
 function getCustomCompactionExtensionPath(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(homeDir, ".pi", "agent", "extensions", "pi-custom-compaction");
+}
+
+function mergeSettings(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base };
+
+  for (const [key, overrideValue] of Object.entries(override)) {
+    const baseValue = merged[key];
+    merged[key] = isRecord(baseValue) && isRecord(overrideValue)
+      ? mergeSettings(baseValue, overrideValue)
+      : overrideValue;
+  }
+
+  return merged;
+}
+
+function readSettingsFile(settingsPath: string): Record<string, unknown> {
+  try {
+    if (!existsSync(settingsPath)) {
+      return {};
+    }
+
+    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    if (!isRecord(parsed)) {
+      console.debug(`[powerline-footer] Ignoring non-object settings at ${settingsPath}`);
+      return {};
+    }
+
+    return parsed;
+  } catch (error) {
+    // Settings are user-edited input. Log and keep the extension running with defaults
+    // instead of crashing the UI during startup.
+    console.debug(`[powerline-footer] Failed to read settings from ${settingsPath}:`, error);
+    return {};
+  }
+}
+
+function readWritableSettingsFile(settingsPath: string): Record<string, unknown> | null {
+  if (!existsSync(settingsPath)) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    if (!isRecord(parsed)) {
+      console.debug(`[powerline-footer] Refusing to write settings to non-object file at ${settingsPath}`);
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    // Do not overwrite malformed user settings with partial data. Surface the failure
+    // through the command handler so the user can fix the file intentionally.
+    console.debug(`[powerline-footer] Failed to parse settings at ${settingsPath}:`, error);
+    return null;
+  }
 }
 
 function readCompactionPolicyEnabled(configPath: string): boolean | undefined {
@@ -398,42 +457,23 @@ function persistStashHistory(history: string[]): void {
   }
 }
 
-function readSettings(): Record<string, unknown> {
-  const settingsPath = getSettingsPath();
-  try {
-    if (!existsSync(settingsPath)) {
-      return {};
-    }
-
-    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    if (!isRecord(parsed)) {
-      console.debug(`[powerline-footer] Ignoring non-object settings at ${settingsPath}`);
-      return {};
-    }
-    return parsed;
-  } catch (error) {
-    console.debug(`[powerline-footer] Failed to read settings from ${settingsPath}:`, error);
-    return {};
-  }
+function readSettings(cwd: string = process.cwd()): Record<string, unknown> {
+  return mergeSettings(readSettingsFile(getSettingsPath()), readSettingsFile(getProjectSettingsPath(cwd)));
 }
 
-function writePowerlinePresetSetting(preset: StatusLinePreset): boolean {
-  const settingsPath = getSettingsPath();
-  let settings: Record<string, unknown> = {};
+function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = process.cwd()): boolean {
+  const globalSettingsPath = getSettingsPath();
+  const projectSettingsPath = getProjectSettingsPath(cwd);
+  const globalSettings = readWritableSettingsFile(globalSettingsPath);
+  const projectSettings = readWritableSettingsFile(projectSettingsPath);
 
-  if (existsSync(settingsPath)) {
-    try {
-      const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
-      if (!isRecord(parsed)) {
-        console.debug(`[powerline-footer] Refusing to write preset to non-object settings at ${settingsPath}`);
-        return false;
-      }
-      settings = parsed;
-    } catch (error) {
-      console.debug(`[powerline-footer] Failed to parse settings at ${settingsPath}:`, error);
-      return false;
-    }
+  if (globalSettings === null || projectSettings === null) {
+    return false;
   }
+
+  const writeToProject = Object.prototype.hasOwnProperty.call(projectSettings, "powerline");
+  const settingsPath = writeToProject ? projectSettingsPath : globalSettingsPath;
+  const settings = writeToProject ? projectSettings : globalSettings;
 
   settings.powerline = nextPowerlineSettingWithPreset(settings.powerline, preset);
 
@@ -442,6 +482,8 @@ function writePowerlinePresetSetting(preset: StatusLinePreset): boolean {
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
     return true;
   } catch (error) {
+    // Persist failure should be visible to the command caller, but it should not crash
+    // the interactive session.
     console.debug(`[powerline-footer] Failed to persist preset to ${settingsPath}:`, error);
     return false;
   }
@@ -898,7 +940,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     isStreaming = false;
     stashedEditorText = null;
 
-    const settings = readSettings();
+    const settings = readSettings(ctx.cwd);
     bashModeSettings = parseBashModeSettings(settings);
     showLastPrompt = settings.showLastPrompt !== false;
     config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
@@ -1265,7 +1307,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           setupCustomEditor(ctx);
         }
 
-        if (writePowerlinePresetSetting(preset)) {
+        if (writePowerlinePresetSetting(preset, ctx.cwd)) {
           ctx.ui.notify(`Preset set to: ${preset}`, "info");
         } else {
           ctx.ui.notify(`Preset set to: ${preset} (not persisted; check settings.json)`, "warning");
@@ -1855,14 +1897,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
           const statuses = footerDataRef.getExtensionStatuses();
           if (!statuses || statuses.size === 0) return [];
+          const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
 
           const notifications: string[] = [];
-          for (const value of statuses.values()) {
-            if (value && value.trimStart().startsWith('[')) {
-              const lineContent = ` ${value}`;
-              if (visibleWidth(lineContent) <= width) {
-                notifications.push(lineContent);
-              }
+          for (const value of getNotificationExtensionStatuses(statuses, hiddenExtensionStatusKeys)) {
+            const lineContent = ` ${value}`;
+            if (visibleWidth(lineContent) <= width) {
+              notifications.push(lineContent);
             }
           }
 
