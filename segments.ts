@@ -2,10 +2,10 @@ import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
+import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.js";
 import { fg, rainbow, applyColor } from "./theme.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
 
-// Helper to apply semantic color from context
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
   return fg(ctx.theme, semantic, text, ctx.colors);
 }
@@ -64,7 +64,6 @@ const modelSegment: StatusLineSegment = {
 
     let content = withIcon(icons.model, modelName);
 
-    // Add thinking level with dot separator
     if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
       const level = ctx.thinkingLevel || "off";
       if (level !== "off") {
@@ -326,7 +325,6 @@ const timeSpentSegment: StatusLineSegment = {
     const elapsed = Date.now() - ctx.sessionStartTime;
     if (elapsed < 1000) return { content: "", visible: false };
 
-    // No explicit color
     return { content: withIcon(icons.time, formatDuration(elapsed)), visible: true };
   },
 };
@@ -352,7 +350,6 @@ const timeSegment: StatusLineSegment = {
     }
     timeStr += suffix;
 
-    // No explicit color
     return { content: withIcon(icons.time, timeStr), visible: true };
   },
 };
@@ -364,7 +361,6 @@ const sessionSegment: StatusLineSegment = {
     const sessionId = ctx.sessionId;
     const display = sessionId?.slice(0, 8) || "new";
 
-    // No explicit color
     return { content: withIcon(icons.session, display), visible: true };
   },
 };
@@ -374,7 +370,6 @@ const hostnameSegment: StatusLineSegment = {
   render() {
     const icons = getIcons();
     const name = osHostname().split(".")[0];
-    // No explicit color
     return { content: withIcon(icons.host, name), visible: true };
   },
 };
@@ -386,7 +381,6 @@ const cacheReadSegment: StatusLineSegment = {
     const { cacheRead } = ctx.usageStats;
     if (!cacheRead) return { content: "", visible: false };
 
-    // Space-separated parts
     const parts = [icons.cache, icons.input, formatTokens(cacheRead)].filter(Boolean);
     const content = parts.join(" ");
     return { content: color(ctx, "tokens", content), visible: true };
@@ -400,7 +394,6 @@ const cacheWriteSegment: StatusLineSegment = {
     const { cacheWrite } = ctx.usageStats;
     if (!cacheWrite) return { content: "", visible: false };
 
-    // Space-separated parts
     const parts = [icons.cache, icons.output, formatTokens(cacheWrite)].filter(Boolean);
     const content = parts.join(" ");
     return { content: color(ctx, "tokens", content), visible: true };
@@ -420,14 +413,9 @@ const extensionStatusesSegment: StatusLineSegment = {
     const parts: string[] = [];
     for (const [statusKey, value] of statuses.entries()) {
       if (ctx.hiddenExtensionStatusKeys.has(statusKey)) continue;
-      if (value && !value.trimStart().startsWith('[') && visibleWidth(value) > 0) {
-        // Strip trailing separators (· | · etc.) that some extensions bake in,
-        // since we add our own SEP_DOT joiner between entries.
-        // The separator may be wrapped in ANSI codes, so strip those too.
-        const stripped = value.replace(/(\x1b\[[0-9;]*m|\s|·|[|])+$/, "");
-        if (visibleWidth(stripped) > 0) {
-          parts.push(stripped);
-        }
+      const normalized = value ? normalizeCompactExtensionStatus(value) : null;
+      if (normalized) {
+        parts.push(normalized);
       }
     }
 
@@ -472,11 +460,12 @@ function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): Rende
   if (!custom) return { content: "", visible: false };
 
   const rawStatus = ctx.extensionStatuses.get(custom.statusKey);
-  if (!rawStatus || visibleWidth(rawStatus) <= 0) {
+  const normalizedStatus = rawStatus ? normalizeExtensionStatusValue(rawStatus) : null;
+  if (!normalizedStatus) {
     return custom.hideWhenMissing ? { content: "", visible: false } : { content: custom.prefix ?? custom.id, visible: true };
   }
 
-  let content = rawStatus;
+  let content = normalizedStatus;
   if (custom.prefix) {
     content = `${custom.prefix}${SEP_DOT}${content}`;
   }
