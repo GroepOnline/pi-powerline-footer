@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-04-23
+
+### Fixed
+- **Session shutdown crash** — Footer/editor render paths no longer read stale session-bound `ctx` objects during Ctrl+C, reload, or session replacement, preventing Pi 0.69.x stale-extension errors.
+- **Bash transcript theme regression** — The bash transcript widget now uses the full Pi theme provided by the widget factory, avoiding `theme.fg is not a function` crashes from editor theme objects.
+- **Welcome overlay shutdown cleanup** — Delayed welcome overlays now ignore replaced sessions and clean up their countdown timer safely during early dismissal.
+
 ## [0.4.16] - 2026-04-21
 
 ### Fixed

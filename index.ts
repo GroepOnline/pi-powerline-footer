@@ -767,16 +767,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   let enabled = true;
   let sessionStartTime = Date.now();
+  let sessionGeneration = 0;
   let currentCtx: any = null;
   let footerDataRef: ReadonlyFooterDataProvider | null = null;
   let getThinkingLevelFn: (() => string) | null = null;
   let isStreaming = false;
-  let tuiRef: any = null; // Store TUI reference for forcing re-renders
-  let dismissWelcomeOverlay: (() => void) | null = null; // Callback to dismiss welcome overlay
-  let welcomeHeaderActive = false; // Track if welcome header should be cleared on first input
-  let welcomeOverlayShouldDismiss = false; // Track early dismissal request (before overlay setup completes)
-  let lastUserPrompt = ""; // Last user message for prompt reminder widget
-  let showLastPrompt = true; // Cached setting for last prompt visibility
+  let tuiRef: any = null;
+  let dismissWelcomeOverlay: (() => void) | null = null;
+  let welcomeHeaderActive = false;
+  let welcomeOverlayShouldDismiss = false;
+  let lastUserPrompt = "";
+  let showLastPrompt = true;
   let stashedEditorText: string | null = null;
   let stashedPromptHistory: string[] = readPersistedStashHistory();
   let currentEditor: any = null;
@@ -933,6 +934,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("session_start", async (event, ctx) => {
     shellSession?.dispose();
     shellSession = null;
+    sessionGeneration++;
     sessionStartTime = Date.now();
     currentCtx = ctx;
     customCompactionEnabled = detectCustomCompactionEnabled(ctx.cwd);
@@ -976,8 +978,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    sessionGeneration++;
+    dismissWelcomeOverlay?.();
+    dismissWelcomeOverlay = null;
+    welcomeHeaderActive = false;
+    welcomeOverlayShouldDismiss = false;
     shellSession?.dispose();
     shellSession = null;
+    bashModeActive = false;
+    currentCtx = null;
+    footerDataRef = null;
+    getThinkingLevelFn = null;
+    tuiRef = null;
+    currentEditor = null;
+    lastLayoutResult = null;
   });
 
   // Check if a bash command might change git branch
@@ -1079,7 +1093,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return undefined;
   }
 
-  // Helper to dismiss welcome overlay/header
   function dismissWelcome(ctx: any) {
     if (dismissWelcomeOverlay) {
       dismissWelcomeOverlay();
@@ -1792,7 +1805,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         const result: string[] = [];
-        const layout = getResponsiveLayout(width, ctx.ui.theme);
+        const layout = getResponsiveLayout(width, currentCtx.ui.theme);
         result.push(layout.topContent);
         result.push(" " + bc("─".repeat(width - 2)));
 
@@ -1851,7 +1864,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       };
     }, { placement: "belowEditor" });
 
-    ctx.ui.setWidget("powerline-bash-transcript", () => {
+    ctx.ui.setWidget("powerline-bash-transcript", (_tui: any, theme: Theme) => {
       return {
         dispose() {},
         invalidate() {},
@@ -1863,19 +1876,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
           const lines: string[] = [];
           if (snapshot.truncatedCommands > 0) {
-            lines.push(` ${ctx.ui.theme.fg("dim", `… ${snapshot.truncatedCommands} earlier command${snapshot.truncatedCommands === 1 ? "" : "s"} truncated`)}`);
+            lines.push(` ${theme.fg("dim", `… ${snapshot.truncatedCommands} earlier command${snapshot.truncatedCommands === 1 ? "" : "s"} truncated`)}`);
           }
 
           const recentCommands = snapshot.commands.slice(-4);
           for (const command of recentCommands) {
             const promptGlyph = (shellSession?.state.shellName ?? "shell") === "fish" ? ">" : "$";
             const status = command.exitCode === null
-              ? ctx.ui.theme.fg("accent", "running")
+              ? theme.fg("accent", "running")
               : command.exitCode === 0
-                ? ctx.ui.theme.fg("success", "ok")
-                : ctx.ui.theme.fg("error", `exit ${command.exitCode}`);
+                ? theme.fg("success", "ok")
+                : theme.fg("error", `exit ${command.exitCode}`);
             const commandLine = truncateToWidth(command.command.replace(/\s+/g, " ").trim(), Math.max(8, width - 8), "…");
-            lines.push(` ${ctx.ui.theme.fg("accent", promptGlyph)} ${commandLine} ${ctx.ui.theme.fg("dim", "(")}${status}${ctx.ui.theme.fg("dim", ")")}`);
+            lines.push(` ${theme.fg("accent", promptGlyph)} ${commandLine} ${theme.fg("dim", "(")}${status}${theme.fg("dim", ")")}`);
 
             const outputTail = command.output.slice(-6);
             for (const outputLine of outputTail) {
@@ -1943,7 +1956,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const recentSessions = getRecentSessions(3);
     
     const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts);
-    welcomeHeaderActive = true; // Will be cleared on first user input
+    welcomeHeaderActive = true;
     
     ctx.ui.setHeader(() => {
       return {
@@ -1963,25 +1976,21 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const loadedCounts = discoverLoadedCounts();
     const recentSessions = getRecentSessions(3);
     
+    const overlaySessionGeneration = sessionGeneration;
+
     // Small delay to let pi-mono finish initialization
     setTimeout(() => {
-      // Skip overlay if:
-      // 1. Extension is disabled
-      // 2. Dismissal was explicitly requested (agent_start/keypress fired)
-      // 3. Agent is already streaming
-      // 4. Session already has assistant messages (agent already responded)
-      if (!enabled || welcomeOverlayShouldDismiss || isStreaming) {
+      if (!enabled || welcomeOverlayShouldDismiss || isStreaming || overlaySessionGeneration !== sessionGeneration) {
         welcomeOverlayShouldDismiss = false;
         return;
       }
       
-      // Check if session already has activity (handles p "command" case)
       const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
-      const hasActivity = sessionEvents.some((e: any) => 
-        (e.type === "message" && e.message?.role === "assistant") ||
-        e.type === "tool_call" ||
-        e.type === "tool_result"
-      );
+      const hasActivity = sessionEvents.some((entry: unknown) => {
+        if (!isRecord(entry)) return false;
+        if (entry.type === "tool_call" || entry.type === "tool_result") return true;
+        return entry.type === "message" && isRecord(entry.message) && entry.message.role === "assistant";
+      });
       if (hasActivity) {
         return;
       }
@@ -1997,33 +2006,31 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           
           let countdown = 30;
           let dismissed = false;
+          let interval: ReturnType<typeof setInterval> | null = null;
           
           const dismiss = () => {
             if (dismissed) return;
             dismissed = true;
-            clearInterval(interval);
+            if (interval) clearInterval(interval);
             dismissWelcomeOverlay = null;
             done();
           };
           
-          // Store dismiss callback so agent_start/keypress can trigger it
-          dismissWelcomeOverlay = dismiss;
-          
-          // Double-check: dismissal might have been requested between the outer check
-          // and this callback running
-          if (welcomeOverlayShouldDismiss) {
-            welcomeOverlayShouldDismiss = false;
-            dismiss();
-          }
-          
-          const interval = setInterval(() => {
+          interval = setInterval(() => {
             if (dismissed) return;
             countdown--;
             welcome.setCountdown(countdown);
             tui.requestRender();
             if (countdown <= 0) dismiss();
           }, 1000);
-          
+
+          dismissWelcomeOverlay = dismiss;
+
+          if (welcomeOverlayShouldDismiss) {
+            welcomeOverlayShouldDismiss = false;
+            dismiss();
+          }
+
           return {
             focused: false,
             invalidate: () => welcome.invalidate(),
@@ -2031,7 +2038,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             handleInput: () => dismiss(),
             dispose: () => {
               dismissed = true;
-              clearInterval(interval);
+              if (interval) clearInterval(interval);
             },
           };
         },
