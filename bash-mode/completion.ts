@@ -115,10 +115,6 @@ function getTokenContext(line: string, cursorCol: number): TokenContext {
   };
 }
 
-function shellNameFromPath(shellPath: string): string {
-  return basename(shellPath).toLowerCase();
-}
-
 export function getOneOffBashCommandContext(line: string): OneOffBashCommandContext | null {
   if (line.startsWith("!!")) {
     return {
@@ -438,7 +434,7 @@ export class BashCompletionEngine {
   }
 
   private async getNativeSuggestions(request: CompletionRequest): Promise<ExtendedCompletionItem[]> {
-    const shellName = shellNameFromPath(request.shellPath);
+    const shellName = basename(request.shellPath).toLowerCase();
     const adapter = this.adapters.find((candidate) => candidate.shellNames.some((name) => shellName.includes(name)));
     if (!adapter) return [];
     try {

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-04-23
+
+### Fixed
+- **Editor responsiveness while streaming** — Reduced powerline layout work during assistant streaming and coalesced welcome-dismiss work so typing in the editor stays more responsive while output is arriving.
+
 ## [0.4.17] - 2026-04-23
 
 ### Fixed

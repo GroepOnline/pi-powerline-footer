@@ -31,6 +31,7 @@ import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
 import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
+import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { getDefaultColors } from "./theme.js";
 import { 
   initVibeManager, 
@@ -94,6 +95,8 @@ const SHORTCUT_SYMBOL_KEYS = new Set([
   "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "|", "~", "{", "}", ":", "<", ">", "?",
 ]);
 const PROMPT_HISTORY_LIMIT = 100;
+const LAYOUT_CACHE_TTL_MS = 250;
+const STREAMING_LAYOUT_CACHE_TTL_MS = 1000;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
@@ -352,7 +355,7 @@ function readRecentProjectPrompts(cwd: string, limit: number): string[] {
         entry = JSON.parse(line);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to parse session file ${filePath}: ${message}`);
+        throw new Error(`Failed to parse session file ${filePath}: ${message}`, { cause: error });
       }
 
       if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message) || entry.message.role !== "user") {
@@ -793,6 +796,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   const getShellPath = () => process.env.SHELL || "/bin/sh";
   const getShellCwd = () => shellSession?.state.cwd ?? currentCtx?.cwd ?? process.cwd();
+  const welcomeDismissScheduler = createWelcomeDismissScheduler({
+    dismiss: (ctx: unknown) => dismissWelcome(ctx),
+    getGeneration: () => sessionGeneration,
+    isEnabled: () => enabled,
+  });
 
   const requestRender = () => {
     lastLayoutResult = null;
@@ -983,6 +991,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     dismissWelcomeOverlay = null;
     welcomeHeaderActive = false;
     welcomeOverlayShouldDismiss = false;
+    welcomeDismissScheduler.cancel();
     shellSession?.dispose();
     shellSession = null;
     bashModeActive = false;
@@ -1094,17 +1103,24 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function dismissWelcome(ctx: any) {
+    welcomeDismissScheduler.cancel();
+
     if (dismissWelcomeOverlay) {
       dismissWelcomeOverlay();
       dismissWelcomeOverlay = null;
     } else {
-      // Overlay not set up yet (100ms delay) - mark for immediate dismissal when it does
+      // The startup overlay mounts after a delay; dismiss it immediately if it appears later.
       welcomeOverlayShouldDismiss = true;
     }
     if (welcomeHeaderActive) {
       welcomeHeaderActive = false;
       ctx.ui.setHeader(undefined);
     }
+  }
+
+  function scheduleDismissWelcome(ctx: any) {
+    if (!dismissWelcomeOverlay && welcomeOverlayShouldDismiss && !welcomeHeaderActive) return;
+    welcomeDismissScheduler.schedule(ctx);
   }
 
   function addStashHistoryEntry(text: string): void {
@@ -1291,6 +1307,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           shellSession = null;
           bashTranscript.clear();
           bashModeActive = false;
+          dismissWelcomeOverlay?.();
+          dismissWelcomeOverlay = null;
+          welcomeHeaderActive = false;
+          welcomeOverlayShouldDismiss = false;
+          welcomeDismissScheduler.cancel();
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
           ctx.ui.setStatus("stash", undefined);
@@ -1674,12 +1695,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   /**
    * Get cached responsive layout or compute fresh one.
-   * Layout is cached per render cycle (same width = same layout).
+   * The segment context scans session state, so keep it stable across render bursts.
    */
   function getResponsiveLayout(width: number, theme: Theme): { topContent: string; secondaryContent: string } {
     const now = Date.now();
-    // Cache is valid if same width and within 50ms (same render cycle)
-    if (lastLayoutResult && lastLayoutWidth === width && now - lastLayoutTimestamp < 50) {
+    const cacheTtl = isStreaming ? STREAMING_LAYOUT_CACHE_TTL_MS : LAYOUT_CACHE_TTL_MS;
+    if (lastLayoutResult && lastLayoutWidth === width && now - lastLayoutTimestamp < cacheTtl) {
       return lastLayoutResult;
     }
     
@@ -1775,7 +1796,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         attachAutocompleteProvider();
-        setTimeout(() => dismissWelcome(ctx), 0);
+        scheduleDismissWelcome(ctx);
         originalHandleInput(data);
       };
 
