@@ -32,6 +32,7 @@ import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-st
 import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
+import { createRenderScheduler } from "./render-scheduler.ts";
 import { getDefaultColors } from "./theme.js";
 import { 
   initVibeManager, 
@@ -97,6 +98,8 @@ const SHORTCUT_SYMBOL_KEYS = new Set([
 const PROMPT_HISTORY_LIMIT = 100;
 const LAYOUT_CACHE_TTL_MS = 250;
 const STREAMING_LAYOUT_CACHE_TTL_MS = 1000;
+const STATUS_RENDER_DEBOUNCE_MS = 33;
+const EDITOR_STATUS_DEFER_MS = 150;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
@@ -789,10 +792,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let bashCompletionEngine = new BashCompletionEngine();
   let shellSession: ManagedShellSession | null = null;
   
-  // Cache for responsive layout (shared between editor and widget for consistency)
+  // Cache for the top and secondary powerline widgets.
   let lastLayoutWidth = 0;
   let lastLayoutResult: { topContent: string; secondaryContent: string } | null = null;
   let lastLayoutTimestamp = 0;
+  let layoutDirty = true;
+  let lastEditorInputAt = 0;
 
   const getShellPath = () => process.env.SHELL || "/bin/sh";
   const getShellCwd = () => shellSession?.state.cwd ?? currentCtx?.cwd ?? process.cwd();
@@ -802,9 +807,24 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     isEnabled: () => enabled,
   });
 
-  const requestRender = () => {
-    lastLayoutResult = null;
+  const statusRenderScheduler = createRenderScheduler(() => {
+    const msSinceInput = Date.now() - lastEditorInputAt;
+    if (layoutDirty && msSinceInput < EDITOR_STATUS_DEFER_MS) {
+      statusRenderScheduler.schedule(Math.max(0, EDITOR_STATUS_DEFER_MS - msSinceInput));
+      return;
+    }
+
     tuiRef?.requestRender();
+  }, STATUS_RENDER_DEBOUNCE_MS);
+
+  const resetLayoutCache = () => {
+    lastLayoutResult = null;
+    layoutDirty = true;
+  };
+
+  const requestStatusRender = (delayMs?: number) => {
+    layoutDirty = true;
+    statusRenderScheduler.schedule(delayMs);
   };
 
   const getShellHistoryEntries = (prefix: string): string[] => {
@@ -823,7 +843,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         getShellPath(),
         currentCtx?.cwd ?? process.cwd(),
         bashTranscript,
-        requestRender,
+        requestStatusRender,
         (command, cwd) => appendProjectHistory(currentCtx?.cwd ?? process.cwd(), command, cwd),
       );
     }
@@ -835,7 +855,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     try {
       const session = await ensureShellSession();
       await session.runCommand(command);
-      requestRender();
+      requestStatusRender();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.ui.notify(`Failed to run shell command: ${message}`, "error");
@@ -855,13 +875,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         bashModeActive = true;
         currentEditor?.dismissBashModeUi?.();
         currentEditor?.refreshGhostSuggestion?.();
-        requestRender();
+        requestStatusRender();
         ctx.ui.notify(`Bash mode enabled (${session.state.shellName})`, "info");
       } catch (error) {
         shellSession?.dispose();
         shellSession = null;
         bashModeActive = false;
-        requestRender();
+        requestStatusRender();
         const message = error instanceof Error ? error.message : String(error);
         ctx.ui.notify(`Failed to start shell session: ${message}`, "error");
       }
@@ -870,7 +890,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     bashModeActive = value;
     currentEditor?.dismissBashModeUi?.();
-    requestRender();
+    requestStatusRender();
     ctx.ui.notify("Bash mode disabled", "info");
   };
 
@@ -992,6 +1012,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     welcomeHeaderActive = false;
     welcomeOverlayShouldDismiss = false;
     welcomeDismissScheduler.cancel();
+    statusRenderScheduler.cancel();
     shellSession?.dispose();
     shellSession = null;
     bashModeActive = false;
@@ -1000,7 +1021,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     getThinkingLevelFn = null;
     tuiRef = null;
     currentEditor = null;
-    lastLayoutResult = null;
+    resetLayoutCache();
   });
 
   // Check if a bash command might change git branch
@@ -1025,7 +1046,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         invalidateGitStatus();
         invalidateGitBranch();
         // Small delay to let git update, then re-render
-        setTimeout(requestRender, 100);
+        setTimeout(() => requestStatusRender(), 100);
       }
     }
   });
@@ -1039,15 +1060,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       invalidateGitStatus();
       invalidateGitBranch();
       // Multiple staggered re-renders to catch fast and slow commands
-      setTimeout(requestRender, 100);
-      setTimeout(requestRender, 300);
-      setTimeout(requestRender, 500);
+      setTimeout(() => requestStatusRender(), 100);
+      setTimeout(() => requestStatusRender(), 300);
+      setTimeout(() => requestStatusRender(), 500);
     }
   });
 
   pi.on("model_select", async (_event, ctx) => {
     currentCtx = ctx;
-    requestRender();
+    requestStatusRender();
   });
 
   // Generate themed working message before agent starts (has access to user's prompt)
@@ -1286,7 +1307,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
       }
     }
-    requestRender();
+    requestStatusRender();
   });
 
   // Command to toggle/configure
@@ -1319,6 +1340,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
           ctx.ui.setHeader(undefined);
+          ctx.ui.setWidget("powerline-top", undefined);
           ctx.ui.setWidget("powerline-secondary", undefined);
           ctx.ui.setWidget("powerline-bash-transcript", undefined);
           ctx.ui.setWidget("powerline-status", undefined);
@@ -1326,8 +1348,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           footerDataRef = null;
           tuiRef = null;
           currentEditor = null;
-          // Clear layout cache
-          lastLayoutResult = null;
+          statusRenderScheduler.cancel();
+          resetLayoutCache();
           ctx.ui.notify("Powerline disabled", "info");
         }
         return;
@@ -1336,7 +1358,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       const preset = normalizePreset(args);
       if (preset) {
         config.preset = preset;
-        lastLayoutResult = null;
+        resetLayoutCache();
         if (enabled) {
           setupCustomEditor(ctx);
         }
@@ -1401,11 +1423,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           bashModeActive = false;
           const message = error instanceof Error ? error.message : String(error);
           ctx.ui.notify(`Failed to restart shell session: ${message}`, "error");
-          requestRender();
+          requestStatusRender();
           return;
         }
       }
-      requestRender();
+      requestStatusRender();
       ctx.ui.notify("Bash session reset", "info");
     },
   });
@@ -1700,8 +1722,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function getResponsiveLayout(width: number, theme: Theme): { topContent: string; secondaryContent: string } {
     const now = Date.now();
     const cacheTtl = isStreaming ? STREAMING_LAYOUT_CACHE_TTL_MS : LAYOUT_CACHE_TTL_MS;
-    if (lastLayoutResult && lastLayoutWidth === width && now - lastLayoutTimestamp < cacheTtl) {
-      return lastLayoutResult;
+
+    if (lastLayoutResult && lastLayoutWidth === width) {
+      const msSinceInput = now - lastEditorInputAt;
+      const typingRecently = msSinceInput < EDITOR_STATUS_DEFER_MS;
+
+      if (typingRecently && (layoutDirty || now - lastLayoutTimestamp >= cacheTtl)) {
+        return lastLayoutResult;
+      }
+
+      if (!layoutDirty && now - lastLayoutTimestamp < cacheTtl) {
+        return lastLayoutResult;
+      }
     }
     
     const presetDef = getPreset(config.preset);
@@ -1710,6 +1742,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     lastLayoutWidth = width;
     lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, width);
     lastLayoutTimestamp = now;
+    layoutDirty = false;
     
     return lastLayoutResult;
   }
@@ -1787,6 +1820,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
       const originalHandleInput = editor.handleInput.bind(editor);
       editor.handleInput = (data: string) => {
+        lastEditorInputAt = Date.now();
+
         if (!autocompleteFixed && !getInstalledAutocompleteProvider()) {
           autocompleteFixed = true;
           snapshotPromptHistory(editor);
@@ -1814,7 +1849,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         const contentWidth = Math.max(1, width - 3);
         const lines = originalRender(contentWidth);
 
-        if (lines.length === 0 || !currentCtx) return lines;
+        if (lines.length === 0) return lines;
 
         let bottomBorderIndex = lines.length - 1;
         for (let i = lines.length - 1; i >= 1; i--) {
@@ -1826,8 +1861,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         const result: string[] = [];
-        const layout = getResponsiveLayout(width, currentCtx.ui.theme);
-        result.push(layout.topContent);
         result.push(" " + bc("─".repeat(width - 2)));
 
         for (let i = 1; i < bottomBorderIndex; i++) {
@@ -1856,21 +1889,66 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
       footerDataRef = footerData;
       tuiRef = tui;
-      const unsub = footerData.onBranchChange(() => requestRender());
+      const unsub = footerData.onBranchChange(() => requestStatusRender());
 
       return {
         dispose: unsub,
-        invalidate() {},
+        invalidate() {
+          requestStatusRender();
+        },
         render(): string[] {
           return [];
         },
       };
     });
 
+    ctx.ui.setWidget("powerline-status", () => {
+      return {
+        dispose() {},
+        invalidate() {
+          requestStatusRender();
+        },
+        render(width: number): string[] {
+          if (!currentCtx || !footerDataRef) return [];
+
+          const statuses = footerDataRef.getExtensionStatuses();
+          if (!statuses || statuses.size === 0) return [];
+          const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
+
+          const notifications: string[] = [];
+          for (const value of getNotificationExtensionStatuses(statuses, hiddenExtensionStatusKeys)) {
+            const lineContent = ` ${value}`;
+            if (visibleWidth(lineContent) <= width) {
+              notifications.push(lineContent);
+            }
+          }
+
+          return notifications;
+        },
+      };
+    }, { placement: "aboveEditor" });
+
+    ctx.ui.setWidget("powerline-top", (_tui: any, theme: Theme) => {
+      return {
+        dispose() {},
+        invalidate() {
+          resetLayoutCache();
+        },
+        render(width: number): string[] {
+          if (!currentCtx) return [];
+
+          const layout = getResponsiveLayout(width, theme);
+          return layout.topContent ? [layout.topContent] : [];
+        },
+      };
+    }, { placement: "aboveEditor" });
+
     ctx.ui.setWidget("powerline-secondary", (_tui: any, theme: Theme) => {
       return {
         dispose() {},
-        invalidate() {},
+        invalidate() {
+          resetLayoutCache();
+        },
         render(width: number): string[] {
           if (!currentCtx) return [];
 
@@ -1921,30 +1999,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         },
       };
     }, { placement: "belowEditor" });
-
-    ctx.ui.setWidget("powerline-status", () => {
-      return {
-        dispose() {},
-        invalidate() {},
-        render(width: number): string[] {
-          if (!currentCtx || !footerDataRef) return [];
-
-          const statuses = footerDataRef.getExtensionStatuses();
-          if (!statuses || statuses.size === 0) return [];
-          const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
-
-          const notifications: string[] = [];
-          for (const value of getNotificationExtensionStatuses(statuses, hiddenExtensionStatusKeys)) {
-            const lineContent = ` ${value}`;
-            if (visibleWidth(lineContent) <= width) {
-              notifications.push(lineContent);
-            }
-          }
-
-          return notifications;
-        },
-      };
-    }, { placement: "aboveEditor" });
 
     ctx.ui.setWidget("powerline-last-prompt", () => {
       return {

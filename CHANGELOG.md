@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-04-25
+
+### Fixed
+- **Editor responsiveness during live status updates** — Coalesced status repaints and moved the top powerline row out of the editor render path so shifting status items do less work while typing.
+
 ## [0.4.18] - 2026-04-23
 
 ### Fixed
