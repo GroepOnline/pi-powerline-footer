@@ -138,7 +138,7 @@ In `~/.pi/agent/settings.json`:
 
 ## Editor Stash
 
-Use `Alt+S` as a quick stash toggle while drafting. It keeps one active stash and clears the editor when stashing.
+Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one active stash and clears the editor when stashing.
 
 | Editor | Stash | `Alt+S` result |
 |--------|-------|----------------|
@@ -282,7 +282,7 @@ Configure via preset options: `path: { mode: "full" }`
 
 ## Segments
 
-`pi` · `model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
+`model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
 
 ## Separators
 
@@ -296,7 +296,6 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 
 | Semantic | Theme Color | Description |
 |----------|-------------|-------------|
-| `pi` | `accent` | Pi icon |
 | `model` | `#d787af` | Model name |
 | `shellMode` | `accent` | Bash mode segment |
 | `path` | `#00afaf` | Directory path |

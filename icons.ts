@@ -73,7 +73,7 @@ export const NERD_ICONS: IconSet = {
 // ASCII/Unicode fallback icons (matching oh-my-pi)
 export const ASCII_ICONS: IconSet = {
   pi: "π",
-  model: "◈",
+  model: "",
   folder: "dir",
   branch: "⎇",
   git: "⎇",

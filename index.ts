@@ -1263,6 +1263,30 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
+  function stashOrRestoreEditorText(ctx: any): void {
+    const rawText = getCurrentEditorText(ctx, currentEditor);
+    const hasStash = stashedEditorText !== null;
+
+    if (!hasNonWhitespaceText(rawText)) {
+      if (!hasStash) {
+        ctx.ui.notify("Nothing to stash", "info");
+        return;
+      }
+
+      ctx.ui.setEditorText(stashedEditorText);
+      stashedEditorText = null;
+      ctx.ui.setStatus("stash", undefined);
+      ctx.ui.notify("Stash restored", "info");
+      return;
+    }
+
+    stashedEditorText = rawText;
+    addStashHistoryEntry(rawText);
+    ctx.ui.setEditorText("");
+    ctx.ui.setStatus("stash", "stash");
+    ctx.ui.notify(hasStash ? "Stash updated" : "Text stashed", "info");
+  }
+
   async function openStashHistory(ctx: any): Promise<void> {
     let projectPrompts: string[] = [];
 
@@ -1444,38 +1468,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     description: "Stash/restore editor text",
     handler: async (ctx) => {
       if (!enabled || !ctx.hasUI) return;
-
-      const rawText = getCurrentEditorText(ctx, currentEditor);
-      const hasText = hasNonWhitespaceText(rawText);
-      const hasStash = stashedEditorText !== null;
-
-      if (hasText && !hasStash) {
-        stashedEditorText = rawText;
-        addStashHistoryEntry(rawText);
-        ctx.ui.setEditorText("");
-        ctx.ui.setStatus("stash", "stash");
-        ctx.ui.notify("Text stashed", "info");
-        return;
-      }
-
-      if (!hasText && hasStash) {
-        ctx.ui.setEditorText(stashedEditorText);
-        stashedEditorText = null;
-        ctx.ui.setStatus("stash", undefined);
-        ctx.ui.notify("Stash restored", "info");
-        return;
-      }
-
-      if (hasText && stashedEditorText !== null) {
-        stashedEditorText = rawText;
-        addStashHistoryEntry(rawText);
-        ctx.ui.setEditorText("");
-        ctx.ui.setStatus("stash", "stash");
-        ctx.ui.notify("Stash updated", "info");
-        return;
-      }
-
-      ctx.ui.notify("Nothing to stash", "info");
+      stashOrRestoreEditorText(ctx);
     },
   });
 
@@ -1821,6 +1814,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       const originalHandleInput = editor.handleInput.bind(editor);
       editor.handleInput = (data: string) => {
         lastEditorInputAt = Date.now();
+
+        if (data === "ß") {
+          stashOrRestoreEditorText(ctx);
+          scheduleDismissWelcome(ctx);
+          return;
+        }
 
         if (!autocompleteFixed && !getInstalledAutocompleteProvider()) {
           autocompleteFixed = true;

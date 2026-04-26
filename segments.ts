@@ -40,16 +40,6 @@ function formatDuration(ms: number): string {
 // Segment Implementations
 // ═══════════════════════════════════════════════════════════════════════════
 
-const piSegment: StatusLineSegment = {
-  id: "pi",
-  render(ctx) {
-    const icons = getIcons();
-    if (!icons.pi) return { content: "", visible: false };
-    const content = `${icons.pi} `;
-    return { content: color(ctx, "pi", content), visible: true };
-  },
-};
-
 const modelSegment: StatusLineSegment = {
   id: "model",
   render(ctx) {
@@ -439,7 +429,6 @@ const extensionStatusesSegment: StatusLineSegment = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const SEGMENTS: Record<BuiltinStatusLineSegmentId, StatusLineSegment> = {
-  pi: piSegment,
   model: modelSegment,
   shell_mode: shellModeSegment,
   path: pathSegment,

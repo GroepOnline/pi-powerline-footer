@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.20] - 2026-04-26
+
+### Changed
+- **Welcome overlay logo** — Replaced the old π splash art with a block-rendered version of the current Pi logo.
+- **Status line branding** — Removed the standalone `π` segment from the powerline surface so the editor row starts with model/status information.
+- **Stash shortcut** — Accept macOS `Option+S` even when the terminal emits the literal `ß` character instead of an `alt+s` escape sequence.
+- **Model segment** — Removed the extra ASCII model glyph before the model name.
+
 ## [0.4.19] - 2026-04-25
 
 ### Fixed
