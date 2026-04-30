@@ -43,6 +43,10 @@ interface SelectionPoint {
   col: number;
 }
 
+interface DisposeOptions {
+  resetExtendedKeyboardModes?: boolean;
+}
+
 export function beginSynchronizedOutput(): string {
   return "\x1b[?2026h";
 }
@@ -97,6 +101,10 @@ function enableMouseReporting(): string {
 
 function disableMouseReporting(): string {
   return "\x1b[?1006l\x1b[?1002l\x1b[?1000l";
+}
+
+function resetExtendedKeyboardModes(): string {
+  return "\x1b[<999u\x1b[>4;0m";
 }
 
 function parseKeyboardScrollDelta(data: string): number {
@@ -346,7 +354,7 @@ export class TerminalSplitCompositor {
     );
   }
 
-  dispose(): void {
+  dispose(options: DisposeOptions = {}): void {
     if (this.disposed) return;
     this.disposed = true;
 
@@ -374,7 +382,7 @@ export class TerminalSplitCompositor {
       Reflect.deleteProperty(this.terminal, "rows");
     }
 
-    this.restoreTerminalState();
+    this.restoreTerminalState(options);
   }
 
   private getRawRows(): number {
@@ -567,20 +575,21 @@ export class TerminalSplitCompositor {
     }
   }
 
-  private restoreTerminalState(): void {
+  private restoreTerminalState(options: DisposeOptions = {}): void {
     this.originalWrite(
       beginSynchronizedOutput()
       + resetScrollRegion()
       + (this.mouseScroll ? disableMouseReporting() : "")
       + enableAlternateScrollMode()
       + exitAlternateScreen()
+      + (options.resetExtendedKeyboardModes ? resetExtendedKeyboardModes() : "")
       + endSynchronizedOutput(),
     );
   }
 
   private restoreTerminalStateForExit(): void {
     try {
-      this.restoreTerminalState();
+      this.restoreTerminalState({ resetExtendedKeyboardModes: true });
     } catch {
       // Process-exit cleanup cannot report useful errors and must not throw.
     }

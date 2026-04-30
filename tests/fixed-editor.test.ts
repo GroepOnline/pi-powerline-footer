@@ -156,6 +156,25 @@ test("terminal split reserves rows, hides root renderables, repaints, and cleans
   assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1000l"));
   assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1007h"));
   assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1049l"));
+  assert.ok(!terminal.writes.at(-1)?.includes("\x1b[<u"));
+  assert.ok(!terminal.writes.at(-1)?.includes("\x1b[>4;0m"));
+});
+
+test("terminal split shutdown cleanup resets extended keyboard modes", () => {
+  const terminal = new FakeTerminal();
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  compositor.dispose({ resetExtendedKeyboardModes: true });
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[<999u"));
+  assert.ok(cleanup.includes("\x1b[>4;0m"));
+  assert.ok(cleanup.indexOf("\x1b[?1049l") < cleanup.indexOf("\x1b[<999u"));
 });
 
 test("terminal row reservation does not recurse when hidden editor render reads terminal rows", () => {
@@ -570,6 +589,25 @@ test("terminal split reuses the fixed cluster during one render pass", () => {
   tui.doRender();
 
   assert.equal(renderClusterCount, 1);
+
+  compositor.dispose();
+});
+
+test("terminal split emergency exit cleanup resets extended keyboard modes", () => {
+  const terminal = new FakeTerminal();
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  process.emit("exit", 0);
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[<999u"));
+  assert.ok(cleanup.includes("\x1b[>4;0m"));
+  assert.ok(cleanup.indexOf("\x1b[?1049l") < cleanup.indexOf("\x1b[<999u"));
 
   compositor.dispose();
 });

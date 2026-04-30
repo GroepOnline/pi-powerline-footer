@@ -1036,7 +1036,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     welcomeOverlayShouldDismiss = false;
     welcomeDismissScheduler.cancel();
     statusRenderScheduler.cancel();
-    teardownFixedEditorCompositor();
+    teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
     stashShortcutInputUnsubscribe?.();
     stashShortcutInputUnsubscribe = null;
     shellSession?.dispose();
@@ -1892,8 +1892,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return [truncateToWidth(line, width, "…")];
   }
 
-  function teardownFixedEditorCompositor() {
-    fixedEditorCompositor?.dispose();
+  function teardownFixedEditorCompositor(options?: { resetExtendedKeyboardModes?: boolean }) {
+    fixedEditorCompositor?.dispose(options);
     fixedEditorCompositor = null;
     fixedEditorContainer = null;
     fixedWidgetContainerAbove = null;
