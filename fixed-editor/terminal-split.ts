@@ -450,10 +450,22 @@ export class TerminalSplitCompositor {
     }
 
     const point = this.selectionPointForPacket(packet);
-    if (!point) {
-      if (isMouseRelease(packet)) this.selectionDragging = false;
+
+    if (this.selectionDragging && isMouseRelease(packet)) {
+      this.selectionFocus = point ?? this.clampedSelectionPointForPacket(packet);
+      this.selectionDragging = false;
+      const selectedText = this.getSelectedText();
+      if (selectedText) {
+        this.onCopySelection?.(selectedText);
+      } else {
+        this.selectionAnchor = null;
+        this.selectionFocus = null;
+      }
+      this.requestRender();
       return;
     }
+
+    if (!point) return;
 
     if (isLeftPress(packet)) {
       this.selectionAnchor = point;
@@ -468,25 +480,20 @@ export class TerminalSplitCompositor {
       this.requestRender();
       return;
     }
-
-    if (this.selectionDragging && isMouseRelease(packet)) {
-      this.selectionFocus = point;
-      this.selectionDragging = false;
-      const selectedText = this.getSelectedText();
-      if (selectedText) {
-        this.onCopySelection?.(selectedText);
-      } else {
-        this.selectionAnchor = null;
-        this.selectionFocus = null;
-      }
-      this.requestRender();
-    }
   }
 
   private selectionPointForPacket(packet: SgrMousePacket): SelectionPoint | null {
     if (packet.row < 1 || packet.row > this.visibleScrollableRows) return null;
     return {
       line: this.visibleRootStart + packet.row - 1,
+      col: Math.max(0, packet.col - 1),
+    };
+  }
+
+  private clampedSelectionPointForPacket(packet: SgrMousePacket): SelectionPoint {
+    const row = Math.max(1, Math.min(packet.row, this.visibleScrollableRows));
+    return {
+      line: this.visibleRootStart + row - 1,
       col: Math.max(0, packet.col - 1),
     };
   }

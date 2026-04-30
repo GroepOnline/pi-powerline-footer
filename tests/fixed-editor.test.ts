@@ -412,6 +412,47 @@ test("terminal split selects visible chat text and copies it on drag release", (
   compositor.dispose();
 });
 
+test("terminal split copies chat selection when drag releases over fixed cluster", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: string[] = [];
+  const rootLines = [
+    "old-0", "old-1", "old-2", "old-3", "old-4",
+    "alpha one", "bravo two", "charlie three", "delta four", "echo five",
+    "foxtrot six", "golf seven", "hotel eight", "india nine", "juliet ten",
+  ];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;1;9M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;5;11m"), { consume: true });
+
+  assert.deepEqual(copied, ["india nine\njuli"]);
+
+  compositor.dispose();
+});
+
 test("terminal split can disable mouse reporting for normal selection", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;

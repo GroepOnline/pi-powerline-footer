@@ -5,6 +5,9 @@
 ### Changed
 - **Fixed editor hard cutover** — The extension now owns a TUI-only viewport for chat/feed content and keeps the powerline/editor cluster fixed at the bottom. Mouse wheel input is captured with SGR mouse reporting so it scrolls the chat viewport instead of reaching the editor, while PageUp/PageDown and Alt+Up/Alt+Down remain keyboard scroll shortcuts. Dragging across chat text now highlights the app-owned selection and copies it to the system clipboard on release. Use `/powerline mouse-scroll off` to disable mouse reporting when native terminal selection is more important than wheel scrolling.
 
+### Fixed
+- **Chat selection release edge case** — Releasing a chat text drag over the fixed editor cluster now finalizes and copies the selected chat text instead of leaving the highlight stuck.
+
 ## [0.4.20] - 2026-04-26
 
 ### Changed
