@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentsWithCustomItems, nextPowerlineSettingWithMouseScroll, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
 
 test("parsePowerlineConfig supports object config with custom items", () => {
   const config = parsePowerlineConfig(
@@ -20,6 +20,17 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.customItems[0].statusKey, "ci-status");
   assert.equal(config.customItems[1].statusKey, "review");
   assert.equal(config.customItems[1].hideWhenMissing, false);
+  assert.equal(config.mouseScroll, true);
+});
+
+test("parsePowerlineConfig supports disabling mouse scroll", () => {
+  const config = parsePowerlineConfig(
+    { preset: "compact", mouseScroll: false },
+    ["default", "compact"],
+  );
+
+  assert.equal(config.preset, "compact");
+  assert.equal(config.mouseScroll, false);
 });
 
 test("mergeSegmentsWithCustomItems appends custom segment ids by position", () => {
@@ -56,6 +67,28 @@ test("nextPowerlineSettingWithPreset preserves object settings", () => {
 
   assert.equal(updated.preset, "compact");
   assert.deepEqual(updated.customItems, [{ id: "ci" }]);
+});
+
+test("nextPowerlineSettingWithMouseScroll preserves object settings", () => {
+  const updated = nextPowerlineSettingWithMouseScroll(
+    { preset: "default", customItems: [{ id: "ci" }] },
+    false,
+    "compact",
+  );
+  if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
+    assert.fail("expected an object powerline setting");
+  }
+
+  assert.equal(updated.preset, "default");
+  assert.equal(updated.mouseScroll, false);
+  assert.deepEqual(updated.customItems, [{ id: "ci" }]);
+});
+
+test("nextPowerlineSettingWithMouseScroll converts string presets to object settings", () => {
+  assert.deepEqual(nextPowerlineSettingWithMouseScroll("compact", true, "compact"), {
+    preset: "compact",
+    mouseScroll: true,
+  });
 });
 
 test("collectHiddenExtensionStatusKeys includes default custom status keys", () => {

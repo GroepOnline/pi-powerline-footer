@@ -5,7 +5,7 @@ import {
   type Theme,
 } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -25,7 +25,7 @@ import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
 import { getPreset, PRESETS } from "./presets.js";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithMouseScroll, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
@@ -33,6 +33,8 @@ import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
+import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
+import { TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.js";
 import { 
   initVibeManager, 
@@ -58,6 +60,7 @@ import {
 let config: PowerlineConfig = {
   preset: "default",
   customItems: [],
+  mouseScroll: true,
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -467,7 +470,7 @@ function readSettings(cwd: string = process.cwd()): Record<string, unknown> {
   return mergeSettings(readSettingsFile(getSettingsPath()), readSettingsFile(getProjectSettingsPath(cwd)));
 }
 
-function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = process.cwd()): boolean {
+function writePowerlineSetting(cwd: string, update: (existingPowerlineSetting: unknown) => unknown): boolean {
   const globalSettingsPath = getSettingsPath();
   const projectSettingsPath = getProjectSettingsPath(cwd);
   const globalSettings = readWritableSettingsFile(globalSettingsPath);
@@ -481,18 +484,28 @@ function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = pro
   const settingsPath = writeToProject ? projectSettingsPath : globalSettingsPath;
   const settings = writeToProject ? projectSettings : globalSettings;
 
-  settings.powerline = nextPowerlineSettingWithPreset(settings.powerline, preset);
+  settings.powerline = update(settings.powerline);
 
   try {
     mkdirSync(dirname(settingsPath), { recursive: true });
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
     return true;
   } catch (error) {
-    // Persist failure should be visible to the command caller, but it should not crash
-    // the interactive session.
-    console.debug(`[powerline-footer] Failed to persist preset to ${settingsPath}:`, error);
+    console.debug(`[powerline-footer] Failed to persist powerline setting to ${settingsPath}:`, error);
     return false;
   }
+}
+
+function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = process.cwd()): boolean {
+  return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
+    nextPowerlineSettingWithPreset(existingPowerlineSetting, preset)
+  ));
+}
+
+function writePowerlineMouseScrollSetting(mouseScroll: boolean, cwd: string, currentPreset: StatusLinePreset): boolean {
+  return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
+    nextPowerlineSettingWithMouseScroll(existingPowerlineSetting, mouseScroll, currentPreset)
+  ));
 }
 
 const PRESET_NAMES = Object.keys(PRESETS) as StatusLinePreset[];
@@ -779,6 +792,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let getThinkingLevelFn: (() => string) | null = null;
   let isStreaming = false;
   let tuiRef: any = null;
+  let fixedEditorCompositor: TerminalSplitCompositor | null = null;
+  let fixedEditorContainer: any = null;
+  let fixedWidgetContainerAbove: any = null;
+  let fixedWidgetContainerBelow: any = null;
+  let stashShortcutInputUnsubscribe: (() => void) | null = null;
   let dismissWelcomeOverlay: (() => void) | null = null;
   let welcomeHeaderActive = false;
   let welcomeOverlayShouldDismiss = false;
@@ -1013,6 +1031,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     welcomeOverlayShouldDismiss = false;
     welcomeDismissScheduler.cancel();
     statusRenderScheduler.cancel();
+    teardownFixedEditorCompositor();
+    stashShortcutInputUnsubscribe?.();
+    stashShortcutInputUnsubscribe = null;
     shellSession?.dispose();
     shellSession = null;
     bashModeActive = false;
@@ -1263,6 +1284,16 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
+  function isStashShortcutInput(data: string): boolean {
+    return data === "ß"
+      || data === "\x1bs"
+      || data === "\x1bS"
+      || /^\x1b\[(?:83|115)(?::\d*)?(?::\d*)?;3(?::\d+)?u$/.test(data)
+      || data === "\x1b[27;3;115~"
+      || data === "\x1b[27;3;83~"
+      || matchesKey(data, "alt+s");
+  }
+
   function stashOrRestoreEditorText(ctx: any): void {
     const rawText = getCurrentEditorText(ctx, currentEditor);
     const hasStash = stashedEditorText !== null;
@@ -1360,6 +1391,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
           ctx.ui.setStatus("stash", undefined);
+          teardownFixedEditorCompositor();
+          stashShortcutInputUnsubscribe?.();
+          stashShortcutInputUnsubscribe = null;
           // Clear all custom UI components
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
@@ -1375,6 +1409,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           statusRenderScheduler.cancel();
           resetLayoutCache();
           ctx.ui.notify("Powerline disabled", "info");
+        }
+        return;
+      }
+
+      const normalizedArgs = args.trim().toLowerCase();
+      const mouseScrollMatch = /^mouse-scroll(?:\s+(on|off|toggle))?$/.exec(normalizedArgs);
+      if (mouseScrollMatch) {
+        const mode = mouseScrollMatch[1] ?? "toggle";
+        config.mouseScroll = mode === "toggle" ? !config.mouseScroll : mode === "on";
+        if (enabled && ctx.hasUI && tuiRef && currentEditor) {
+          installFixedEditorCompositor(ctx, tuiRef);
+        }
+
+        if (writePowerlineMouseScrollSetting(config.mouseScroll, ctx.cwd, config.preset)) {
+          ctx.ui.notify(`Powerline mouse scroll ${config.mouseScroll ? "enabled" : "disabled"}`, "info");
+        } else {
+          ctx.ui.notify(`Powerline mouse scroll ${config.mouseScroll ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
         }
         return;
       }
@@ -1740,11 +1791,184 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return lastLayoutResult;
   }
 
+  function renderPowerlineStatusLines(width: number): string[] {
+    if (!currentCtx || !footerDataRef) return [];
+
+    const statuses = footerDataRef.getExtensionStatuses();
+    if (!statuses || statuses.size === 0) return [];
+    const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
+
+    const notifications: string[] = [];
+    for (const value of getNotificationExtensionStatuses(statuses, hiddenExtensionStatusKeys)) {
+      const lineContent = ` ${value}`;
+      if (visibleWidth(lineContent) <= width) {
+        notifications.push(lineContent);
+      }
+    }
+
+    return notifications;
+  }
+
+  function renderPowerlineTopLines(width: number, theme: Theme): string[] {
+    if (!currentCtx) return [];
+
+    const layout = getResponsiveLayout(width, theme);
+    return layout.topContent ? [layout.topContent] : [];
+  }
+
+  function renderPowerlineSecondaryLines(width: number, theme: Theme): string[] {
+    if (!currentCtx) return [];
+
+    const layout = getResponsiveLayout(width, theme);
+    return layout.secondaryContent ? [layout.secondaryContent] : [];
+  }
+
+  function renderBashTranscriptLines(width: number, theme: Theme): string[] {
+    if (!bashModeActive) return [];
+
+    const snapshot = bashTranscript.getSnapshot();
+    if (snapshot.commands.length === 0) return [];
+
+    const lines: string[] = [];
+    if (snapshot.truncatedCommands > 0) {
+      lines.push(` ${theme.fg("dim", `… ${snapshot.truncatedCommands} earlier command${snapshot.truncatedCommands === 1 ? "" : "s"} truncated`)}`);
+    }
+
+    const recentCommands = snapshot.commands.slice(-4);
+    for (const command of recentCommands) {
+      const promptGlyph = (shellSession?.state.shellName ?? "shell") === "fish" ? ">" : "$";
+      const status = command.exitCode === null
+        ? theme.fg("accent", "running")
+        : command.exitCode === 0
+          ? theme.fg("success", "ok")
+          : theme.fg("error", `exit ${command.exitCode}`);
+      const commandLine = truncateToWidth(command.command.replace(/\s+/g, " ").trim(), Math.max(8, width - 8), "…");
+      lines.push(` ${theme.fg("accent", promptGlyph)} ${commandLine} ${theme.fg("dim", "(")}${status}${theme.fg("dim", ")")}`);
+
+      const outputTail = command.output.slice(-6);
+      for (const outputLine of outputTail) {
+        lines.push(`   ${truncateToWidth(outputLine, Math.max(1, width - 3), "…")}`);
+      }
+    }
+
+    return lines.slice(-16);
+  }
+
+  function renderLastPromptLines(width: number): string[] {
+    if (bashModeActive || !showLastPrompt || !lastUserPrompt) return [];
+
+    const prefix = ` ${getFgAnsiCode("sep")}↳${ansi.reset} `;
+    const availableWidth = width - visibleWidth(prefix);
+    if (availableWidth < 10) return [];
+
+    let promptText = lastUserPrompt.replace(/\s+/g, " ").trim();
+    if (!promptText) return [];
+
+    promptText = truncateToWidth(promptText, availableWidth, "…");
+
+    const styledPrompt = `${getFgAnsiCode("sep")}${promptText}${ansi.reset}`;
+    const line = `${prefix}${styledPrompt}`;
+    return [truncateToWidth(line, width, "…")];
+  }
+
+  function teardownFixedEditorCompositor() {
+    fixedEditorCompositor?.dispose();
+    fixedEditorCompositor = null;
+    fixedEditorContainer = null;
+    fixedWidgetContainerAbove = null;
+    fixedWidgetContainerBelow = null;
+  }
+
+  function findContainerWithChild(tui: any, child: any): { container: any; index: number } | null {
+    const children = Array.isArray(tui?.children) ? tui.children : [];
+    const index = children.findIndex((candidate: any) => Array.isArray(candidate?.children) && candidate.children.includes(child));
+    if (index === -1) return null;
+
+    return { container: children[index], index };
+  }
+
+  function installFixedEditorCompositor(ctx: any, tui: any) {
+    teardownFixedEditorCompositor();
+
+    if (!ctx.hasUI) return;
+    if (!tui?.terminal || typeof tui.terminal.write !== "function") {
+      throw new Error("[powerline-footer] Fixed editor compositor could not find tui.terminal.write()");
+    }
+    if (!currentEditor) {
+      throw new Error("[powerline-footer] Fixed editor compositor expected the custom editor to be installed first");
+    }
+
+    const editorContainerMatch = findContainerWithChild(tui, currentEditor);
+    if (!editorContainerMatch) {
+      throw new Error("[powerline-footer] Fixed editor compositor could not find the editor container in TUI children");
+    }
+
+    const tuiChildren = Array.isArray(tui.children) ? tui.children : [];
+    fixedEditorContainer = editorContainerMatch.container;
+    fixedWidgetContainerAbove = tuiChildren[editorContainerMatch.index - 1] ?? null;
+    fixedWidgetContainerBelow = tuiChildren[editorContainerMatch.index + 1] ?? null;
+
+    let compositor: TerminalSplitCompositor;
+    compositor = new TerminalSplitCompositor({
+      tui,
+      terminal: tui.terminal,
+      mouseScroll: config.mouseScroll,
+      onCopySelection: (text) => copyTextToClipboard(ctx, text),
+      getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
+      renderCluster: (width, terminalRows) => {
+        const theme = currentCtx?.ui?.theme ?? ctx.ui.theme;
+        const aboveWidgetLines = fixedWidgetContainerAbove ? compositor.renderHidden(fixedWidgetContainerAbove, width) : [];
+        const belowWidgetLines = fixedWidgetContainerBelow ? compositor.renderHidden(fixedWidgetContainerBelow, width) : [];
+        return renderFixedEditorCluster({
+          width,
+          terminalRows,
+          statusLines: [...aboveWidgetLines, ...renderPowerlineStatusLines(width)],
+          topLines: renderPowerlineTopLines(width, theme),
+          editorLines: fixedEditorContainer ? compositor.renderHidden(fixedEditorContainer, width) : [],
+          secondaryLines: [...renderPowerlineSecondaryLines(width, theme), ...belowWidgetLines],
+          transcriptLines: renderBashTranscriptLines(width, theme),
+          lastPromptLines: renderLastPromptLines(width),
+        });
+      },
+    });
+
+    fixedEditorCompositor = compositor;
+    if (fixedWidgetContainerAbove?.render) compositor.hideRenderable(fixedWidgetContainerAbove);
+    compositor.hideRenderable(fixedEditorContainer);
+    if (fixedWidgetContainerBelow?.render) compositor.hideRenderable(fixedWidgetContainerBelow);
+    compositor.install();
+    tui.requestRender(true);
+  }
+
   function setupCustomEditor(ctx: any) {
     snapshotPromptHistory(currentEditor);
     if (!enabled) {
       return;
     }
+
+    stashShortcutInputUnsubscribe?.();
+    stashShortcutInputUnsubscribe = typeof ctx.ui.onTerminalInput === "function"
+      ? ctx.ui.onTerminalInput((data: string) => {
+        if (!enabled || !ctx.hasUI || tuiRef?.hasOverlay?.()) {
+          return undefined;
+        }
+        if (!isStashShortcutInput(data)) {
+          return undefined;
+        }
+
+        stashOrRestoreEditorText(ctx);
+        scheduleDismissWelcome(ctx);
+        tuiRef?.requestRender();
+        return { consume: true };
+      })
+      : null;
+
+    teardownFixedEditorCompositor();
+    ctx.ui.setWidget("powerline-top", undefined);
+    ctx.ui.setWidget("powerline-secondary", undefined);
+    ctx.ui.setWidget("powerline-bash-transcript", undefined);
+    ctx.ui.setWidget("powerline-status", undefined);
+    ctx.ui.setWidget("powerline-last-prompt", undefined);
 
     let autocompleteFixed = false;
 
@@ -1815,7 +2039,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       editor.handleInput = (data: string) => {
         lastEditorInputAt = Date.now();
 
-        if (data === "ß") {
+        if (isStashShortcutInput(data)) {
           stashOrRestoreEditorText(ctx);
           scheduleDismissWelcome(ctx);
           return;
@@ -1825,6 +2049,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           autocompleteFixed = true;
           snapshotPromptHistory(editor);
           ctx.ui.setEditorComponent(editorFactory);
+          installFixedEditorCompositor(ctx, tui);
           currentEditor?.handleInput(data);
           return;
         }
@@ -1901,126 +2126,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       };
     });
 
-    ctx.ui.setWidget("powerline-status", () => {
-      return {
-        dispose() {},
-        invalidate() {
-          requestStatusRender();
-        },
-        render(width: number): string[] {
-          if (!currentCtx || !footerDataRef) return [];
-
-          const statuses = footerDataRef.getExtensionStatuses();
-          if (!statuses || statuses.size === 0) return [];
-          const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
-
-          const notifications: string[] = [];
-          for (const value of getNotificationExtensionStatuses(statuses, hiddenExtensionStatusKeys)) {
-            const lineContent = ` ${value}`;
-            if (visibleWidth(lineContent) <= width) {
-              notifications.push(lineContent);
-            }
-          }
-
-          return notifications;
-        },
-      };
-    }, { placement: "aboveEditor" });
-
-    ctx.ui.setWidget("powerline-top", (_tui: any, theme: Theme) => {
-      return {
-        dispose() {},
-        invalidate() {
-          resetLayoutCache();
-        },
-        render(width: number): string[] {
-          if (!currentCtx) return [];
-
-          const layout = getResponsiveLayout(width, theme);
-          return layout.topContent ? [layout.topContent] : [];
-        },
-      };
-    }, { placement: "aboveEditor" });
-
-    ctx.ui.setWidget("powerline-secondary", (_tui: any, theme: Theme) => {
-      return {
-        dispose() {},
-        invalidate() {
-          resetLayoutCache();
-        },
-        render(width: number): string[] {
-          if (!currentCtx) return [];
-
-          const layout = getResponsiveLayout(width, theme);
-
-          if (layout.secondaryContent) {
-            return [layout.secondaryContent];
-          }
-
-          return [];
-        },
-      };
-    }, { placement: "belowEditor" });
-
-    ctx.ui.setWidget("powerline-bash-transcript", (_tui: any, theme: Theme) => {
-      return {
-        dispose() {},
-        invalidate() {},
-        render(width: number): string[] {
-          if (!bashModeActive) return [];
-
-          const snapshot = bashTranscript.getSnapshot();
-          if (snapshot.commands.length === 0) return [];
-
-          const lines: string[] = [];
-          if (snapshot.truncatedCommands > 0) {
-            lines.push(` ${theme.fg("dim", `… ${snapshot.truncatedCommands} earlier command${snapshot.truncatedCommands === 1 ? "" : "s"} truncated`)}`);
-          }
-
-          const recentCommands = snapshot.commands.slice(-4);
-          for (const command of recentCommands) {
-            const promptGlyph = (shellSession?.state.shellName ?? "shell") === "fish" ? ">" : "$";
-            const status = command.exitCode === null
-              ? theme.fg("accent", "running")
-              : command.exitCode === 0
-                ? theme.fg("success", "ok")
-                : theme.fg("error", `exit ${command.exitCode}`);
-            const commandLine = truncateToWidth(command.command.replace(/\s+/g, " ").trim(), Math.max(8, width - 8), "…");
-            lines.push(` ${theme.fg("accent", promptGlyph)} ${commandLine} ${theme.fg("dim", "(")}${status}${theme.fg("dim", ")")}`);
-
-            const outputTail = command.output.slice(-6);
-            for (const outputLine of outputTail) {
-              lines.push(`   ${truncateToWidth(outputLine, Math.max(1, width - 3), "…")}`);
-            }
-          }
-
-          return lines.slice(-16);
-        },
-      };
-    }, { placement: "belowEditor" });
-
-    ctx.ui.setWidget("powerline-last-prompt", () => {
-      return {
-        dispose() {},
-        invalidate() {},
-        render(width: number): string[] {
-          if (bashModeActive || !showLastPrompt || !lastUserPrompt) return [];
-
-          const prefix = ` ${getFgAnsiCode("sep")}↳${ansi.reset} `;
-          const availableWidth = width - visibleWidth(prefix);
-          if (availableWidth < 10) return [];
-
-          let promptText = lastUserPrompt.replace(/\s+/g, " ").trim();
-          if (!promptText) return [];
-
-          promptText = truncateToWidth(promptText, availableWidth, "…");
-
-          const styledPrompt = `${getFgAnsiCode("sep")}${promptText}${ansi.reset}`;
-          const line = `${prefix}${styledPrompt}`;
-          return [truncateToWidth(line, width, "…")];
-        },
-      };
-    }, { placement: "belowEditor" });
+    if (tuiRef) {
+      installFixedEditorCompositor(ctx, tuiRef);
+    }
   }
 
   function setupWelcomeHeader(ctx: any) {

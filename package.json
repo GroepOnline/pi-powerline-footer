@@ -7,7 +7,9 @@
     "*.ts",
     "*.md",
     "*.json",
-    "bash-mode/**/*.ts"
+    "!progress.md",
+    "bash-mode/**/*.ts",
+    "fixed-editor/**/*.ts"
   ],
   "keywords": [
     "pi-package",

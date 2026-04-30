@@ -4,6 +4,7 @@ import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, Statu
 export interface PowerlineConfig {
   preset: StatusLinePreset;
   customItems: CustomStatusItem[];
+  mouseScroll: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,7 +83,7 @@ function normalizeCustomItems(raw: unknown): CustomStatusItem[] {
 }
 
 export function parsePowerlineConfig(value: unknown, presets: readonly StatusLinePreset[]): PowerlineConfig {
-  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [] };
+  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], mouseScroll: true };
 
   const directPreset = normalizePreset(value, presets);
   if (directPreset) return { ...defaultConfig, preset: directPreset };
@@ -92,6 +93,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   return {
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
     customItems: normalizeCustomItems(value.customItems),
+    mouseScroll: value.mouseScroll !== false,
   };
 }
 
@@ -119,6 +121,17 @@ export function nextPowerlineSettingWithPreset(existingPowerlineSetting: unknown
     return preset;
   }
   return { ...existingPowerlineSetting, preset };
+}
+
+export function nextPowerlineSettingWithMouseScroll(
+  existingPowerlineSetting: unknown,
+  mouseScroll: boolean,
+  currentPreset: StatusLinePreset = "default",
+): unknown {
+  if (!isRecord(existingPowerlineSetting)) {
+    return { preset: currentPreset, mouseScroll };
+  }
+  return { ...existingPowerlineSetting, mouseScroll };
 }
 
 export function collectHiddenExtensionStatusKeys(customItems: readonly CustomStatusItem[]): Set<string> {
