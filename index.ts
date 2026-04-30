@@ -25,7 +25,7 @@ import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
 import { getPreset, PRESETS } from "./presets.js";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithMouseScroll, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
@@ -61,6 +61,7 @@ let config: PowerlineConfig = {
   preset: "default",
   customItems: [],
   mouseScroll: true,
+  fixedEditor: true,
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -502,9 +503,13 @@ function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = pro
   ));
 }
 
-function writePowerlineMouseScrollSetting(mouseScroll: boolean, cwd: string, currentPreset: StatusLinePreset): boolean {
+function writePowerlineOptionSetting(
+  cwd: string,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor">>,
+  currentPreset: StatusLinePreset,
+): boolean {
   return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
-    nextPowerlineSettingWithMouseScroll(existingPowerlineSetting, mouseScroll, currentPreset)
+    nextPowerlineSettingWithOptions(existingPowerlineSetting, updates, currentPreset)
   ));
 }
 
@@ -1418,14 +1423,30 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       if (mouseScrollMatch) {
         const mode = mouseScrollMatch[1] ?? "toggle";
         config.mouseScroll = mode === "toggle" ? !config.mouseScroll : mode === "on";
-        if (enabled && ctx.hasUI && tuiRef && currentEditor) {
+        if (enabled && ctx.hasUI && config.fixedEditor && tuiRef && currentEditor) {
           installFixedEditorCompositor(ctx, tuiRef);
         }
 
-        if (writePowerlineMouseScrollSetting(config.mouseScroll, ctx.cwd, config.preset)) {
+        if (writePowerlineOptionSetting(ctx.cwd, { mouseScroll: config.mouseScroll }, config.preset)) {
           ctx.ui.notify(`Powerline mouse scroll ${config.mouseScroll ? "enabled" : "disabled"}`, "info");
         } else {
           ctx.ui.notify(`Powerline mouse scroll ${config.mouseScroll ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
+        }
+        return;
+      }
+
+      const fixedEditorMatch = /^fixed-editor(?:\s+(on|off|toggle))?$/.exec(normalizedArgs);
+      if (fixedEditorMatch) {
+        const mode = fixedEditorMatch[1] ?? "toggle";
+        config.fixedEditor = mode === "toggle" ? !config.fixedEditor : mode === "on";
+        if (enabled && ctx.hasUI) {
+          setupCustomEditor(ctx);
+        }
+
+        if (writePowerlineOptionSetting(ctx.cwd, { fixedEditor: config.fixedEditor }, config.preset)) {
+          ctx.ui.notify(`Powerline fixed editor ${config.fixedEditor ? "enabled" : "disabled"}`, "info");
+        } else {
+          ctx.ui.notify(`Powerline fixed editor ${config.fixedEditor ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
         }
         return;
       }
@@ -1890,7 +1911,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function installFixedEditorCompositor(ctx: any, tui: any) {
     teardownFixedEditorCompositor();
 
-    if (!ctx.hasUI) return;
+    if (!ctx.hasUI || !config.fixedEditor) return;
     if (!tui?.terminal || typeof tui.terminal.write !== "function") {
       throw new Error("[powerline-footer] Fixed editor compositor could not find tui.terminal.write()");
     }
@@ -1938,6 +1959,54 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (fixedWidgetContainerBelow?.render) compositor.hideRenderable(fixedWidgetContainerBelow);
     compositor.install();
     tui.requestRender(true);
+  }
+
+  function installPowerlineWidgets(ctx: any) {
+    ctx.ui.setWidget("powerline-status", () => ({
+      dispose() {},
+      invalidate() {
+        requestStatusRender();
+      },
+      render(width: number): string[] {
+        return renderPowerlineStatusLines(width);
+      },
+    }), { placement: "aboveEditor" });
+
+    ctx.ui.setWidget("powerline-top", (_tui: any, theme: Theme) => ({
+      dispose() {},
+      invalidate() {
+        resetLayoutCache();
+      },
+      render(width: number): string[] {
+        return renderPowerlineTopLines(width, theme);
+      },
+    }), { placement: "aboveEditor" });
+
+    ctx.ui.setWidget("powerline-secondary", (_tui: any, theme: Theme) => ({
+      dispose() {},
+      invalidate() {
+        resetLayoutCache();
+      },
+      render(width: number): string[] {
+        return renderPowerlineSecondaryLines(width, theme);
+      },
+    }), { placement: "belowEditor" });
+
+    ctx.ui.setWidget("powerline-bash-transcript", (_tui: any, theme: Theme) => ({
+      dispose() {},
+      invalidate() {},
+      render(width: number): string[] {
+        return renderBashTranscriptLines(width, theme);
+      },
+    }), { placement: "belowEditor" });
+
+    ctx.ui.setWidget("powerline-last-prompt", () => ({
+      dispose() {},
+      invalidate() {},
+      render(width: number): string[] {
+        return renderLastPromptLines(width);
+      },
+    }), { placement: "belowEditor" });
   }
 
   function setupCustomEditor(ctx: any) {
@@ -2049,7 +2118,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           autocompleteFixed = true;
           snapshotPromptHistory(editor);
           ctx.ui.setEditorComponent(editorFactory);
-          installFixedEditorCompositor(ctx, tui);
+          if (config.fixedEditor) {
+            installFixedEditorCompositor(ctx, tui);
+          }
           currentEditor?.handleInput(data);
           return;
         }
@@ -2126,8 +2197,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       };
     });
 
-    if (tuiRef) {
-      installFixedEditorCompositor(ctx, tuiRef);
+    if (config.fixedEditor) {
+      if (tuiRef) {
+        installFixedEditorCompositor(ctx, tuiRef);
+      }
+    } else {
+      installPowerlineWidgets(ctx);
     }
   }
 

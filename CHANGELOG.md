@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- **Fixed editor hard cutover** — The extension now owns a TUI-only viewport for chat/feed content and keeps the powerline/editor cluster fixed at the bottom. Mouse wheel input is captured with SGR mouse reporting so it scrolls the chat viewport instead of reaching the editor, while PageUp/PageDown and Alt+Up/Alt+Down remain keyboard scroll shortcuts. Dragging across chat text now highlights the app-owned selection and copies it to the system clipboard on release. Use `/powerline mouse-scroll off` to disable mouse reporting when native terminal selection is more important than wheel scrolling.
+- **Fixed editor hard cutover** — Chat/feed content now scrolls in a TUI-owned viewport above the fixed powerline/editor cluster. Mouse wheel, PageUp/PageDown, and Alt+Up/Alt+Down scroll chat without moving the editor. Dragging chat text highlights it and copies on release. Use `/powerline fixed-editor on|off|toggle` to switch back to Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 ### Fixed
 - **Chat selection release edge case** — Releasing a chat text drag over the fixed editor cluster now finalizes and copies the selected chat text instead of leaving the highlight stuck.

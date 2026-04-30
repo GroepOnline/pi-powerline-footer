@@ -18,7 +18,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Fixed editor cluster** — In interactive TUI sessions, the extension switches to an app-owned viewport: chat/feed content scrolls above the fixed powerline rows, custom editor, ghost suggestions, bash transcript, and last-prompt/status rows. Mouse wheel, PageUp/PageDown, and Alt+Up/Alt+Down scroll the chat viewport. Mouse mode uses terminal reporting so wheel input never reaches the editor; dragging across chat text highlights it and copies the selected text to the system clipboard on release. Use `/powerline mouse-scroll off` if you prefer native terminal selection over wheel scrolling.
+**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Mouse wheel, PageUp/PageDown, and Alt+Up/Alt+Down scroll chat without moving the editor. Drag chat text to highlight it and copy on release. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
 
@@ -44,7 +44,7 @@ Restart pi to activate.
 
 ## Usage
 
-Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, and switch reliable wheel scrolling with `/powerline mouse-scroll on|off|toggle`.
+Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
 
 | Preset | Description |
 |--------|-------------|

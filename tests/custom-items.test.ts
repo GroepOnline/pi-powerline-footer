@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentsWithCustomItems, nextPowerlineSettingWithMouseScroll, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
 
 test("parsePowerlineConfig supports object config with custom items", () => {
   const config = parsePowerlineConfig(
@@ -21,6 +21,7 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.customItems[1].statusKey, "review");
   assert.equal(config.customItems[1].hideWhenMissing, false);
   assert.equal(config.mouseScroll, true);
+  assert.equal(config.fixedEditor, true);
 });
 
 test("parsePowerlineConfig supports disabling mouse scroll", () => {
@@ -31,6 +32,16 @@ test("parsePowerlineConfig supports disabling mouse scroll", () => {
 
   assert.equal(config.preset, "compact");
   assert.equal(config.mouseScroll, false);
+});
+
+test("parsePowerlineConfig supports disabling fixed editor", () => {
+  const config = parsePowerlineConfig(
+    { preset: "compact", fixedEditor: false },
+    ["default", "compact"],
+  );
+
+  assert.equal(config.preset, "compact");
+  assert.equal(config.fixedEditor, false);
 });
 
 test("mergeSegmentsWithCustomItems appends custom segment ids by position", () => {
@@ -69,10 +80,10 @@ test("nextPowerlineSettingWithPreset preserves object settings", () => {
   assert.deepEqual(updated.customItems, [{ id: "ci" }]);
 });
 
-test("nextPowerlineSettingWithMouseScroll preserves object settings", () => {
-  const updated = nextPowerlineSettingWithMouseScroll(
-    { preset: "default", customItems: [{ id: "ci" }] },
-    false,
+test("nextPowerlineSettingWithOptions preserves object settings", () => {
+  const updated = nextPowerlineSettingWithOptions(
+    { preset: "default", customItems: [{ id: "ci" }], mouseScroll: false },
+    { fixedEditor: false },
     "compact",
   );
   if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
@@ -80,12 +91,13 @@ test("nextPowerlineSettingWithMouseScroll preserves object settings", () => {
   }
 
   assert.equal(updated.preset, "default");
+  assert.equal(updated.fixedEditor, false);
   assert.equal(updated.mouseScroll, false);
   assert.deepEqual(updated.customItems, [{ id: "ci" }]);
 });
 
-test("nextPowerlineSettingWithMouseScroll converts string presets to object settings", () => {
-  assert.deepEqual(nextPowerlineSettingWithMouseScroll("compact", true, "compact"), {
+test("nextPowerlineSettingWithOptions converts string presets to object settings", () => {
+  assert.deepEqual(nextPowerlineSettingWithOptions("compact", { mouseScroll: true }, "compact"), {
     preset: "compact",
     mouseScroll: true,
   });
