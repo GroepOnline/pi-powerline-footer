@@ -6,6 +6,7 @@
 - **Fixed editor hard cutover** — Chat/feed content now scrolls in a TUI-owned viewport above the fixed powerline/editor cluster. Mouse wheel, PageUp/PageDown, and Alt+Up/Alt+Down scroll chat without moving the editor. Dragging chat text highlights it and copies on release. Use `/powerline fixed-editor on|off|toggle` to switch back to Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 ### Fixed
+- **Fixed-editor selection overflow** — Chat selection highlighting now strips OSC shell-integration control sequences before slicing text, preventing exposed `]133` markers from making rendered lines exceed terminal width.
 - **Chat selection release edge case** — Releasing a chat text drag over the fixed editor cluster now finalizes and copies the selected chat text instead of leaving the highlight stuck.
 
 ## [0.4.20] - 2026-04-26

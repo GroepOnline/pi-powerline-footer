@@ -149,7 +149,9 @@ function isMouseRelease(packet: SgrMousePacket): boolean {
 }
 
 function stripAnsi(line: string): string {
-  return line.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+  return line
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
 }
 
 function sliceColumns(text: string, startCol: number, endCol: number): string {

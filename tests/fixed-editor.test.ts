@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { visibleWidth } from "@mariozechner/pi-tui";
 import { CURSOR_MARKER, renderFixedEditorCluster } from "../fixed-editor/cluster.ts";
 import {
   buildFixedClusterPaint,
@@ -408,6 +409,49 @@ test("terminal split selects visible chat text and copies it on drag release", (
 
   assert.deepEqual(copied, ["ravo two\ncharlie three\ndelta"]);
   assert.deepEqual(renderRequests, [undefined, undefined, undefined]);
+
+  compositor.dispose();
+});
+
+test("terminal split selection does not expose OSC control sequences as text", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 20;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const rootLines = [
+    "old-0", "old-1", "old-2", "old-3", "old-4",
+    "alpha", "bravo", "charlie", "delta", "echo",
+    "foxtrot", "golf", "hotel", "india", "\x1b]133;B\x07\x1b]133;C\x07juliet",
+  ];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(20);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;1;10M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;6;10M"), { consume: true });
+  const selectedLine = tui.render(20).at(-1) ?? "";
+
+  assert.ok(visibleWidth(selectedLine) <= 20);
+  assert.ok(!selectedLine.includes("]133"));
+  assert.ok(selectedLine.includes("\x1b[7mjulie\x1b[27mt"));
 
   compositor.dispose();
 });
