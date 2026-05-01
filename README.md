@@ -18,7 +18,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Mouse wheel, PageUp/PageDown, and role-aware message jumps scroll chat without moving the editor. Drag chat or fixed-editor text to highlight it and copy on release. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
+**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Scroll chat with the mouse wheel, PageUp/PageDown, Command+PageUp/PageDown, Ctrl+Shift+Up/Down, or message-jump shortcuts; the editor stays put. Drag text to copy it, double-click a line to select it, and right-click to open the terminal menu. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
 
@@ -45,6 +45,25 @@ Restart pi to activate.
 ## Usage
 
 Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
+
+Fixed editor is on by default.
+
+- `/powerline fixed-editor off` — return to Pi’s regular scrolling layout
+- `/powerline fixed-editor on` — re-enable the fixed editor
+- `/powerline fixed-editor toggle` — switch between the two
+
+You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/settings.json`:
+
+```json
+{
+  "powerline": {
+    "preset": "default",
+    "fixedEditor": false
+  }
+}
+```
+
+Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling.
 
 | Preset | Description |
 |--------|-------------|

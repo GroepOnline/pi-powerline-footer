@@ -1,4 +1,4 @@
-import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { FixedEditorClusterRender } from "./cluster.ts";
 
 export interface TerminalLike {
@@ -56,6 +56,9 @@ interface DisposeOptions {
 }
 
 type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
+
+const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
+const DOUBLE_CLICK_MS = 500;
 
 export function beginSynchronizedOutput(): string {
   return "\x1b[?2026h";
@@ -126,8 +129,20 @@ function resetExtendedKeyboardModes(): string {
 }
 
 function parseKeyboardScrollDelta(data: string): number {
-  if (matchesKey(data, "pageUp")) return 10;
-  if (matchesKey(data, "pageDown")) return -10;
+  if (isKeyRelease(data)) return 0;
+
+  if (
+    matchesKey(data, "pageUp")
+    || matchesKey(data, "super+pageUp")
+    || matchesKey(data, "ctrl+shift+up")
+    || /^\x1b\[(?:5;9(?::[12])?~|1;6(?::[12])?A|57421;9(?::[12])?u|57419;6(?::[12])?u)$/.test(data)
+  ) return 10;
+  if (
+    matchesKey(data, "pageDown")
+    || matchesKey(data, "super+pageDown")
+    || matchesKey(data, "ctrl+shift+down")
+    || /^\x1b\[(?:6;9(?::[12])?~|1;6(?::[12])?B|57422;9(?::[12])?u|57420;6(?::[12])?u)$/.test(data)
+  ) return -10;
   return 0;
 }
 
@@ -168,6 +183,10 @@ function isLeftPress(packet: SgrMousePacket): boolean {
 
 function isLeftDrag(packet: SgrMousePacket): boolean {
   return packet.final === "M" && mouseBaseButton(packet.code) === 0 && (packet.code & 32) !== 0;
+}
+
+function isRightPress(packet: SgrMousePacket): boolean {
+  return packet.final === "M" && mouseBaseButton(packet.code) === 2 && (packet.code & 32) === 0;
 }
 
 function isMouseRelease(packet: SgrMousePacket): boolean {
@@ -265,6 +284,7 @@ export class TerminalSplitCompositor {
   private readonly patchedRenders: RenderPatch[] = [];
   private removeInputListener: (() => void) | null = null;
   private emergencyCleanup: (() => void) | null = null;
+  private mouseReportingResumeTimer: ReturnType<typeof setTimeout> | null = null;
   private installed = false;
   private disposed = false;
   private writing = false;
@@ -284,6 +304,8 @@ export class TerminalSplitCompositor {
   private selectionAnchor: SelectionPoint | null = null;
   private selectionFocus: SelectionPoint | null = null;
   private selectionDragging = false;
+  private preserveSelectionFocusOnRelease = false;
+  private lastLeftPress: { area: SelectionArea; line: number; at: number } | null = null;
 
   constructor(options: TerminalSplitCompositorOptions) {
     this.tui = options.tui;
@@ -374,6 +396,7 @@ export class TerminalSplitCompositor {
     if (this.disposed || this.hasVisibleOverlay() || this.scrollOffset === 0) return false;
 
     this.clearSelection();
+    this.lastLeftPress = null;
     this.scrollOffset = 0;
     this.requestRender();
     return true;
@@ -395,6 +418,7 @@ export class TerminalSplitCompositor {
       if (nextOffset === this.scrollOffset) continue;
 
       this.clearSelection();
+      this.lastLeftPress = null;
       this.scrollOffset = nextOffset;
       this.requestRender();
       return true;
@@ -430,6 +454,10 @@ export class TerminalSplitCompositor {
     if (this.emergencyCleanup) {
       process.removeListener("exit", this.emergencyCleanup);
       this.emergencyCleanup = null;
+    }
+    if (this.mouseReportingResumeTimer) {
+      clearTimeout(this.mouseReportingResumeTimer);
+      this.mouseReportingResumeTimer = null;
     }
 
     this.terminal.write = this.originalWrite;
@@ -522,39 +550,80 @@ export class TerminalSplitCompositor {
       return;
     }
 
+    if (isRightPress(packet)) {
+      this.clearSelection();
+      this.lastLeftPress = null;
+      this.pauseMouseReportingForContextMenu();
+      return;
+    }
+
     const location = this.selectionLocationForPacket(packet);
 
     if (this.selectionDragging && isMouseRelease(packet)) {
-      this.selectionFocus = location?.area === this.selectionArea
-        ? location.point
-        : this.clampedSelectionPointForPacket(packet, this.selectionArea);
-      this.selectionDragging = false;
-      const selectedText = this.getSelectedText();
-      if (selectedText) {
-        this.onCopySelection?.(selectedText);
-      } else {
-        this.clearSelection();
-      }
-      this.requestRender();
+      this.finishSelection(packet, location);
       return;
     }
 
     if (!location) return;
 
     if (isLeftPress(packet)) {
-      this.selectionArea = location.area;
-      this.selectionAnchor = location.point;
-      this.selectionFocus = location.point;
-      this.selectionDragging = true;
-      this.requestRender();
+      this.startSelection(location);
       return;
     }
 
     if (this.selectionDragging && isLeftDrag(packet) && location.area === this.selectionArea) {
+      this.lastLeftPress = null;
       this.selectionFocus = location.point;
       this.requestRender();
       return;
     }
+  }
+
+  private finishSelection(packet: SgrMousePacket, location: SelectionLocation | null): void {
+    if (!this.preserveSelectionFocusOnRelease) {
+      this.selectionFocus = location?.area === this.selectionArea
+        ? location.point
+        : this.clampedSelectionPointForPacket(packet, this.selectionArea);
+    }
+
+    this.preserveSelectionFocusOnRelease = false;
+    this.selectionDragging = false;
+    const selectedText = this.getSelectedText();
+    if (selectedText) {
+      this.lastLeftPress = null;
+      this.onCopySelection?.(selectedText);
+    } else {
+      this.clearSelection();
+    }
+    this.requestRender();
+  }
+
+  private startSelection(location: SelectionLocation): void {
+    const now = Date.now();
+    const line = location.point.line;
+    if (
+      this.lastLeftPress
+      && this.lastLeftPress.area === location.area
+      && this.lastLeftPress.line === line
+      && now - this.lastLeftPress.at <= DOUBLE_CLICK_MS
+    ) {
+      this.selectionArea = location.area;
+      this.selectionAnchor = { line, col: 0 };
+      this.selectionFocus = { line, col: this.selectionLineWidth(location.area, line) };
+      this.selectionDragging = true;
+      this.preserveSelectionFocusOnRelease = true;
+      this.lastLeftPress = null;
+      this.requestRender();
+      return;
+    }
+
+    this.selectionArea = location.area;
+    this.selectionAnchor = location.point;
+    this.selectionFocus = location.point;
+    this.selectionDragging = true;
+    this.preserveSelectionFocusOnRelease = false;
+    this.lastLeftPress = { area: location.area, line, at: now };
+    this.requestRender();
   }
 
   private selectionLocationForPacket(packet: SgrMousePacket): SelectionLocation | null {
@@ -607,6 +676,12 @@ export class TerminalSplitCompositor {
     return `${before}\x1b[7m${selected}\x1b[27m${after}`;
   }
 
+  private selectionLineWidth(area: SelectionArea, lineIndex: number): number {
+    const lines = area === "root" ? this.visibleRootLines : this.visibleClusterLines;
+    const firstLine = area === "root" ? this.visibleRootStart : 0;
+    return visibleWidth(stripAnsi(lines[lineIndex - firstLine] ?? ""));
+  }
+
   private getSelectedText(): string {
     if (!this.selectionArea || !this.selectionAnchor || !this.selectionFocus) return "";
 
@@ -649,6 +724,7 @@ export class TerminalSplitCompositor {
     if (nextOffset === this.scrollOffset) return;
 
     this.clearSelection();
+    this.lastLeftPress = null;
     this.scrollOffset = nextOffset;
     this.requestRender();
   }
@@ -659,11 +735,30 @@ export class TerminalSplitCompositor {
     }
   }
 
+  private pauseMouseReportingForContextMenu(): void {
+    if (this.mouseReportingResumeTimer) {
+      clearTimeout(this.mouseReportingResumeTimer);
+    }
+
+    this.originalWrite(beginSynchronizedOutput() + disableMouseReporting() + endSynchronizedOutput());
+    this.mouseReportingResumeTimer = setTimeout(() => {
+      this.mouseReportingResumeTimer = null;
+      if (!this.disposed) {
+        this.originalWrite(beginSynchronizedOutput() + enableMouseReporting() + endSynchronizedOutput());
+      }
+    }, CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS);
+
+    if (typeof this.mouseReportingResumeTimer === "object" && "unref" in this.mouseReportingResumeTimer) {
+      this.mouseReportingResumeTimer.unref();
+    }
+  }
+
   private clearSelection(): void {
     this.selectionArea = null;
     this.selectionAnchor = null;
     this.selectionFocus = null;
     this.selectionDragging = false;
+    this.preserveSelectionFocusOnRelease = false;
   }
 
   private activeExtendedKeyboardMode(): ExtendedKeyboardMode | null {

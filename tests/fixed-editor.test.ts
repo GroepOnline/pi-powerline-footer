@@ -464,6 +464,49 @@ test("terminal split handles modified SGR wheel packets", () => {
   compositor.dispose();
 });
 
+test("terminal split pauses mouse reporting on right click for the terminal context menu", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  const copied: string[] = [];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return Array.from({ length: 20 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;5;5M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;5;5m"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<2;5;5M"), { consume: true });
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
+  assert.deepEqual(inputListener?.("\x1b[<0;5;5M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;5;5m"), { consume: true });
+  assert.deepEqual(copied, []);
+  assert.deepEqual(renderRequests, [undefined, undefined, undefined, undefined]);
+
+  compositor.dispose();
+});
+
 test("terminal split selects visible chat text and copies it on drag release", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
@@ -605,10 +648,29 @@ test("terminal split copies chat and fixed cluster selections", () => {
   assert.deepEqual(inputListener?.("\x1b[<0;10;12m"), { consume: true });
   assert.deepEqual(copied, ["india nine\njuli", "hello"]);
 
+  assert.deepEqual(inputListener?.("\x1b[<0;8;12M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;8;12m"), { consume: true });
+  assert.deepEqual(copied, ["india nine\njuli", "hello"]);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;4;3M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;4;3m"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;5;3M"), { consume: true });
+  assert.ok(tui.render(40)[2]?.includes("\x1b[7mcharlie three\x1b[27m"));
+  assert.deepEqual(inputListener?.("\x1b[<0;5;3m"), { consume: true });
+  assert.deepEqual(copied, ["india nine\njuli", "hello", "charlie three"]);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;8;12M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;8;12m"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;9;12M"), { consume: true });
+  compositor.requestRepaint();
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[7m  > hello world\x1b[27m"));
+  assert.deepEqual(inputListener?.("\x1b[<0;9;12m"), { consume: true });
+  assert.deepEqual(copied, ["india nine\njuli", "hello", "charlie three", "  > hello world"]);
+
   compositor.dispose();
 });
 
-test("terminal split keyboard scroll preserves Pi app shortcuts", () => {
+test("terminal split keyboard scroll supports Pi page aliases and preserves app shortcuts", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
   const tui = {
@@ -635,6 +697,20 @@ test("terminal split keyboard scroll preserves Pi app shortcuts", () => {
   tui.render();
 
   assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[5;9~"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57421;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[1;6A"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57419;6u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[6;9~"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57422;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[1;6B"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57420;6u"), { consume: true });
+  assert.equal(inputListener?.("\x1b[1;10A"), undefined);
+  assert.equal(inputListener?.("\x1b[57419;10u"), undefined);
+  assert.equal(inputListener?.("\x1b[1;10B"), undefined);
+  assert.equal(inputListener?.("\x1b[57420;10u"), undefined);
+  assert.equal(inputListener?.("\x1b[1;10:3A"), undefined);
+  assert.equal(inputListener?.("\x1b[57419;10:3u"), undefined);
   assert.equal(inputListener?.("\x1bp"), undefined);
   assert.equal(inputListener?.("\x1bn"), undefined);
 

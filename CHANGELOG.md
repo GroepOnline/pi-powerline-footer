@@ -11,6 +11,9 @@
 - **Fixed-editor terminal cleanup** — Session shutdown and emergency exit cleanup now leave alternate screen before clearing the full Kitty CSI-u stack and xterm modifyOtherKeys mode, preventing keypresses from leaking as sequences like `97;1:3u` after quitting Pi.
 - **Fixed-editor selection overflow** — Chat selection highlighting now strips OSC shell-integration control sequences before slicing text, preventing exposed `]133` markers from making rendered lines exceed terminal width.
 - **Fixed-editor text selection** — Dragging inside the fixed editor cluster now highlights and copies selected text instead of being swallowed by mouse-scroll handling.
+- **Fixed-editor right-click menu** — Right-click temporarily releases mouse reporting so the terminal context menu remains available while fixed-editor mouse scrolling is enabled.
+- **Fixed-editor double-click selection** — Double-clicking chat or fixed-editor text now selects the whole line while mouse reporting is active.
+- **Fixed-editor keyboard scrolling** — Command+PageUp/PageDown and Ctrl+Shift+Up/Down now scroll the fixed-editor chat viewport, giving compact keyboards a default page-scroll shortcut.
 
 ## [0.4.20] - 2026-04-26
 
