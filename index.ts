@@ -34,7 +34,7 @@ import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSession
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
-import { TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
+import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.js";
 import { 
   initVibeManager, 
@@ -107,8 +107,8 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   cutEditor: "ctrl+alt+x",
   jumpPreviousUserMessage: "ctrl+shift+u",
   jumpNextUserMessage: "ctrl+shift+i",
-  jumpPreviousLlmMessage: "ctrl+alt+<",
-  jumpNextLlmMessage: "ctrl+alt+>",
+  jumpPreviousLlmMessage: "ctrl+alt+,",
+  jumpNextLlmMessage: "ctrl+alt+.",
   jumpChatBottom: "ctrl+shift+g",
 };
 const DEFAULT_BASH_MODE_SETTINGS: BashModeSettings = {
@@ -2097,7 +2097,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function teardownFixedEditorCompositor(options?: { resetExtendedKeyboardModes?: boolean }) {
+    const hadCompositor = fixedEditorCompositor !== null;
     fixedEditorCompositor?.dispose(options);
+    if (!hadCompositor && options?.resetExtendedKeyboardModes) {
+      try {
+        process.stdout.write(emergencyTerminalModeReset());
+      } catch {
+        // Shutdown cleanup cannot surface useful terminal write failures.
+      }
+    }
     fixedEditorCompositor = null;
     fixedEditorContainer = null;
     fixedWidgetContainerAbove = null;
@@ -2256,6 +2264,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     fixedEditorCompositor.jumpToRootBottom();
   }
 
+  function followSubmittedEditorToBottom(): void {
+    fixedEditorCompositor?.jumpToRootBottom();
+  }
+
   function installPowerlineWidgets(ctx: any) {
     ctx.ui.setWidget("powerline-status", () => ({
       dispose() {},
@@ -2353,6 +2365,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           void setBashModeActive(false, ctx);
         },
         onSubmitCommand: (command) => void runShellCommand(command, ctx),
+        onEditorSubmit: () => followSubmittedEditorToBottom(),
         onInterrupt: () => {
           shellSession?.interrupt();
           ctx.ui.notify("Sent interrupt to shell", "info");
@@ -2402,6 +2415,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return true;
       };
 
+      let inheritedOnSubmit: unknown;
+      Object.defineProperty(editor, "onSubmit", {
+        configurable: true,
+        get: () => inheritedOnSubmit,
+        set(handler: unknown) {
+          inheritedOnSubmit = typeof handler === "function"
+            ? (text: string) => {
+              followSubmittedEditorToBottom();
+              handler(text);
+            }
+            : handler;
+        },
+      });
+
       currentEditor = editor;
       trackPromptHistory(editor);
       restorePromptHistory(editor);
@@ -2436,8 +2463,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         attachAutocompleteProvider();
+        const followUpText = keybindings.matches(data, "app.message.followUp") ? getCurrentEditorText(ctx, editor) : "";
         scheduleDismissWelcome(ctx);
         originalHandleInput(data);
+        if (hasNonWhitespaceText(followUpText) && !hasNonWhitespaceText(getCurrentEditorText(ctx, editor))) {
+          followSubmittedEditorToBottom();
+        }
       };
 
       const originalRender = editor.render.bind(editor);

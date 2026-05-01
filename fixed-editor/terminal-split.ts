@@ -128,6 +128,16 @@ function resetExtendedKeyboardModes(): string {
   return "\x1b[<999u\x1b[>4;0m";
 }
 
+export function emergencyTerminalModeReset(): string {
+  return beginSynchronizedOutput()
+    + resetScrollRegion()
+    + disableMouseReporting()
+    + enableAlternateScrollMode()
+    + exitAlternateScreen()
+    + resetExtendedKeyboardModes()
+    + endSynchronizedOutput();
+}
+
 function parseKeyboardScrollDelta(data: string): number {
   if (isKeyRelease(data)) return 0;
 

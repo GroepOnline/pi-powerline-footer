@@ -4,6 +4,7 @@ import { visibleWidth } from "@mariozechner/pi-tui";
 import { CURSOR_MARKER, renderFixedEditorCluster } from "../fixed-editor/cluster.ts";
 import {
   buildFixedClusterPaint,
+  emergencyTerminalModeReset,
   endSynchronizedOutput,
   beginSynchronizedOutput,
   moveCursor,
@@ -904,6 +905,14 @@ test("terminal split reuses the fixed cluster during one render pass", () => {
   assert.equal(renderClusterCount, 1);
 
   compositor.dispose();
+});
+
+test("emergency terminal reset exits alternate screen before clearing keyboard modes", () => {
+  const cleanup = emergencyTerminalModeReset();
+  assert.ok(cleanup.includes("\x1b[?1049l"));
+  assert.ok(cleanup.includes("\x1b[<999u"));
+  assert.ok(cleanup.includes("\x1b[>4;0m"));
+  assert.ok(cleanup.indexOf("\x1b[?1049l") < cleanup.indexOf("\x1b[<999u"));
 });
 
 test("terminal split emergency exit cleanup resets extended keyboard modes", () => {

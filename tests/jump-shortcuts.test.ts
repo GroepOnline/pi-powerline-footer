@@ -43,8 +43,8 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
   const defaults = powerlineDefaults();
   assert.equal(defaults.get("jumpPreviousUserMessage"), "ctrl+shift+u");
   assert.equal(defaults.get("jumpNextUserMessage"), "ctrl+shift+i");
-  assert.equal(defaults.get("jumpPreviousLlmMessage"), "ctrl+alt+<");
-  assert.equal(defaults.get("jumpNextLlmMessage"), "ctrl+alt+>");
+  assert.equal(defaults.get("jumpPreviousLlmMessage"), "ctrl+alt+,");
+  assert.equal(defaults.get("jumpNextLlmMessage"), "ctrl+alt+.");
   assert.equal(defaults.get("jumpChatBottom"), "ctrl+shift+g");
   assert.match(source, /const CHAT_JUMP_SHORTCUTS:/);
   assert.match(source, /shortcutKey: "jumpPreviousUserMessage"/);
@@ -62,6 +62,21 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
   assert.match(source, /fixedEditorCompositor\.jumpToRootBottom\(\)/);
   assert.match(source, /function getChatJumpShortcutAction\(data: string\): ChatJumpShortcutAction \| null/);
   assert.match(source, /jumpToChatMessage\(ctx, action\.action\.role, action\.action\.direction\)/);
+});
+
+test("editor submits follow the fixed chat viewport to bottom", () => {
+  assert.match(source, /function followSubmittedEditorToBottom\(\): void/);
+  assert.match(source, /onEditorSubmit: \(\) => followSubmittedEditorToBottom\(\)/);
+  assert.match(source, /Object\.defineProperty\(editor, "onSubmit"/);
+  assert.match(source, /followSubmittedEditorToBottom\(\);\n\s+handler\(text\);/);
+  assert.match(source, /keybindings\.matches\(data, "app\.message\.followUp"\)/);
+});
+
+test("shutdown cleanup resets terminal modes even before compositor install", () => {
+  assert.match(source, /import \{ emergencyTerminalModeReset, TerminalSplitCompositor \}/);
+  assert.match(source, /const hadCompositor = fixedEditorCompositor !== null/);
+  assert.match(source, /if \(!hadCompositor && options\?\.resetExtendedKeyboardModes\)/);
+  assert.match(source, /process\.stdout\.write\(emergencyTerminalModeReset\(\)\)/);
 });
 
 test("powerline shortcut defaults do not claim reserved Pi shortcuts", () => {

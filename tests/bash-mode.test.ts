@@ -1036,6 +1036,48 @@ test("bash editor runs copied Pi app action handlers for alt-enter", async () =>
   }
 });
 
+test("bash editor command arrows jump to editor boundaries", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/core/keybindings.js");
+    const keybindings = KeybindingsManager.create();
+    let renderRequests = 0;
+    const editor = new BashModeEditor(
+      { requestRender() { renderRequests += 1; }, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+
+    editor.setText("alpha\nbravo\ncharlie");
+    assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
+
+    editor.handleInput("\x1b[1;9A");
+    assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
+
+    editor.handleInput("\x1b[57420;9u");
+    assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
+
+    editor.handleInput("\x1b[1;9:3A");
+    assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
+    assert.equal(renderRequests, 2);
+  } finally {
+    links.cleanup();
+  }
+});
+
 test("bash editor enter does not accept ghost text while a shell command is running", async () => {
   const links = ensureEditorModuleLinks();
 

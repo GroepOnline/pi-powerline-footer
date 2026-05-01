@@ -1,5 +1,5 @@
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
-import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { isKeyRelease, matchesKey, visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent/dist/core/keybindings.js";
 import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 import { getOneOffBashCommandContext } from "./completion.ts";
@@ -11,6 +11,7 @@ interface BashModeEditorOptions {
   isShellRunning: () => boolean;
   onExitBashMode: () => void;
   onSubmitCommand: (command: string) => void;
+  onEditorSubmit?: () => void;
   onInterrupt: () => void;
   onNotify: (message: string, level?: "info" | "warning" | "error") => void;
   getHistoryEntries: (prefix: string) => string[];
@@ -104,6 +105,16 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
+      if (!isKeyRelease(data) && (matchesKey(data, "super+up") || /^\x1b\[(?:1;9(?::[12])?A|57419;9(?::[12])?u)$/.test(data))) {
+        this.moveCursorToEditorBoundary("start");
+        return;
+      }
+
+      if (!isKeyRelease(data) && (matchesKey(data, "super+down") || /^\x1b\[(?:1;9(?::[12])?B|57420;9(?::[12])?u)$/.test(data))) {
+        this.moveCursorToEditorBoundary("end");
+        return;
+      }
+
       if ((bashMode || oneOffBashCommand) && this.keybindingsRef.matches(data, "tui.input.tab")) {
         this.acceptGhostSuggestion();
         return;
@@ -129,6 +140,7 @@ export class BashModeEditor extends CustomEditor {
         this.shellHistoryIndex = -1;
         this.shellHistoryItems = [];
         this.shellHistoryDraft = "";
+        this.optionsRef.onEditorSubmit?.();
         this.optionsRef.onSubmitCommand(command);
         this.setText("");
         this.refreshGhostSuggestion();
@@ -200,6 +212,28 @@ export class BashModeEditor extends CustomEditor {
 
   private isOneOffBashCommandContext(): boolean {
     return getOneOffBashCommandContext(this.getExpandedText()) !== null;
+  }
+
+  private moveCursorToEditorBoundary(position: "start" | "end"): void {
+    const state = Reflect.get(this, "state");
+    const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
+    if (!Array.isArray(lines)) {
+      throw new Error("Editor cursor state is unavailable");
+    }
+
+    if (position === "start") {
+      Reflect.set(state, "cursorLine", 0);
+      Reflect.set(state, "cursorCol", 0);
+    } else {
+      const lastLine = Math.max(0, lines.length - 1);
+      Reflect.set(state, "cursorLine", lastLine);
+      Reflect.set(state, "cursorCol", typeof lines[lastLine] === "string" ? lines[lastLine].length : 0);
+    }
+
+    Reflect.set(this, "lastAction", null);
+    Reflect.set(this, "preferredVisualCol", null);
+    Reflect.set(this, "snappedFromCursorCol", null);
+    this.tui.requestRender();
   }
 
   private acceptGhostSuggestion(): boolean {

@@ -4,7 +4,8 @@
 
 ### Changed
 - **Fixed editor hard cutover** — Chat/feed content now scrolls in a TUI-owned viewport above the fixed powerline/editor cluster. Mouse wheel and PageUp/PageDown scroll chat without moving the editor. Dragging chat or fixed-editor text highlights it and copies on release. Use `/powerline fixed-editor on|off|toggle` to switch back to Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
-- **Chat jump shortcuts** — Added configurable previous/next shortcuts for jumping the fixed-editor chat viewport through user messages (`ctrl+shift+u` / `ctrl+shift+i`), LLM messages (`ctrl+alt+<` / `ctrl+alt+>`), plus `ctrl+shift+g` to jump straight to the bottom.
+- **Chat jump shortcuts** — Added configurable previous/next shortcuts for jumping the fixed-editor chat viewport through user messages (`ctrl+shift+u` / `ctrl+shift+i`), LLM messages (`ctrl+alt+,` / `ctrl+alt+.`), plus `ctrl+shift+g` to jump straight to the bottom.
+- **Editor navigation shortcuts** — Added `cmd+up` and `cmd+down` to move the editor cursor to the start of the first line or end of the last line.
 
 ### Fixed
 - **Fixed-editor follow-up queue** — The fixed editor now re-enables Pi's extended keyboard mode after entering alternate screen, so `Alt+Enter` still reaches Pi's follow-up queue while the agent is streaming.
@@ -14,6 +15,7 @@
 - **Fixed-editor right-click menu** — Right-click temporarily releases mouse reporting so the terminal context menu remains available while fixed-editor mouse scrolling is enabled.
 - **Fixed-editor double-click selection** — Double-clicking chat or fixed-editor text now selects the whole line while mouse reporting is active.
 - **Fixed-editor keyboard scrolling** — Command+PageUp/PageDown and Ctrl+Shift+Up/Down now scroll the fixed-editor chat viewport, giving compact keyboards a default page-scroll shortcut.
+- **Fixed-editor submit follow** — Submitting editor text now returns the fixed-editor chat viewport to the bottom so the new prompt/output stays in view.
 
 ## [0.4.20] - 2026-04-26
 

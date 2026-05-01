@@ -190,13 +190,15 @@ Selecting an entry inserts it into the editor. If the editor already has text, y
 
 - `ctrl+alt+c` — copy full editor content
 - `ctrl+alt+x` — cut full editor content (copy, then clear)
+- `cmd+up` — move the editor cursor to the start of the first line
+- `cmd+down` — move the editor cursor to the end of the last line
 - `ctrl+shift+u` — jump the fixed-editor chat viewport to the previous user message
 - `ctrl+shift+i` — jump the fixed-editor chat viewport to the next user message
-- `ctrl+alt+<` — jump the fixed-editor chat viewport to the previous LLM message
-- `ctrl+alt+>` — jump the fixed-editor chat viewport to the next LLM message
+- `ctrl+alt+,` — jump the fixed-editor chat viewport to the previous LLM message
+- `ctrl+alt+.` — jump the fixed-editor chat viewport to the next LLM message
 - `ctrl+shift+g` — jump the fixed-editor chat viewport to the bottom
 
-Copy/cut actions do not modify stash state or stash history. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport.
+Copy/cut actions do not modify stash state or stash history. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. Submitting editor text also returns that viewport to the bottom so new output stays in view.
 
 ### Shortcut configuration
 
@@ -210,8 +212,8 @@ You can override shortcut keys in `~/.pi/agent/settings.json`:
     "cutEditor": "ctrl+alt+x",
     "jumpPreviousUserMessage": "ctrl+shift+u",
     "jumpNextUserMessage": "ctrl+shift+i",
-    "jumpPreviousLlmMessage": "ctrl+alt+<",
-    "jumpNextLlmMessage": "ctrl+alt+>",
+    "jumpPreviousLlmMessage": "ctrl+alt+,",
+    "jumpNextLlmMessage": "ctrl+alt+.",
     "jumpChatBottom": "ctrl+shift+g"
   }
 }
