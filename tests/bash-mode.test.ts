@@ -990,6 +990,52 @@ test("bash editor right arrow accepts ghost text for one-off bang commands", asy
   }
 });
 
+test("bash editor runs copied Pi app action handlers for alt-enter", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/core/keybindings.js");
+    const { setKittyProtocolActive } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui/dist/keys.js");
+    const keybindings = KeybindingsManager.create();
+    const editor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+
+    let handled = 0;
+    editor.actionHandlers.set("app.message.followUp", () => {
+      handled += 1;
+    });
+
+    try {
+      setKittyProtocolActive(false);
+      editor.handleInput("\x1b\r");
+      assert.equal(handled, 1);
+
+      setKittyProtocolActive(true);
+      editor.handleInput("\x1b[13;3u");
+      assert.equal(handled, 2);
+    } finally {
+      setKittyProtocolActive(false);
+    }
+  } finally {
+    links.cleanup();
+  }
+});
+
 test("bash editor enter does not accept ghost text while a shell command is running", async () => {
   const links = ensureEditorModuleLinks();
 

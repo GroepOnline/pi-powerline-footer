@@ -4,6 +4,7 @@ import type { FixedEditorClusterRender } from "./cluster.ts";
 export interface TerminalLike {
   columns: number;
   rows: number;
+  kittyProtocolActive?: boolean;
   write(data: string): void;
 }
 
@@ -46,6 +47,8 @@ interface SelectionPoint {
 interface DisposeOptions {
   resetExtendedKeyboardModes?: boolean;
 }
+
+type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
 
 export function beginSynchronizedOutput(): string {
   return "\x1b[?2026h";
@@ -103,13 +106,21 @@ function disableMouseReporting(): string {
   return "\x1b[?1006l\x1b[?1002l\x1b[?1000l";
 }
 
+function enableExtendedKeyboardMode(mode: ExtendedKeyboardMode): string {
+  return mode === "kitty" ? "\x1b[>7u" : "\x1b[>4;2m";
+}
+
+function disableExtendedKeyboardMode(mode: ExtendedKeyboardMode): string {
+  return mode === "kitty" ? "\x1b[<u" : "\x1b[>4;0m";
+}
+
 function resetExtendedKeyboardModes(): string {
   return "\x1b[<999u\x1b[>4;0m";
 }
 
 function parseKeyboardScrollDelta(data: string): number {
-  if (matchesKey(data, "pageUp") || matchesKey(data, "alt+up")) return 10;
-  if (matchesKey(data, "pageDown") || matchesKey(data, "alt+down")) return -10;
+  if (matchesKey(data, "pageUp")) return 10;
+  if (matchesKey(data, "pageDown")) return -10;
   return 0;
 }
 
@@ -239,6 +250,7 @@ export class TerminalSplitCompositor {
   private readonly getShowHardwareCursor: () => boolean;
   private readonly mouseScroll: boolean;
   private readonly onCopySelection: ((text: string) => void) | null;
+  private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
   private readonly rowsDescriptor: PropertyDescriptor | undefined;
   private readonly originalWrite: (data: string) => void;
   private readonly originalDoRender: (() => void) | null;
@@ -286,6 +298,7 @@ export class TerminalSplitCompositor {
     this.originalWrite(
       beginSynchronizedOutput()
       + enterAlternateScreen()
+      + this.enableAlternateScreenKeyboardMode()
       + disableAlternateScrollMode()
       + (this.mouseScroll ? enableMouseReporting() : "")
       + endSynchronizedOutput(),
@@ -338,6 +351,47 @@ export class TerminalSplitCompositor {
     const patch = this.patchedRenders.find((candidate) => candidate.target === target);
     const render = patch?.originalRender ?? target.render.bind(target);
     return render(width);
+  }
+
+  jumpToPreviousRootTarget(targetLines: readonly number[]): boolean {
+    return this.jumpToRootTarget(targetLines, "previous");
+  }
+
+  jumpToNextRootTarget(targetLines: readonly number[]): boolean {
+    return this.jumpToRootTarget(targetLines, "next");
+  }
+
+  jumpToRootBottom(): boolean {
+    if (this.disposed || this.hasVisibleOverlay() || this.scrollOffset === 0) return false;
+
+    this.clearSelection();
+    this.scrollOffset = 0;
+    this.requestRender();
+    return true;
+  }
+
+  private jumpToRootTarget(targetLines: readonly number[], direction: "previous" | "next"): boolean {
+    if (this.disposed || targetLines.length === 0 || this.hasVisibleOverlay()) return false;
+
+    const start = this.visibleRootStart;
+    const candidates = direction === "previous"
+      ? targetLines.filter((line) => line < start).sort((a, b) => b - a)
+      : targetLines.filter((line) => line > start).sort((a, b) => a - b);
+
+    for (const target of candidates) {
+      const nextOffset = Math.max(0, Math.min(
+        this.lastRootLineCount - Math.max(1, this.visibleScrollableRows) - target,
+        this.maxScrollOffset,
+      ));
+      if (nextOffset === this.scrollOffset) continue;
+
+      this.clearSelection();
+      this.scrollOffset = nextOffset;
+      this.requestRender();
+      return true;
+    }
+
+    return false;
   }
 
   requestRepaint(): void {
@@ -468,8 +522,7 @@ export class TerminalSplitCompositor {
       if (selectedText) {
         this.onCopySelection?.(selectedText);
       } else {
-        this.selectionAnchor = null;
-        this.selectionFocus = null;
+        this.clearSelection();
       }
       this.requestRender();
       return;
@@ -562,9 +615,7 @@ export class TerminalSplitCompositor {
     const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
     if (nextOffset === this.scrollOffset) return;
 
-    this.selectionAnchor = null;
-    this.selectionFocus = null;
-    this.selectionDragging = false;
+    this.clearSelection();
     this.scrollOffset = nextOffset;
     this.requestRender();
   }
@@ -575,13 +626,35 @@ export class TerminalSplitCompositor {
     }
   }
 
+  private clearSelection(): void {
+    this.selectionAnchor = null;
+    this.selectionFocus = null;
+    this.selectionDragging = false;
+  }
+
+  private activeExtendedKeyboardMode(): ExtendedKeyboardMode | null {
+    if (this.terminal.kittyProtocolActive === true) return "kitty";
+    if (Reflect.get(this.terminal, "_modifyOtherKeysActive") === true) return "modifyOtherKeys";
+    return null;
+  }
+
+  private enableAlternateScreenKeyboardMode(): string {
+    this.extendedKeyboardMode = this.activeExtendedKeyboardMode();
+    return this.extendedKeyboardMode ? enableExtendedKeyboardMode(this.extendedKeyboardMode) : "";
+  }
+
   private restoreTerminalState(options: DisposeOptions = {}): void {
+    const activeMode = this.extendedKeyboardMode ?? this.activeExtendedKeyboardMode();
+    const restoreMainScreenMode = !options.resetExtendedKeyboardModes && this.extendedKeyboardMode === null && activeMode !== null;
+
     this.originalWrite(
       beginSynchronizedOutput()
       + resetScrollRegion()
       + (this.mouseScroll ? disableMouseReporting() : "")
+      + (activeMode ? disableExtendedKeyboardMode(activeMode) : "")
       + enableAlternateScrollMode()
       + exitAlternateScreen()
+      + (restoreMainScreenMode && activeMode ? enableExtendedKeyboardMode(activeMode) : "")
       + (options.resetExtendedKeyboardModes ? resetExtendedKeyboardModes() : "")
       + endSynchronizedOutput(),
     );

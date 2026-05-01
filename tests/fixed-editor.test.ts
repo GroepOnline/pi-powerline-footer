@@ -160,6 +160,92 @@ test("terminal split reserves rows, hides root renderables, repaints, and cleans
   assert.ok(!terminal.writes.at(-1)?.includes("\x1b[>4;0m"));
 });
 
+test("terminal split re-enables Kitty keyboard protocol in alternate screen", () => {
+  const terminal = new FakeTerminal();
+  Object.defineProperty(terminal, "kittyProtocolActive", { value: true });
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+
+  const setup = terminal.writes[0] ?? "";
+  assert.ok(setup.includes("\x1b[?1049h"));
+  assert.ok(setup.includes("\x1b[>7u"));
+  assert.ok(setup.indexOf("\x1b[?1049h") < setup.indexOf("\x1b[>7u"));
+
+  compositor.dispose();
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[<u"));
+  assert.ok(cleanup.indexOf("\x1b[<u") < cleanup.indexOf("\x1b[?1049l"));
+  assert.ok(!cleanup.includes("\x1b[<999u"));
+});
+
+test("terminal split re-enables modifyOtherKeys in alternate screen", () => {
+  const terminal = new FakeTerminal();
+  Reflect.set(terminal, "_modifyOtherKeysActive", true);
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+
+  const setup = terminal.writes[0] ?? "";
+  assert.ok(setup.includes("\x1b[?1049h"));
+  assert.ok(setup.includes("\x1b[>4;2m"));
+  assert.ok(setup.indexOf("\x1b[?1049h") < setup.indexOf("\x1b[>4;2m"));
+
+  compositor.dispose();
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[>4;0m"));
+  assert.ok(cleanup.indexOf("\x1b[>4;0m") < cleanup.indexOf("\x1b[?1049l"));
+  assert.ok(!cleanup.includes("\x1b[<999u"));
+});
+
+test("terminal split restores main screen mode when Kitty activates after install", () => {
+  const terminal = new FakeTerminal();
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  terminal.kittyProtocolActive = true;
+  compositor.dispose();
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[<u"));
+  assert.ok(cleanup.includes("\x1b[>7u"));
+  assert.ok(cleanup.indexOf("\x1b[<u") < cleanup.indexOf("\x1b[?1049l"));
+  assert.ok(cleanup.indexOf("\x1b[?1049l") < cleanup.indexOf("\x1b[>7u"));
+});
+
+test("terminal split restores main screen mode when modifyOtherKeys activates after install", () => {
+  const terminal = new FakeTerminal();
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  Reflect.set(terminal, "_modifyOtherKeysActive", true);
+  compositor.dispose();
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[>4;0m"));
+  assert.ok(cleanup.includes("\x1b[>4;2m"));
+  assert.ok(cleanup.indexOf("\x1b[>4;0m") < cleanup.indexOf("\x1b[?1049l"));
+  assert.ok(cleanup.indexOf("\x1b[?1049l") < cleanup.indexOf("\x1b[>4;2m"));
+});
+
 test("terminal split shutdown cleanup resets extended keyboard modes", () => {
   const terminal = new FakeTerminal();
   const compositor = new TerminalSplitCompositor({
@@ -318,7 +404,7 @@ test("terminal split renders chat through an app-owned scroll viewport", () => {
     "line-10", "line-11", "line-12", "line-13", "line-14",
   ]);
 
-  assert.deepEqual(inputListener?.("\x1bp"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
   assert.deepEqual(renderRequests, [undefined, undefined, undefined]);
   assert.deepEqual(tui.render(40), [
     "line-0", "line-1", "line-2", "line-3", "line-4",
@@ -516,6 +602,151 @@ test("terminal split copies chat selection when drag releases over fixed cluster
   compositor.dispose();
 });
 
+test("terminal split keyboard scroll preserves Pi app shortcuts", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render();
+
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.equal(inputListener?.("\x1bp"), undefined);
+  assert.equal(inputListener?.("\x1bn"), undefined);
+
+  compositor.dispose();
+});
+
+test("terminal split jumps to previous root target lines", () => {
+  const terminal = new FakeTerminal();
+  const renderRequests: Array<boolean | undefined> = [];
+  const tui = {
+    terminal,
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  assert.deepEqual(tui.render(40), [
+    "line-20", "line-21", "line-22", "line-23", "line-24",
+    "line-25", "line-26", "line-27", "line-28", "line-29",
+  ]);
+
+  assert.equal(compositor.jumpToPreviousRootTarget([6, 14, 24]), true);
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.deepEqual(tui.render(40), [
+    "line-14", "line-15", "line-16", "line-17", "line-18",
+    "line-19", "line-20", "line-21", "line-22", "line-23",
+  ]);
+
+  assert.equal(compositor.jumpToPreviousRootTarget([6, 14, 24]), true);
+  assert.deepEqual(renderRequests, [undefined, undefined]);
+  assert.deepEqual(tui.render(40), [
+    "line-6", "line-7", "line-8", "line-9", "line-10",
+    "line-11", "line-12", "line-13", "line-14", "line-15",
+  ]);
+
+  assert.equal(compositor.jumpToPreviousRootTarget([6, 14, 24]), false);
+
+  assert.equal(compositor.jumpToNextRootTarget([6, 14, 24]), true);
+  assert.deepEqual(tui.render(40), [
+    "line-14", "line-15", "line-16", "line-17", "line-18",
+    "line-19", "line-20", "line-21", "line-22", "line-23",
+  ]);
+
+  assert.equal(compositor.jumpToNextRootTarget([6, 14, 24]), true);
+  assert.deepEqual(tui.render(40), [
+    "line-20", "line-21", "line-22", "line-23", "line-24",
+    "line-25", "line-26", "line-27", "line-28", "line-29",
+  ]);
+
+  assert.equal(compositor.jumpToNextRootTarget([6, 14, 24]), false);
+
+  assert.equal(compositor.jumpToPreviousRootTarget([6, 14, 24]), true);
+  assert.deepEqual(tui.render(40), [
+    "line-14", "line-15", "line-16", "line-17", "line-18",
+    "line-19", "line-20", "line-21", "line-22", "line-23",
+  ]);
+  assert.equal(compositor.jumpToRootBottom(), true);
+  assert.deepEqual(tui.render(40), [
+    "line-20", "line-21", "line-22", "line-23", "line-24",
+    "line-25", "line-26", "line-27", "line-28", "line-29",
+  ]);
+  assert.equal(compositor.jumpToRootBottom(), false);
+  compositor.dispose();
+});
+
+test("terminal split previous root target only moves to older targets", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  assert.deepEqual(tui.render(), [
+    "line-20", "line-21", "line-22", "line-23", "line-24",
+    "line-25", "line-26", "line-27", "line-28", "line-29",
+  ]);
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.deepEqual(tui.render(), [
+    "line-10", "line-11", "line-12", "line-13", "line-14",
+    "line-15", "line-16", "line-17", "line-18", "line-19",
+  ]);
+
+  assert.equal(compositor.jumpToPreviousRootTarget([6, 14, 24]), true);
+  assert.deepEqual(tui.render(), [
+    "line-6", "line-7", "line-8", "line-9", "line-10",
+    "line-11", "line-12", "line-13", "line-14", "line-15",
+  ]);
+
+  compositor.dispose();
+});
+
 test("terminal split can disable mouse reporting for normal selection", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
@@ -550,7 +781,7 @@ test("terminal split can disable mouse reporting for normal selection", () => {
   assert.ok(!terminal.writes[0]?.includes("\x1b[?1006h"));
   assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), undefined);
   assert.deepEqual(inputListener?.("\x1b[A"), undefined);
-  assert.deepEqual(inputListener?.("\x1bp"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
   assert.deepEqual(renderRequests, [undefined]);
 
   compositor.dispose();

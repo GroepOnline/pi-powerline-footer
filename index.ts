@@ -5,7 +5,7 @@ import {
   type Theme,
 } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { isKeyRelease, matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@mariozechner/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -71,9 +71,32 @@ interface PowerlineShortcuts {
   stashHistory: string;
   copyEditor: string;
   cutEditor: string;
+  jumpPreviousUserMessage: string;
+  jumpNextUserMessage: string;
+  jumpPreviousLlmMessage: string;
+  jumpNextLlmMessage: string;
+  jumpChatBottom: string;
 }
 
 type PowerlineShortcutKey = keyof PowerlineShortcuts;
+type ChatJumpShortcutKey = Extract<PowerlineShortcutKey,
+  | "jumpPreviousUserMessage"
+  | "jumpNextUserMessage"
+  | "jumpPreviousLlmMessage"
+  | "jumpNextLlmMessage"
+  | "jumpChatBottom"
+>;
+type ChatJumpRole = "user" | "assistant";
+type ChatJumpDirection = "previous" | "next";
+type ChatJumpShortcutAction =
+  | { kind: "message"; role: ChatJumpRole; direction: ChatJumpDirection }
+  | { kind: "bottom" };
+type PowerlineShortcutAction =
+  | { kind: "stashHistory" }
+  | { kind: "copyEditor" }
+  | { kind: "cutEditor" }
+  | { kind: "bashMode" }
+  | { kind: "chat"; action: ChatJumpShortcutAction };
 
 const STASH_HISTORY_LIMIT = 12;
 const PROJECT_PROMPT_HISTORY_LIMIT = 50;
@@ -82,15 +105,89 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   stashHistory: "ctrl+alt+h",
   copyEditor: "ctrl+alt+c",
   cutEditor: "ctrl+alt+x",
+  jumpPreviousUserMessage: "ctrl+shift+u",
+  jumpNextUserMessage: "ctrl+shift+i",
+  jumpPreviousLlmMessage: "ctrl+alt+<",
+  jumpNextLlmMessage: "ctrl+alt+>",
+  jumpChatBottom: "ctrl+shift+g",
 };
 const DEFAULT_BASH_MODE_SETTINGS: BashModeSettings = {
   toggleShortcut: "ctrl+shift+b",
   transcriptMaxLines: 2000,
   transcriptMaxBytes: 512 * 1024,
 };
-const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor"];
-const RESERVED_SHORTCUTS = new Set(["alt+s"]);
-const SHORTCUT_MODIFIERS = new Set(["ctrl", "alt", "shift"]);
+const CHAT_JUMP_SHORTCUTS: Array<{
+  shortcutKey: ChatJumpShortcutKey;
+  description: string;
+  action: ChatJumpShortcutAction;
+}> = [
+  {
+    shortcutKey: "jumpPreviousUserMessage",
+    description: "Jump to previous user message",
+    action: { kind: "message", role: "user", direction: "previous" },
+  },
+  {
+    shortcutKey: "jumpNextUserMessage",
+    description: "Jump to next user message",
+    action: { kind: "message", role: "user", direction: "next" },
+  },
+  {
+    shortcutKey: "jumpPreviousLlmMessage",
+    description: "Jump to previous LLM message",
+    action: { kind: "message", role: "assistant", direction: "previous" },
+  },
+  {
+    shortcutKey: "jumpNextLlmMessage",
+    description: "Jump to next LLM message",
+    action: { kind: "message", role: "assistant", direction: "next" },
+  },
+  {
+    shortcutKey: "jumpChatBottom",
+    description: "Jump chat to bottom",
+    action: { kind: "bottom" },
+  },
+];
+const SHORTCUT_KEYS: PowerlineShortcutKey[] = [
+  "stashHistory",
+  "copyEditor",
+  "cutEditor",
+  "jumpPreviousUserMessage",
+  "jumpNextUserMessage",
+  "jumpPreviousLlmMessage",
+  "jumpNextLlmMessage",
+  "jumpChatBottom",
+];
+const APP_RESERVED_SHORTCUTS = [
+  "escape",
+  "ctrl+c",
+  "ctrl+d",
+  "ctrl+z",
+  "shift+tab",
+  "ctrl+p",
+  "shift+ctrl+p",
+  "ctrl+l",
+  "ctrl+o",
+  "shift+ctrl+o",
+  "ctrl+t",
+  "ctrl+n",
+  "ctrl+g",
+  "alt+enter",
+  "alt+up",
+  "alt+down",
+  "ctrl+v",
+  "alt+v",
+  "shift+l",
+  "shift+t",
+  "ctrl+s",
+  "ctrl+r",
+  "ctrl+backspace",
+  "ctrl+a",
+  "ctrl+x",
+  "ctrl+u",
+] as const;
+const EXTRA_RESERVED_SHORTCUTS = ["alt+s"] as const;
+const SHORTCUT_MODIFIER_ORDER = ["ctrl", "alt", "shift"] as const;
+const SHORTCUT_MODIFIERS = new Set(SHORTCUT_MODIFIER_ORDER);
 const SHORTCUT_NAMED_KEYS = new Set([
   "escape", "esc", "enter", "return", "tab", "space", "backspace", "delete", "insert", "clear",
   "home", "end", "pageup", "pagedown", "up", "down", "left", "right",
@@ -555,7 +652,29 @@ function pushStashHistory(history: string[], text: string): boolean {
 }
 
 function normalizeShortcut(value: string): string {
-  return value.trim().toLowerCase();
+  const parts = value.trim().toLowerCase().split("+");
+  if (parts.length <= 1) return parts[0] ?? "";
+
+  const modifierRank = new Map(SHORTCUT_MODIFIER_ORDER.map((modifier, index) => [modifier, index]));
+  const modifiers = parts.slice(0, -1).sort((a, b) => (modifierRank.get(a) ?? 99) - (modifierRank.get(b) ?? 99));
+  return [...modifiers, parts[parts.length - 1]].join("+");
+}
+
+function reservedShortcuts(): Set<string> {
+  const shortcuts = new Set<string>([
+    ...EXTRA_RESERVED_SHORTCUTS,
+    ...APP_RESERVED_SHORTCUTS,
+  ].map(normalizeShortcut));
+
+  for (const definition of Object.values(TUI_KEYBINDINGS)) {
+    const defaultKeys = definition.defaultKeys;
+    const keys = defaultKeys === undefined ? [] : Array.isArray(defaultKeys) ? defaultKeys : [defaultKeys];
+    for (const key of keys) {
+      shortcuts.add(normalizeShortcut(key));
+    }
+  }
+
+  return shortcuts;
 }
 
 function isValidShortcutKeyPart(keyPart: string): boolean {
@@ -600,7 +719,7 @@ function parseShortcutOverride(value: unknown): string | null {
   }
 
   const normalizedKey = SHORTCUT_SYMBOL_KEYS.has(keyPart) ? keyPart : keyPart.toLowerCase();
-  return [...modifierParts, normalizedKey].join("+");
+  return normalizeShortcut([...modifierParts, normalizedKey].join("+"));
 }
 
 function findShortcutReplacement(key: PowerlineShortcutKey, used: Set<string>): string | null {
@@ -632,7 +751,7 @@ function resolveShortcutConfig(settings: Record<string, unknown>): PowerlineShor
     }
   }
 
-  const used = new Set<string>([...RESERVED_SHORTCUTS]);
+  const used = reservedShortcuts();
 
   for (const key of SHORTCUT_KEYS) {
     const configured = resolved[key];
@@ -663,7 +782,16 @@ function resolveShortcutConfig(settings: Record<string, unknown>): PowerlineShor
 function parseBashModeSettings(settings: Record<string, unknown>): BashModeSettings {
   const raw = isRecord(settings.bashMode) ? settings.bashMode : {};
 
-  const toggleShortcut = parseShortcutOverride(raw.toggleShortcut) ?? DEFAULT_BASH_MODE_SETTINGS.toggleShortcut;
+  const configuredToggleShortcut = parseShortcutOverride(raw.toggleShortcut);
+  const toggleShortcut = configuredToggleShortcut && !reservedShortcuts().has(normalizeShortcut(configuredToggleShortcut))
+    ? configuredToggleShortcut
+    : DEFAULT_BASH_MODE_SETTINGS.toggleShortcut;
+
+  if (configuredToggleShortcut && toggleShortcut !== configuredToggleShortcut) {
+    console.debug(
+      `[powerline-footer] Bash mode shortcut conflict: "${configuredToggleShortcut}" replaced with "${toggleShortcut}"`,
+    );
+  }
   const transcriptMaxLines = typeof raw.transcriptMaxLines === "number" && Number.isFinite(raw.transcriptMaxLines)
     ? Math.max(100, Math.floor(raw.transcriptMaxLines))
     : DEFAULT_BASH_MODE_SETTINGS.transcriptMaxLines;
@@ -1290,6 +1418,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function isStashShortcutInput(data: string): boolean {
+    if (isKeyRelease(data)) return false;
+
     return data === "ß"
       || data === "\x1bs"
       || data === "\x1bS"
@@ -1297,6 +1427,70 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       || data === "\x1b[27;3;115~"
       || data === "\x1b[27;3;83~"
       || matchesKey(data, "alt+s");
+  }
+
+  function getChatJumpShortcutAction(data: string): ChatJumpShortcutAction | null {
+    return CHAT_JUMP_SHORTCUTS.find(({ shortcutKey }) => matchesKey(data, resolvedShortcuts[shortcutKey]))?.action ?? null;
+  }
+
+  function isPromptHistoryShortcutInput(data: string): boolean {
+    return matchesKey(data, resolvedShortcuts.stashHistory)
+      || (resolvedShortcuts.stashHistory === "ctrl+alt+h" && (
+        /^\x1b\[104(?::\d*)?(?::\d*)?;7(?::\d+)?u$/.test(data)
+        || data === "\x1b[27;7;104~"
+        || data === "\x1b[27;7;72~"
+      ));
+  }
+
+  function getPowerlineShortcutAction(data: string): PowerlineShortcutAction | null {
+    if (isKeyRelease(data)) return null;
+
+    if (isPromptHistoryShortcutInput(data)) {
+      return { kind: "stashHistory" };
+    }
+    if (matchesKey(data, resolvedShortcuts.copyEditor)) {
+      return { kind: "copyEditor" };
+    }
+    if (matchesKey(data, resolvedShortcuts.cutEditor)) {
+      return { kind: "cutEditor" };
+    }
+    if (matchesKey(data, bashModeSettings.toggleShortcut)) {
+      return { kind: "bashMode" };
+    }
+
+    const chatJumpAction = getChatJumpShortcutAction(data);
+    return chatJumpAction ? { kind: "chat", action: chatJumpAction } : null;
+  }
+
+  function runPowerlineShortcut(ctx: any, action: PowerlineShortcutAction): void {
+    if (action.kind === "stashHistory") {
+      void openStashHistory(ctx);
+      return;
+    }
+
+    if (action.kind === "copyEditor" || action.kind === "cutEditor") {
+      const text = getEditorTextForClipboard(ctx);
+      if (!text) return;
+
+      copyTextToClipboard(ctx, text, action.kind === "copyEditor" ? "Copied editor text" : undefined);
+      if (action.kind === "cutEditor") {
+        ctx.ui.setEditorText("");
+        ctx.ui.notify("Cut editor text", "info");
+      }
+      return;
+    }
+
+    if (action.kind === "bashMode") {
+      void setBashModeActive(!bashModeActive, ctx);
+      return;
+    }
+
+    if (action.action.kind === "bottom") {
+      jumpChatToBottom(ctx);
+      return;
+    }
+
+    jumpToChatMessage(ctx, action.action.role, action.action.direction);
   }
 
   function stashOrRestoreEditorText(ctx: any): void {
@@ -1577,6 +1771,16 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       ctx.ui.notify("Cut editor text", "info");
     },
   });
+
+  for (const { shortcutKey, description, action } of CHAT_JUMP_SHORTCUTS) {
+    pi.registerShortcut(resolvedShortcuts[shortcutKey], {
+      description,
+      handler: async (ctx) => {
+        if (!enabled || !ctx.hasUI) return;
+        runPowerlineShortcut(ctx, { kind: "chat", action });
+      },
+    });
+  }
 
   // Command to set working message theme
   pi.registerCommand("vibe", {
@@ -1961,6 +2165,97 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     tui.requestRender(true);
   }
 
+  function isChatMessageComponentForRole(component: unknown, role: ChatJumpRole): boolean {
+    const componentName = typeof component === "object" && component !== null ? component.constructor?.name : undefined;
+    if (role === "assistant") {
+      return componentName === "AssistantMessageComponent";
+    }
+
+    return componentName === "UserMessageComponent" || componentName === "SkillInvocationMessageComponent";
+  }
+
+  function renderLineCount(component: unknown, width: number): number {
+    if (typeof component !== "object" || component === null) return 0;
+
+    const render = Reflect.get(component, "render");
+    if (typeof render !== "function") return 0;
+
+    const lines = render.call(component, width);
+    return Array.isArray(lines) ? lines.length : 0;
+  }
+
+  function collectMessageStartLines(component: unknown, width: number, role: ChatJumpRole, offset: number): {
+    targets: number[];
+    lineCount: number;
+  } {
+    const lineCount = renderLineCount(component, width);
+    if (isChatMessageComponentForRole(component, role)) {
+      return { targets: [offset], lineCount };
+    }
+
+    const children = typeof component === "object" && component !== null ? Reflect.get(component, "children") : null;
+    if (!Array.isArray(children) || children.length === 0) {
+      return { targets: [], lineCount };
+    }
+
+    const targets: number[] = [];
+    let childOffset = offset;
+    let childrenLineCount = 0;
+    for (const child of children) {
+      const result = collectMessageStartLines(child, width, role, childOffset);
+      targets.push(...result.targets);
+      childOffset += result.lineCount;
+      childrenLineCount += result.lineCount;
+    }
+
+    return { targets, lineCount: Math.max(lineCount, childrenLineCount) };
+  }
+
+  function collectChatMessageStartLines(role: ChatJumpRole): number[] {
+    const children = Array.isArray(tuiRef?.children) ? tuiRef.children : [];
+    const width = Math.max(1, tuiRef?.terminal?.columns ?? 80);
+    const targets: number[] = [];
+    let offset = 0;
+
+    for (const child of children) {
+      const result = collectMessageStartLines(child, width, role, offset);
+      targets.push(...result.targets);
+      offset += result.lineCount;
+    }
+
+    return [...new Set(targets)].sort((a, b) => a - b);
+  }
+
+  function jumpToChatMessage(ctx: any, role: ChatJumpRole, direction: ChatJumpDirection): void {
+    if (!fixedEditorCompositor) {
+      ctx.ui.notify("Chat message jumps require /powerline fixed-editor on", "warning");
+      return;
+    }
+
+    const targets = collectChatMessageStartLines(role);
+    const label = role === "assistant" ? "LLM" : "user";
+    if (targets.length === 0) {
+      ctx.ui.notify(`No ${label} messages found`, "info");
+      return;
+    }
+
+    const jumped = direction === "previous"
+      ? fixedEditorCompositor.jumpToPreviousRootTarget(targets)
+      : fixedEditorCompositor.jumpToNextRootTarget(targets);
+    if (!jumped) {
+      ctx.ui.notify(`No ${direction} ${label} message`, "info");
+    }
+  }
+
+  function jumpChatToBottom(ctx: any): void {
+    if (!fixedEditorCompositor) {
+      ctx.ui.notify("Chat bottom jump requires /powerline fixed-editor on", "warning");
+      return;
+    }
+
+    fixedEditorCompositor.jumpToRootBottom();
+  }
+
   function installPowerlineWidgets(ctx: any) {
     ctx.ui.setWidget("powerline-status", () => ({
       dispose() {},
@@ -2021,11 +2316,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         if (!enabled || !ctx.hasUI || tuiRef?.hasOverlay?.()) {
           return undefined;
         }
-        if (!isStashShortcutInput(data)) {
+        if (isStashShortcutInput(data)) {
+          stashOrRestoreEditorText(ctx);
+          scheduleDismissWelcome(ctx);
+          tuiRef?.requestRender();
+          return { consume: true };
+        }
+
+        const powerlineShortcutAction = getPowerlineShortcutAction(data);
+        if (!powerlineShortcutAction) {
           return undefined;
         }
 
-        stashOrRestoreEditorText(ctx);
+        runPowerlineShortcut(ctx, powerlineShortcutAction);
         scheduleDismissWelcome(ctx);
         tuiRef?.requestRender();
         return { consume: true };
@@ -2110,6 +2413,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
         if (isStashShortcutInput(data)) {
           stashOrRestoreEditorText(ctx);
+          scheduleDismissWelcome(ctx);
+          return;
+        }
+
+        const powerlineShortcutAction = getPowerlineShortcutAction(data);
+        if (powerlineShortcutAction) {
+          runPowerlineShortcut(ctx, powerlineShortcutAction);
           scheduleDismissWelcome(ctx);
           return;
         }

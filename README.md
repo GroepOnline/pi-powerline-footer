@@ -18,7 +18,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Mouse wheel, PageUp/PageDown, and Alt+Up/Alt+Down scroll chat without moving the editor. Drag chat text to highlight it and copy on release. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
+**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Mouse wheel, PageUp/PageDown, and role-aware message jumps scroll chat without moving the editor. Drag chat text to highlight it and copy on release. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
 
@@ -167,12 +167,17 @@ Prompt history now has two sources:
 
 Selecting an entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
 
-### Editor clipboard shortcuts
+### Editor clipboard and chat jump shortcuts
 
 - `ctrl+alt+c` — copy full editor content
 - `ctrl+alt+x` — cut full editor content (copy, then clear)
+- `ctrl+shift+u` — jump the fixed-editor chat viewport to the previous user message
+- `ctrl+shift+i` — jump the fixed-editor chat viewport to the next user message
+- `ctrl+alt+<` — jump the fixed-editor chat viewport to the previous LLM message
+- `ctrl+alt+>` — jump the fixed-editor chat viewport to the next LLM message
+- `ctrl+shift+g` — jump the fixed-editor chat viewport to the bottom
 
-Copy/cut actions do not modify stash state or stash history.
+Copy/cut actions do not modify stash state or stash history. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport.
 
 ### Shortcut configuration
 
@@ -183,7 +188,12 @@ You can override shortcut keys in `~/.pi/agent/settings.json`:
   "powerlineShortcuts": {
     "stashHistory": "ctrl+alt+h",
     "copyEditor": "ctrl+alt+c",
-    "cutEditor": "ctrl+alt+x"
+    "cutEditor": "ctrl+alt+x",
+    "jumpPreviousUserMessage": "ctrl+shift+u",
+    "jumpNextUserMessage": "ctrl+shift+i",
+    "jumpPreviousLlmMessage": "ctrl+alt+<",
+    "jumpNextLlmMessage": "ctrl+alt+>",
+    "jumpChatBottom": "ctrl+shift+g"
   }
 }
 ```
