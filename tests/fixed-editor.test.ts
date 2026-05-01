@@ -561,7 +561,7 @@ test("terminal split selection does not expose OSC control sequences as text", (
   compositor.dispose();
 });
 
-test("terminal split copies chat selection when drag releases over fixed cluster", () => {
+test("terminal split copies chat and fixed cluster selections", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
   const copied: string[] = [];
@@ -588,7 +588,7 @@ test("terminal split copies chat selection when drag releases over fixed cluster
     tui,
     terminal,
     onCopySelection: (text) => copied.push(text),
-    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+    renderCluster: () => ({ lines: ["cluster-a", "  > hello world"], cursor: null }),
   });
 
   compositor.install();
@@ -596,8 +596,14 @@ test("terminal split copies chat selection when drag releases over fixed cluster
 
   assert.deepEqual(inputListener?.("\x1b[<0;1;9M"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[<0;5;11m"), { consume: true });
-
   assert.deepEqual(copied, ["india nine\njuli"]);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;5;12M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;10;12M"), { consume: true });
+  compositor.requestRepaint();
+  assert.ok(terminal.writes.at(-1)?.includes("  > \x1b[7mhello\x1b[27m world"));
+  assert.deepEqual(inputListener?.("\x1b[<0;10;12m"), { consume: true });
+  assert.deepEqual(copied, ["india nine\njuli", "hello"]);
 
   compositor.dispose();
 });

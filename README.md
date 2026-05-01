@@ -18,7 +18,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Mouse wheel, PageUp/PageDown, and role-aware message jumps scroll chat without moving the editor. Drag chat text to highlight it and copy on release. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
+**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Mouse wheel, PageUp/PageDown, and role-aware message jumps scroll chat without moving the editor. Drag chat or fixed-editor text to highlight it and copy on release. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
 

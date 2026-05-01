@@ -3,14 +3,14 @@
 ## [Unreleased]
 
 ### Changed
-- **Fixed editor hard cutover** — Chat/feed content now scrolls in a TUI-owned viewport above the fixed powerline/editor cluster. Mouse wheel and PageUp/PageDown scroll chat without moving the editor. Dragging chat text highlights it and copies on release. Use `/powerline fixed-editor on|off|toggle` to switch back to Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
+- **Fixed editor hard cutover** — Chat/feed content now scrolls in a TUI-owned viewport above the fixed powerline/editor cluster. Mouse wheel and PageUp/PageDown scroll chat without moving the editor. Dragging chat or fixed-editor text highlights it and copies on release. Use `/powerline fixed-editor on|off|toggle` to switch back to Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 - **Chat jump shortcuts** — Added configurable previous/next shortcuts for jumping the fixed-editor chat viewport through user messages (`ctrl+shift+u` / `ctrl+shift+i`), LLM messages (`ctrl+alt+<` / `ctrl+alt+>`), plus `ctrl+shift+g` to jump straight to the bottom.
 
 ### Fixed
 - **Fixed-editor follow-up queue** — The fixed editor now re-enables Pi's extended keyboard mode after entering alternate screen, so `Alt+Enter` still reaches Pi's follow-up queue while the agent is streaming.
 - **Fixed-editor terminal cleanup** — Session shutdown and emergency exit cleanup now leave alternate screen before clearing the full Kitty CSI-u stack and xterm modifyOtherKeys mode, preventing keypresses from leaking as sequences like `97;1:3u` after quitting Pi.
 - **Fixed-editor selection overflow** — Chat selection highlighting now strips OSC shell-integration control sequences before slicing text, preventing exposed `]133` markers from making rendered lines exceed terminal width.
-- **Chat selection release edge case** — Releasing a chat text drag over the fixed editor cluster now finalizes and copies the selected chat text instead of leaving the highlight stuck.
+- **Fixed-editor text selection** — Dragging inside the fixed editor cluster now highlights and copies selected text instead of being swallowed by mouse-scroll handling.
 
 ## [0.4.20] - 2026-04-26
 

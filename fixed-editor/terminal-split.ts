@@ -44,6 +44,13 @@ interface SelectionPoint {
   col: number;
 }
 
+type SelectionArea = "root" | "cluster";
+
+interface SelectionLocation {
+  area: SelectionArea;
+  point: SelectionPoint;
+}
+
 interface DisposeOptions {
   resetExtendedKeyboardModes?: boolean;
 }
@@ -272,6 +279,8 @@ export class TerminalSplitCompositor {
   private visibleRootStart = 0;
   private visibleScrollableRows = 0;
   private visibleRootLines: string[] = [];
+  private visibleClusterLines: string[] = [];
+  private selectionArea: SelectionArea | null = null;
   private selectionAnchor: SelectionPoint | null = null;
   private selectionFocus: SelectionPoint | null = null;
   private selectionDragging = false;
@@ -403,7 +412,7 @@ export class TerminalSplitCompositor {
 
     this.originalWrite(
       beginSynchronizedOutput()
-      + buildFixedClusterPaint(cluster, rawRows, width, this.getShowHardwareCursor())
+      + buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor())
       + endSynchronizedOutput(),
     );
   }
@@ -481,7 +490,7 @@ export class TerminalSplitCompositor {
       this.visibleRootStart = start;
       this.visibleScrollableRows = scrollableRows;
       this.visibleRootLines = visibleLines;
-      return visibleLines.map((line, index) => this.renderSelectionHighlight(line, start + index));
+      return visibleLines.map((line, index) => this.renderSelectionHighlight(line, start + index, "root"));
     } finally {
       this.renderingScrollableRoot = false;
     }
@@ -513,10 +522,12 @@ export class TerminalSplitCompositor {
       return;
     }
 
-    const point = this.selectionPointForPacket(packet);
+    const location = this.selectionLocationForPacket(packet);
 
     if (this.selectionDragging && isMouseRelease(packet)) {
-      this.selectionFocus = point ?? this.clampedSelectionPointForPacket(packet);
+      this.selectionFocus = location?.area === this.selectionArea
+        ? location.point
+        : this.clampedSelectionPointForPacket(packet, this.selectionArea);
       this.selectionDragging = false;
       const selectedText = this.getSelectedText();
       if (selectedText) {
@@ -528,32 +539,52 @@ export class TerminalSplitCompositor {
       return;
     }
 
-    if (!point) return;
+    if (!location) return;
 
     if (isLeftPress(packet)) {
-      this.selectionAnchor = point;
-      this.selectionFocus = point;
+      this.selectionArea = location.area;
+      this.selectionAnchor = location.point;
+      this.selectionFocus = location.point;
       this.selectionDragging = true;
       this.requestRender();
       return;
     }
 
-    if (this.selectionDragging && isLeftDrag(packet)) {
-      this.selectionFocus = point;
+    if (this.selectionDragging && isLeftDrag(packet) && location.area === this.selectionArea) {
+      this.selectionFocus = location.point;
       this.requestRender();
       return;
     }
   }
 
-  private selectionPointForPacket(packet: SgrMousePacket): SelectionPoint | null {
-    if (packet.row < 1 || packet.row > this.visibleScrollableRows) return null;
+  private selectionLocationForPacket(packet: SgrMousePacket): SelectionLocation | null {
+    if (packet.row < 1) return null;
+
+    const col = Math.max(0, packet.col - 1);
+    if (packet.row <= this.visibleScrollableRows) {
+      return {
+        area: "root",
+        point: { line: this.visibleRootStart + packet.row - 1, col },
+      };
+    }
+
+    const clusterLine = packet.row - this.visibleScrollableRows - 1;
+    if (clusterLine >= this.visibleClusterLines.length) return null;
+
     return {
-      line: this.visibleRootStart + packet.row - 1,
-      col: Math.max(0, packet.col - 1),
+      area: "cluster",
+      point: { line: clusterLine, col },
     };
   }
 
-  private clampedSelectionPointForPacket(packet: SgrMousePacket): SelectionPoint {
+  private clampedSelectionPointForPacket(packet: SgrMousePacket, area: SelectionArea | null): SelectionPoint {
+    if (area === "cluster") {
+      return {
+        line: Math.max(0, Math.min(packet.row - this.visibleScrollableRows - 1, this.visibleClusterLines.length - 1)),
+        col: Math.max(0, packet.col - 1),
+      };
+    }
+
     const row = Math.max(1, Math.min(packet.row, this.visibleScrollableRows));
     return {
       line: this.visibleRootStart + row - 1,
@@ -561,8 +592,8 @@ export class TerminalSplitCompositor {
     };
   }
 
-  private renderSelectionHighlight(line: string, lineIndex: number): string {
-    const range = this.getSelectionRangeForLine(lineIndex);
+  private renderSelectionHighlight(line: string, lineIndex: number, area: SelectionArea): string {
+    const range = this.getSelectionRangeForLine(lineIndex, area);
     if (!range) return line;
 
     const plain = stripAnsi(line);
@@ -577,7 +608,7 @@ export class TerminalSplitCompositor {
   }
 
   private getSelectedText(): string {
-    if (!this.selectionAnchor || !this.selectionFocus) return "";
+    if (!this.selectionArea || !this.selectionAnchor || !this.selectionFocus) return "";
 
     const start = compareSelectionPoints(this.selectionAnchor, this.selectionFocus) <= 0
       ? this.selectionAnchor
@@ -585,9 +616,11 @@ export class TerminalSplitCompositor {
     const end = start === this.selectionAnchor ? this.selectionFocus : this.selectionAnchor;
     if (start.line === end.line && start.col === end.col) return "";
 
+    const lines = this.selectionArea === "root" ? this.visibleRootLines : this.visibleClusterLines;
+    const firstLine = this.selectionArea === "root" ? this.visibleRootStart : 0;
     const selected: string[] = [];
     for (let lineIndex = start.line; lineIndex <= end.line; lineIndex++) {
-      const line = stripAnsi(this.visibleRootLines[lineIndex - this.visibleRootStart] ?? "");
+      const line = stripAnsi(lines[lineIndex - firstLine] ?? "");
       const startCol = lineIndex === start.line ? start.col : 0;
       const endCol = lineIndex === end.line ? end.col : Number.POSITIVE_INFINITY;
       selected.push(sliceColumns(line, startCol, endCol));
@@ -596,8 +629,8 @@ export class TerminalSplitCompositor {
     return selected.join("\n").replace(/[ \t]+$/gm, "").trimEnd();
   }
 
-  private getSelectionRangeForLine(lineIndex: number): { startCol: number; endCol: number } | null {
-    if (!this.selectionAnchor || !this.selectionFocus) return null;
+  private getSelectionRangeForLine(lineIndex: number, area: SelectionArea): { startCol: number; endCol: number } | null {
+    if (this.selectionArea !== area || !this.selectionAnchor || !this.selectionFocus) return null;
 
     const start = compareSelectionPoints(this.selectionAnchor, this.selectionFocus) <= 0
       ? this.selectionAnchor
@@ -627,6 +660,7 @@ export class TerminalSplitCompositor {
   }
 
   private clearSelection(): void {
+    this.selectionArea = null;
     this.selectionAnchor = null;
     this.selectionFocus = null;
     this.selectionDragging = false;
@@ -698,7 +732,7 @@ export class TerminalSplitCompositor {
         + setScrollRegion(1, scrollBottom)
         + moveCursor(screenRow, 1)
         + data
-        + buildFixedClusterPaint(cluster, rawRows, width, this.getShowHardwareCursor())
+        + buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor())
         + endSynchronizedOutput();
 
       this.originalWrite(buffer);
@@ -717,10 +751,20 @@ export class TerminalSplitCompositor {
     }
 
     const cluster = this.withClusterRender(() => this.renderCluster(width, terminalRows));
+    this.visibleClusterLines = cluster.lines;
     if (this.renderPassActive) {
       this.renderPassCluster = { width, terminalRows, cluster };
     }
     return cluster;
+  }
+
+  private decorateCluster(cluster: FixedEditorClusterRender): FixedEditorClusterRender {
+    if (this.selectionArea !== "cluster") return cluster;
+
+    return {
+      ...cluster,
+      lines: cluster.lines.map((line, index) => this.renderSelectionHighlight(line, index, "cluster")),
+    };
   }
 
   private withClusterRender<T>(render: () => T): T {
