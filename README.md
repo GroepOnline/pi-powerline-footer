@@ -26,7 +26,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Git integration** — Async status fetching with 1s cache TTL. Automatically invalidates on file writes/edits. Shows branch, staged (+), unstaged (*), and untracked (?) counts.
 
-**Context awareness** — Color-coded warnings at 70% (yellow) and 90% (red) context usage. Auto-compact indicator when enabled. If `pi-custom-compaction` is installed and enabled, the powerline automatically hides native context segments so the footer does not show stale post-summary usage.
+**Context awareness** — Color-coded warnings at 70% (yellow) and 90% (red) context usage. During streaming, the context segment refreshes from live assistant usage instead of waiting for the next turn. Auto-compact indicator when enabled. If `pi-custom-compaction` is installed and enabled, the powerline automatically hides native context segments so the footer does not show stale post-summary usage.
 
 **Token intelligence** — Smart formatting (1.2k, 45M), subscription detection (shows "(sub)" vs dollar cost).
 
@@ -186,12 +186,14 @@ Prompt history now has two sources:
 
 Selecting an entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
 
-### Editor clipboard and chat jump shortcuts
+### Editor clipboard and chat shortcuts
 
 - `ctrl+alt+c` — copy full editor content
 - `ctrl+alt+x` — cut full editor content (copy, then clear)
-- `cmd+up` — move the editor cursor to the start of the first line
-- `cmd+down` — move the editor cursor to the end of the last line
+- `cmd+up` — scroll the fixed-editor chat viewport up
+- `cmd+down` — scroll the fixed-editor chat viewport down
+- `cmd+shift+up` — move the editor cursor to the start of the first line
+- `cmd+shift+down` — move the editor cursor to the end of the last line
 - `ctrl+shift+u` — jump the fixed-editor chat viewport to the previous user message
 - `ctrl+shift+i` — jump the fixed-editor chat viewport to the next user message
 - `ctrl+alt+,` — jump the fixed-editor chat viewport to the previous LLM message
@@ -214,12 +216,16 @@ You can override shortcut keys in `~/.pi/agent/settings.json`:
     "jumpNextUserMessage": "ctrl+shift+i",
     "jumpPreviousLlmMessage": "ctrl+alt+,",
     "jumpNextLlmMessage": "ctrl+alt+.",
-    "jumpChatBottom": "ctrl+shift+g"
+    "jumpChatBottom": "ctrl+shift+g",
+    "scrollChatUp": "cmd+up",
+    "scrollChatDown": "cmd+down",
+    "editorStart": "cmd+shift+up",
+    "editorEnd": "cmd+shift+down"
   }
 }
 ```
 
-After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts (like `Alt+S`), or duplicate conflicts automatically fall back to safe defaults.
+After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts (like `Alt+S`), or duplicate conflicts automatically fall back to safe defaults. `cmd` and `command` are accepted aliases for Pi's `super` modifier for the documented Command navigation keys; unsupported Command-letter bindings such as `cmd+c` are ignored instead of matching plain text input. Some terminals, including Ghostty, bind Command+Arrow themselves; remap those terminal keys to send `\x1b[1;9A` / `\x1b[1;9B` for chat scrolling and `\x1b[1;10A` / `\x1b[1;10B` for editor-boundary navigation if you want Pi to receive them.
 
 ## Working Vibes
 

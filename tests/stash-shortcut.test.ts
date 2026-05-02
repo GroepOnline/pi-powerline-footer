@@ -22,7 +22,7 @@ test("stash shortcut supports macOS Option+S character input", () => {
   assert.match(source, /stashOrRestoreEditorText\(ctx\);/);
   assert.match(source, /function isPromptHistoryShortcutInput\(data: string\): boolean/);
   assert.match(source, /if \(isKeyRelease\(data\)\) return null;/);
-  assert.match(source, /matchesKey\(data, resolvedShortcuts\.stashHistory\)/);
+  assert.match(source, /matchesConfiguredShortcut\(data, resolvedShortcuts\.stashHistory\)/);
   assert.doesNotMatch(source, /data === "\\x1b\\b"/);
   assert.doesNotMatch(source, /data === "\\x1b\\x7f"/);
   assert.match(source, /104\(\?:/);

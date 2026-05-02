@@ -1,4 +1,5 @@
 import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { matchesConfiguredShortcut } from "../shortcuts.ts";
 import type { FixedEditorClusterRender } from "./cluster.ts";
 
 export interface TerminalLike {
@@ -8,12 +9,18 @@ export interface TerminalLike {
   write(data: string): void;
 }
 
+interface KeyboardScrollShortcuts {
+  up: string;
+  down: string;
+}
+
 interface TerminalSplitCompositorOptions {
   tui: any;
   terminal: TerminalLike;
   renderCluster: (width: number, terminalRows: number) => FixedEditorClusterRender;
   getShowHardwareCursor?: () => boolean;
   mouseScroll?: boolean;
+  keyboardScrollShortcuts?: KeyboardScrollShortcuts;
   onCopySelection?: (text: string) => void;
 }
 
@@ -31,6 +38,14 @@ interface RenderPassCluster {
   terminalRows: number;
   cluster: FixedEditorClusterRender;
 }
+
+type CompositeLineAt = (
+  baseLine: string,
+  overlayLine: string,
+  startCol: number,
+  overlayWidth: number,
+  totalWidth: number,
+) => string;
 
 interface SgrMousePacket {
   code: number;
@@ -59,6 +74,10 @@ type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
 
 const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
 const DOUBLE_CLICK_MS = 500;
+const DEFAULT_KEYBOARD_SCROLL_SHORTCUTS: KeyboardScrollShortcuts = {
+  up: "super+up",
+  down: "super+down",
+};
 
 export function beginSynchronizedOutput(): string {
   return "\x1b[?2026h";
@@ -138,18 +157,22 @@ export function emergencyTerminalModeReset(): string {
     + endSynchronizedOutput();
 }
 
-function parseKeyboardScrollDelta(data: string): number {
+function matchesConfiguredKeyboardScrollShortcut(data: string, shortcut: string): boolean {
+  return matchesConfiguredShortcut(data, shortcut);
+}
+
+function parseKeyboardScrollDelta(data: string, shortcuts: KeyboardScrollShortcuts = DEFAULT_KEYBOARD_SCROLL_SHORTCUTS): number {
   if (isKeyRelease(data)) return 0;
 
   if (
-    matchesKey(data, "pageUp")
-    || matchesKey(data, "super+pageUp")
+    matchesConfiguredKeyboardScrollShortcut(data, shortcuts.up)
+    || matchesKey(data, "pageUp")
     || matchesKey(data, "ctrl+shift+up")
     || /^\x1b\[(?:5;9(?::[12])?~|1;6(?::[12])?A|57421;9(?::[12])?u|57419;6(?::[12])?u)$/.test(data)
   ) return 10;
   if (
-    matchesKey(data, "pageDown")
-    || matchesKey(data, "super+pageDown")
+    matchesConfiguredKeyboardScrollShortcut(data, shortcuts.down)
+    || matchesKey(data, "pageDown")
     || matchesKey(data, "ctrl+shift+down")
     || /^\x1b\[(?:6;9(?::[12])?~|1;6(?::[12])?B|57422;9(?::[12])?u|57420;6(?::[12])?u)$/.test(data)
   ) return -10;
@@ -203,10 +226,12 @@ function isMouseRelease(packet: SgrMousePacket): boolean {
   return packet.final === "m";
 }
 
+function stripOscSequences(line: string): string {
+  return line.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "");
+}
+
 function stripAnsi(line: string): string {
-  return line
-    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+  return stripOscSequences(line).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
 }
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -253,6 +278,14 @@ function sanitizeLine(line: string, width: number): string {
   return visibleWidth(line) > width ? truncateToWidth(line, width, "", true) : line;
 }
 
+function sanitizeOverlayBaseLine(line: string, width: number): string {
+  return sanitizeLine(stripOscSequences(line), width);
+}
+
+function normalizeOverlayCompositionLine(line: string): string {
+  return line.includes("\t") ? line.replace(/\t/g, "   ") : line;
+}
+
 export function buildFixedClusterPaint(
   cluster: FixedEditorClusterRender,
   terminalRows: number,
@@ -286,12 +319,14 @@ export class TerminalSplitCompositor {
   private readonly renderCluster: (width: number, terminalRows: number) => FixedEditorClusterRender;
   private readonly getShowHardwareCursor: () => boolean;
   private readonly mouseScroll: boolean;
+  private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
   private readonly onCopySelection: ((text: string) => void) | null;
   private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
   private readonly rowsDescriptor: PropertyDescriptor | undefined;
   private readonly originalWrite: (data: string) => void;
   private readonly originalDoRender: (() => void) | null;
   private readonly originalRender: ((width: number) => string[]) | null;
+  private originalCompositeLineAt: CompositeLineAt | null = null;
   private readonly patchedRenders: RenderPatch[] = [];
   private removeInputListener: (() => void) | null = null;
   private emergencyCleanup: (() => void) | null = null;
@@ -325,6 +360,7 @@ export class TerminalSplitCompositor {
     this.renderCluster = options.renderCluster;
     this.getShowHardwareCursor = options.getShowHardwareCursor ?? (() => false);
     this.mouseScroll = options.mouseScroll !== false;
+    this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
     this.onCopySelection = options.onCopySelection ?? null;
     this.rowsDescriptor = descriptorForRows(options.terminal);
     this.originalWrite = options.terminal.write.bind(options.terminal);
@@ -379,6 +415,22 @@ export class TerminalSplitCompositor {
           this.renderPassCluster = null;
         }
       };
+    }
+    if (typeof this.tui.compositeLineAt === "function") {
+      this.originalCompositeLineAt = this.tui.compositeLineAt.bind(this.tui) as CompositeLineAt;
+      this.tui.compositeLineAt = (
+        baseLine: string,
+        overlayLine: string,
+        startCol: number,
+        overlayWidth: number,
+        totalWidth: number,
+      ) => this.originalCompositeLineAt?.(
+        normalizeOverlayCompositionLine(baseLine),
+        normalizeOverlayCompositionLine(overlayLine),
+        startCol,
+        overlayWidth,
+        totalWidth,
+      ) ?? "";
     }
     this.installed = true;
   }
@@ -479,6 +531,10 @@ export class TerminalSplitCompositor {
     if (this.originalRender) {
       this.tui.render = this.originalRender;
     }
+    if (this.originalCompositeLineAt) {
+      this.tui.compositeLineAt = this.originalCompositeLineAt;
+      this.originalCompositeLineAt = null;
+    }
     if (this.rowsDescriptor) {
       Object.defineProperty(this.terminal, "rows", this.rowsDescriptor);
     } else {
@@ -504,8 +560,12 @@ export class TerminalSplitCompositor {
   }
 
   private renderScrollableRoot(width: number): string[] {
-    if (!this.originalRender || this.disposed || this.renderingScrollableRoot || this.hasVisibleOverlay()) {
+    if (!this.originalRender || this.disposed || this.renderingScrollableRoot) {
       return this.originalRender?.(width) ?? [];
+    }
+
+    if (this.hasVisibleOverlay()) {
+      return this.originalRender(width).map((line) => sanitizeOverlayBaseLine(line, Math.max(1, width)));
     }
 
     this.renderingScrollableRoot = true;
@@ -541,7 +601,7 @@ export class TerminalSplitCompositor {
       return { consume: true };
     }
 
-    const keyboardDelta = parseKeyboardScrollDelta(data);
+    const keyboardDelta = parseKeyboardScrollDelta(data, this.keyboardScrollShortcuts);
     if (keyboardDelta === 0) return undefined;
 
     this.scrollBy(keyboardDelta);

@@ -36,6 +36,12 @@ import { createRenderScheduler } from "./render-scheduler.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.js";
+import {
+  isSupportedSuperShortcut,
+  matchesConfiguredShortcut,
+  shortcutConflictKey,
+  shortcutUsesSuper,
+} from "./shortcuts.ts";
 import { 
   initVibeManager, 
   onVibeBeforeAgentStart, 
@@ -76,6 +82,10 @@ interface PowerlineShortcuts {
   jumpPreviousLlmMessage: string;
   jumpNextLlmMessage: string;
   jumpChatBottom: string;
+  scrollChatUp: string;
+  scrollChatDown: string;
+  editorStart: string;
+  editorEnd: string;
 }
 
 type PowerlineShortcutKey = keyof PowerlineShortcuts;
@@ -110,6 +120,10 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   jumpPreviousLlmMessage: "ctrl+alt+,",
   jumpNextLlmMessage: "ctrl+alt+.",
   jumpChatBottom: "ctrl+shift+g",
+  scrollChatUp: "super+up",
+  scrollChatDown: "super+down",
+  editorStart: "super+shift+up",
+  editorEnd: "super+shift+down",
 };
 const DEFAULT_BASH_MODE_SETTINGS: BashModeSettings = {
   toggleShortcut: "ctrl+shift+b",
@@ -156,6 +170,10 @@ const SHORTCUT_KEYS: PowerlineShortcutKey[] = [
   "jumpPreviousLlmMessage",
   "jumpNextLlmMessage",
   "jumpChatBottom",
+  "scrollChatUp",
+  "scrollChatDown",
+  "editorStart",
+  "editorEnd",
 ];
 const APP_RESERVED_SHORTCUTS = [
   "escape",
@@ -186,7 +204,7 @@ const APP_RESERVED_SHORTCUTS = [
   "ctrl+u",
 ] as const;
 const EXTRA_RESERVED_SHORTCUTS = ["alt+s"] as const;
-const SHORTCUT_MODIFIER_ORDER = ["ctrl", "alt", "shift"] as const;
+const SHORTCUT_MODIFIER_ORDER = ["ctrl", "alt", "super", "shift"] as const;
 const SHORTCUT_MODIFIERS = new Set(SHORTCUT_MODIFIER_ORDER);
 const SHORTCUT_NAMED_KEYS = new Set([
   "escape", "esc", "enter", "return", "tab", "space", "backspace", "delete", "insert", "clear",
@@ -200,12 +218,18 @@ const PROMPT_HISTORY_LIMIT = 100;
 const LAYOUT_CACHE_TTL_MS = 250;
 const STREAMING_LAYOUT_CACHE_TTL_MS = 1000;
 const STATUS_RENDER_DEBOUNCE_MS = 33;
+const CONTEXT_STATUS_RENDER_MS = 250;
 const EDITOR_STATUS_DEFER_MS = 150;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
 type PromptHistoryState = { savedPromptHistory: string[] };
 type SessionAssistantUsage = AssistantMessage["usage"];
+
+function getUsageTokenTotal(usage: SessionAssistantUsage): number {
+  const totalTokens = "totalTokens" in usage && typeof usage.totalTokens === "number" ? usage.totalTokens : 0;
+  return totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+}
 
 function hasSessionAssistantUsage(value: unknown): value is SessionAssistantUsage {
   if (!isRecord(value)) {
@@ -702,7 +726,10 @@ function parseShortcutOverride(value: unknown): string | null {
     return null;
   }
 
-  const modifierParts = parts.slice(0, -1).map((part) => part.toLowerCase());
+  const modifierParts = parts.slice(0, -1).map((part) => {
+    const modifier = part.toLowerCase();
+    return modifier === "cmd" || modifier === "command" ? "super" : modifier;
+  });
   if (new Set(modifierParts).size !== modifierParts.length) {
     return null;
   }
@@ -719,18 +746,27 @@ function parseShortcutOverride(value: unknown): string | null {
   }
 
   const normalizedKey = SHORTCUT_SYMBOL_KEYS.has(keyPart) ? keyPart : keyPart.toLowerCase();
-  return normalizeShortcut([...modifierParts, normalizedKey].join("+"));
+  const normalizedShortcut = normalizeShortcut([...modifierParts, normalizedKey].join("+"));
+  if (shortcutUsesSuper(normalizedShortcut) && !isSupportedSuperShortcut(normalizedShortcut)) {
+    return null;
+  }
+
+  return normalizedShortcut;
+}
+
+function shortcutUsageKey(shortcut: string): string {
+  return shortcutConflictKey(normalizeShortcut(shortcut));
 }
 
 function findShortcutReplacement(key: PowerlineShortcutKey, used: Set<string>): string | null {
   const preferred = DEFAULT_SHORTCUTS[key];
-  if (!used.has(normalizeShortcut(preferred))) {
+  if (!used.has(shortcutUsageKey(preferred))) {
     return preferred;
   }
 
   for (const shortcutKey of SHORTCUT_KEYS) {
     const candidate = DEFAULT_SHORTCUTS[shortcutKey];
-    if (!used.has(normalizeShortcut(candidate))) {
+    if (!used.has(shortcutUsageKey(candidate))) {
       return candidate;
     }
   }
@@ -751,14 +787,14 @@ function resolveShortcutConfig(settings: Record<string, unknown>): PowerlineShor
     }
   }
 
-  const used = reservedShortcuts();
+  const used = new Set(Array.from(reservedShortcuts(), shortcutUsageKey));
 
   for (const key of SHORTCUT_KEYS) {
     const configured = resolved[key];
-    const normalizedConfigured = normalizeShortcut(configured);
+    const configuredUsageKey = shortcutUsageKey(configured);
 
-    if (!used.has(normalizedConfigured)) {
-      used.add(normalizedConfigured);
+    if (!used.has(configuredUsageKey)) {
+      used.add(configuredUsageKey);
       continue;
     }
 
@@ -773,7 +809,7 @@ function resolveShortcutConfig(settings: Record<string, unknown>): PowerlineShor
     );
 
     resolved[key] = replacement;
-    used.add(normalizeShortcut(replacement));
+    used.add(shortcutUsageKey(replacement));
   }
 
   return resolved;
@@ -783,7 +819,7 @@ function parseBashModeSettings(settings: Record<string, unknown>): BashModeSetti
   const raw = isRecord(settings.bashMode) ? settings.bashMode : {};
 
   const configuredToggleShortcut = parseShortcutOverride(raw.toggleShortcut);
-  const toggleShortcut = configuredToggleShortcut && !reservedShortcuts().has(normalizeShortcut(configuredToggleShortcut))
+  const toggleShortcut = configuredToggleShortcut && !reservedShortcuts().has(shortcutUsageKey(configuredToggleShortcut))
     ? configuredToggleShortcut
     : DEFAULT_BASH_MODE_SETTINGS.toggleShortcut;
 
@@ -914,7 +950,7 @@ function computeResponsiveLayout(
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
   config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
-  const resolvedShortcuts = resolveShortcutConfig(startupSettings);
+  let resolvedShortcuts = resolveShortcutConfig(startupSettings);
   let bashModeSettings = parseBashModeSettings(startupSettings);
 
   let enabled = true;
@@ -923,6 +959,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let currentCtx: any = null;
   let footerDataRef: ReadonlyFooterDataProvider | null = null;
   let getThinkingLevelFn: (() => string) | null = null;
+  let currentThinkingLevel: string | null = null;
+  let liveAssistantUsage: SessionAssistantUsage | null = null;
   let isStreaming = false;
   let tuiRef: any = null;
   let restoreFooterStatusRepaintHook: (() => void) | null = null;
@@ -981,9 +1019,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     statusRenderScheduler.schedule(delayMs);
   };
 
-  const requestImmediateStatusRender = () => {
+  const requestImmediateStatusRender = (options: { deferDuringTyping?: boolean } = {}) => {
     layoutDirty = true;
-    if (Date.now() - lastEditorInputAt < EDITOR_STATUS_DEFER_MS) {
+    if (options.deferDuringTyping !== false && Date.now() - lastEditorInputAt < EDITOR_STATUS_DEFER_MS) {
       statusRenderScheduler.schedule();
       return;
     }
@@ -1171,10 +1209,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     customCompactionEnabled = detectCustomCompactionEnabled(ctx.cwd);
     lastUserPrompt = "";
     isStreaming = false;
+    liveAssistantUsage = null;
     stashedEditorText = null;
 
     const settings = readSettings(ctx.cwd);
     bashModeSettings = parseBashModeSettings(settings);
+    resolvedShortcuts = resolveShortcutConfig(settings);
     showLastPrompt = settings.showLastPrompt !== false;
     config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
     stashedPromptHistory = readPersistedStashHistory();
@@ -1185,6 +1225,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
       ? () => ctx.getThinkingLevel()
       : null;
+    currentThinkingLevel = getThinkingLevelFn?.() ?? null;
 
     if (ctx.hasUI) {
       ctx.ui.setStatus("stash", undefined);
@@ -1227,6 +1268,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentCtx = null;
     footerDataRef = null;
     getThinkingLevelFn = null;
+    currentThinkingLevel = null;
+    liveAssistantUsage = null;
     tuiRef = null;
     currentEditor = null;
     resetLayoutCache();
@@ -1279,6 +1322,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     requestStatusRender();
   });
 
+  pi.on("thinking_level_select", async (event, ctx) => {
+    currentCtx = ctx;
+    currentThinkingLevel = getThinkingLevelFn?.() ?? (typeof event.level === "string" ? event.level : null);
+    requestImmediateStatusRender({ deferDuringTyping: false });
+  });
+
+  pi.on("session_tree", async (_event, ctx) => {
+    currentCtx = ctx;
+    currentThinkingLevel = null;
+    liveAssistantUsage = null;
+    requestImmediateStatusRender({ deferDuringTyping: false });
+  });
+
   // Generate themed working message before agent starts (has access to user's prompt)
   pi.on("before_agent_start", async (event, ctx) => {
     lastUserPrompt = event.prompt;
@@ -1291,8 +1347,39 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   // Also dismiss welcome when agent starts responding (handles `p "command"` case)
   pi.on("agent_start", async (_event, ctx) => {
     isStreaming = true;
+    liveAssistantUsage = null;
     onVibeAgentStart();
     dismissWelcome(ctx);
+    currentCtx = ctx;
+  });
+
+  pi.on("message_update", async (event, ctx) => {
+    if (isSessionAssistantMessage(event.message)
+      && event.message.stopReason !== "error"
+      && event.message.stopReason !== "aborted"
+      && getUsageTokenTotal(event.message.usage) > 0) {
+      liveAssistantUsage = event.message.usage;
+      currentCtx = ctx;
+      layoutDirty = true;
+      statusRenderScheduler.schedule(CONTEXT_STATUS_RENDER_MS);
+    }
+  });
+
+  pi.on("message_end", async (event, ctx) => {
+    currentCtx = ctx;
+    if (isSessionAssistantMessage(event.message)) {
+      if (event.message.stopReason === "error" || event.message.stopReason === "aborted") {
+        liveAssistantUsage = null;
+      } else if (getUsageTokenTotal(event.message.usage) > 0) {
+        liveAssistantUsage = event.message.usage;
+      }
+    }
+    requestImmediateStatusRender({ deferDuringTyping: false });
+  });
+
+  pi.on("turn_end", async (_event, ctx) => {
+    currentCtx = ctx;
+    requestImmediateStatusRender({ deferDuringTyping: false });
   });
 
   // Also dismiss on tool calls (agent is working) + refresh vibe if rate limit allows
@@ -1484,11 +1571,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function getChatJumpShortcutAction(data: string): ChatJumpShortcutAction | null {
-    return CHAT_JUMP_SHORTCUTS.find(({ shortcutKey }) => matchesKey(data, resolvedShortcuts[shortcutKey]))?.action ?? null;
+    return CHAT_JUMP_SHORTCUTS.find(({ shortcutKey }) => matchesConfiguredShortcut(data, resolvedShortcuts[shortcutKey]))?.action ?? null;
   }
 
   function isPromptHistoryShortcutInput(data: string): boolean {
-    return matchesKey(data, resolvedShortcuts.stashHistory)
+    return matchesConfiguredShortcut(data, resolvedShortcuts.stashHistory)
       || (resolvedShortcuts.stashHistory === "ctrl+alt+h" && (
         /^\x1b\[104(?::\d*)?(?::\d*)?;7(?::\d+)?u$/.test(data)
         || data === "\x1b[27;7;104~"
@@ -1502,13 +1589,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (isPromptHistoryShortcutInput(data)) {
       return { kind: "stashHistory" };
     }
-    if (matchesKey(data, resolvedShortcuts.copyEditor)) {
+    if (matchesConfiguredShortcut(data, resolvedShortcuts.copyEditor)) {
       return { kind: "copyEditor" };
     }
-    if (matchesKey(data, resolvedShortcuts.cutEditor)) {
+    if (matchesConfiguredShortcut(data, resolvedShortcuts.cutEditor)) {
       return { kind: "cutEditor" };
     }
-    if (matchesKey(data, bashModeSettings.toggleShortcut)) {
+    if (matchesConfiguredShortcut(data, bashModeSettings.toggleShortcut)) {
       return { kind: "bashMode" };
     }
 
@@ -1601,6 +1688,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   pi.on("agent_end", async (_event, ctx) => {
     isStreaming = false;
+    liveAssistantUsage = null;
     currentCtx = ctx;
     if (ctx.hasUI) {
       onVibeAgentEnd(ctx.ui.setWorkingMessage); // working-vibes internal state + reset message
@@ -1990,14 +2078,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       cacheRead += m.usage.cacheRead;
       cacheWrite += m.usage.cacheWrite;
       cost += m.usage.cost.total;
-      lastAssistant = m;
+      if (getUsageTokenTotal(m.usage) > 0) {
+        lastAssistant = m;
+      }
     }
 
     // Calculate context percentage (total tokens used in last turn)
-    const contextTokens = lastAssistant
-      ? lastAssistant.usage.input + lastAssistant.usage.output +
-        lastAssistant.usage.cacheRead + lastAssistant.usage.cacheWrite
-      : 0;
+    const latestUsage = isStreaming ? liveAssistantUsage ?? lastAssistant?.usage : lastAssistant?.usage;
+    const contextTokens = latestUsage ? getUsageTokenTotal(latestUsage) : 0;
     const contextWindow = ctx.model?.contextWindow || 0;
     const contextPercent = contextWindow > 0 ? (contextTokens / contextWindow) * 100 : 0;
 
@@ -2013,7 +2101,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       ? ctx.modelRegistry?.isUsingOAuth?.(ctx.model) ?? false
       : false;
 
-    const thinkingLevel = thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off";
+    const thinkingLevel = currentThinkingLevel ?? thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off";
 
     return {
       model: ctx.model,
@@ -2208,6 +2296,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       tui,
       terminal: tui.terminal,
       mouseScroll: config.mouseScroll,
+      keyboardScrollShortcuts: {
+        up: resolvedShortcuts.scrollChatUp,
+        down: resolvedShortcuts.scrollChatDown,
+      },
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
@@ -2432,6 +2524,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         },
         onSubmitCommand: (command) => void runShellCommand(command, ctx),
         onEditorSubmit: () => followSubmittedEditorToBottom(),
+        editorBoundaryShortcuts: {
+          start: resolvedShortcuts.editorStart,
+          end: resolvedShortcuts.editorEnd,
+        },
         onInterrupt: () => {
           shellSession?.interrupt();
           ctx.ui.notify("Sent interrupt to shell", "info");

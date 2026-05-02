@@ -2,8 +2,14 @@ import { CustomEditor } from "@mariozechner/pi-coding-agent";
 import { isKeyRelease, matchesKey, visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent/dist/core/keybindings.js";
 import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+import { matchesConfiguredShortcut } from "../shortcuts.ts";
 import { getOneOffBashCommandContext } from "./completion.ts";
 import type { GhostSuggestion } from "./types.ts";
+
+interface EditorBoundaryShortcuts {
+  start: string;
+  end: string;
+}
 
 interface BashModeEditorOptions {
   keybindings: KeybindingsManager;
@@ -12,14 +18,24 @@ interface BashModeEditorOptions {
   onExitBashMode: () => void;
   onSubmitCommand: (command: string) => void;
   onEditorSubmit?: () => void;
+  editorBoundaryShortcuts?: EditorBoundaryShortcuts;
   onInterrupt: () => void;
   onNotify: (message: string, level?: "info" | "warning" | "error") => void;
   getHistoryEntries: (prefix: string) => string[];
   resolveGhostSuggestion: (text: string, signal: AbortSignal) => Promise<GhostSuggestion | null>;
 }
 
+const DEFAULT_EDITOR_BOUNDARY_SHORTCUTS: EditorBoundaryShortcuts = {
+  start: "super+shift+up",
+  end: "super+shift+down",
+};
+
 function isPrintableInput(data: string): boolean {
   return data.length === 1 && data.charCodeAt(0) >= 32;
+}
+
+function matchesEditorBoundaryShortcut(data: string, shortcut: string): boolean {
+  return matchesConfiguredShortcut(data, shortcut);
 }
 
 export class BashModeEditor extends CustomEditor {
@@ -105,12 +121,13 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
-      if (!isKeyRelease(data) && (matchesKey(data, "super+up") || /^\x1b\[(?:1;9(?::[12])?[AH]|574(?:19|23);9(?::[12])?u|27;9;65~)$/.test(data))) {
+      const editorBoundaryShortcuts = this.optionsRef.editorBoundaryShortcuts ?? DEFAULT_EDITOR_BOUNDARY_SHORTCUTS;
+      if (!isKeyRelease(data) && matchesEditorBoundaryShortcut(data, editorBoundaryShortcuts.start)) {
         this.moveCursorToEditorBoundary("start");
         return;
       }
 
-      if (!isKeyRelease(data) && (matchesKey(data, "super+down") || /^\x1b\[(?:1;9(?::[12])?[BF]|574(?:20|24);9(?::[12])?u|27;9;66~)$/.test(data))) {
+      if (!isKeyRelease(data) && matchesEditorBoundaryShortcut(data, editorBoundaryShortcuts.end)) {
         this.moveCursorToEditorBoundary("end");
         return;
       }

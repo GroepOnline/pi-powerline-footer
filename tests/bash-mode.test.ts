@@ -1064,26 +1064,81 @@ test("bash editor command arrows jump to editor boundaries", async () => {
     editor.setText("alpha\nbravo\ncharlie");
     assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
 
+    editor.handleInput("\x1b[A");
+    assert.notDeepEqual(editor.getCursor(), { line: 0, col: 0 });
+    editor.handleInput("\x1b[B");
+    assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
+
     editor.handleInput("\x1b[1;9A");
+    assert.notDeepEqual(editor.getCursor(), { line: 0, col: 0 });
+
+    editor.handleInput("\x1b[1;10A");
     assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
 
-    editor.handleInput("\x1b[57420;9u");
+    editor.handleInput("\x1b[27;10;66~");
     assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
 
-    editor.handleInput("\x1b[1;9H");
+    editor.handleInput("\x1b[27;10;65~");
     assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
 
-    editor.handleInput("\x1b[57424;9u");
+    editor.handleInput("\x1b[57420;10u");
     assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
 
-    editor.handleInput("\x1b[27;9;65~");
+    editor.handleInput("\x1b[57423;10u");
     assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
 
-    editor.handleInput("\x1b[27;9;66~");
+    editor.handleInput("\x1b[1;10F");
     assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
 
-    editor.handleInput("\x1b[1;9:3A");
+    editor.handleInput("\x1b[1;10:3A");
     assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
+
+    const customEditor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        editorBoundaryShortcuts: { start: "ctrl+shift+u", end: "ctrl+shift+d" },
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+    customEditor.setText("alpha\nbravo\ncharlie");
+    customEditor.handleInput("\x1b[117;6u");
+    assert.deepEqual(customEditor.getCursor(), { line: 0, col: 0 });
+    customEditor.handleInput("\x1b[100;6u");
+    assert.deepEqual(customEditor.getCursor(), { line: 2, col: 7 });
+
+    const configuredCommandEditor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        editorBoundaryShortcuts: { start: "super+shift+up", end: "super+shift+down" },
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+    configuredCommandEditor.setText("alpha\nbravo\ncharlie");
+    configuredCommandEditor.handleInput("\x1b[1;10A");
+    assert.deepEqual(configuredCommandEditor.getCursor(), { line: 0, col: 0 });
+    configuredCommandEditor.handleInput("\x1b[1;10B");
+    assert.deepEqual(configuredCommandEditor.getCursor(), { line: 2, col: 7 });
+
     assert.equal(renderRequests, 6);
   } finally {
     links.cleanup();

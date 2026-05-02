@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { TUI, visibleWidth } from "@mariozechner/pi-tui";
 import { CURSOR_MARKER, renderFixedEditorCluster } from "../fixed-editor/cluster.ts";
 import {
   buildFixedClusterPaint,
@@ -29,6 +29,10 @@ class FakeTerminal {
   write(data: string): void {
     this.writes.push(data);
   }
+
+  hideCursor(): void {}
+
+  showCursor(): void {}
 }
 
 test("fixed cluster keeps the editor visible before optional rows", () => {
@@ -404,6 +408,58 @@ test("terminal split does not repaint the fixed cluster over visible overlays", 
     "\x1b[?2026h\x1b[?1049h\x1b[?1007l\x1b[?1002h\x1b[?1006h\x1b[?2026l",
     "overlay-frame",
   ]);
+
+  compositor.dispose();
+});
+
+test("terminal split strips OSC markers from root lines while overlays are visible", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 20;
+  const tui = {
+    terminal,
+    overlayStack: [{}],
+    render() {
+      return ["\x1b]133;B\x07" + "x".repeat(20) + "\x1b]133;C\x07"];
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  const rendered = tui.render(20);
+
+  assert.equal(rendered.length, 1);
+  assert.equal(visibleWidth(rendered[0] ?? ""), 20);
+  assert.doesNotMatch(rendered[0] ?? "", /\]133/);
+
+  compositor.dispose();
+});
+
+test("terminal split keeps tabbed overlay composition within terminal width", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 250;
+  terminal.setRows(40);
+  const tui = new TUI(terminal, false);
+  const overlay = "\x1b[38;2;119;125;136m[grep]: render.ts-706- \treturn [...lines.slice(0, visibleLines), truncLine(theme.fg(\"dim\", hint), width)];\x1b[39m";
+
+  const before = tui.compositeLineAt("Validation before " + " ".repeat(232), overlay, 20, 210, 250);
+  assert.ok(visibleWidth(before) > 250);
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  const after = tui.compositeLineAt("Validation before " + " ".repeat(232), overlay, 20, 210, 250);
+
+  assert.ok(visibleWidth(after) <= 250);
+  assert.doesNotMatch(after, /\t/);
 
   compositor.dispose();
 });
@@ -942,10 +998,20 @@ test("terminal split keyboard scroll supports Pi page aliases and preserves app 
   assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[5;9~"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[57421;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[1;9A"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57419;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[1;9H"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57423;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[7;9~"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[1;6A"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[57419;6u"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[6;9~"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[57422;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[1;9B"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57420;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[1;9F"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[57424;9u"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[8;9~"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[1;6B"), { consume: true });
   assert.deepEqual(inputListener?.("\x1b[57420;6u"), { consume: true });
   assert.equal(inputListener?.("\x1b[1;10A"), undefined);
@@ -956,6 +1022,45 @@ test("terminal split keyboard scroll supports Pi page aliases and preserves app 
   assert.equal(inputListener?.("\x1b[57419;10:3u"), undefined);
   assert.equal(inputListener?.("\x1bp"), undefined);
   assert.equal(inputListener?.("\x1bn"), undefined);
+
+  compositor.dispose();
+});
+
+test("terminal split keyboard scroll accepts configured shortcuts", () => {
+  const terminal = new FakeTerminal();
+  const renderRequests: Array<boolean | undefined> = [];
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    keyboardScrollShortcuts: { up: "ctrl+shift+u", down: "ctrl+shift+d" },
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render();
+
+  assert.equal(inputListener?.("\x1b[1;9A"), undefined);
+  assert.deepEqual(inputListener?.("\x1b[117;6u"), { consume: true });
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.deepEqual(inputListener?.("\x1b[100;6u"), { consume: true });
+  assert.deepEqual(renderRequests, [undefined, undefined]);
 
   compositor.dispose();
 });
