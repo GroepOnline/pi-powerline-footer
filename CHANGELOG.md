@@ -8,10 +8,12 @@
 - **Editor navigation shortcuts** — Added `cmd+up` and `cmd+down` to move the editor cursor to the start of the first line or end of the last line.
 
 ### Fixed
+- **Extension status repainting** — `ctx.ui.setStatus()` updates now invalidate the powerline layout immediately while idle, so custom status items such as `🪃 auto` appear without waiting for the next prompt or agent event.
+- **Fixed-editor working status** — Pi's working/status line, like `⠏ Shaolin Switchblade Sync...`, now stays fixed with the editor instead of scrolling with chat.
 - **Fixed-editor follow-up queue** — The fixed editor now re-enables Pi's extended keyboard mode after entering alternate screen, so `Alt+Enter` still reaches Pi's follow-up queue while the agent is streaming.
 - **Fixed-editor terminal cleanup** — Session shutdown and emergency exit cleanup now leave alternate screen before clearing the full Kitty CSI-u stack and xterm modifyOtherKeys mode, preventing keypresses from leaking as sequences like `97;1:3u` after quitting Pi.
 - **Fixed-editor selection overflow** — Chat selection highlighting now strips OSC shell-integration control sequences before slicing text, preventing exposed `]133` markers from making rendered lines exceed terminal width.
-- **Fixed-editor text selection** — Dragging inside the fixed editor cluster now highlights and copies selected text instead of being swallowed by mouse-scroll handling.
+- **Fixed-editor text selection** — Dragging inside the fixed editor cluster now highlights and copies selected text instead of being swallowed by mouse-scroll handling. Dragging a chat selection to the viewport edge now scrolls while keeping the selection active.
 - **Fixed-editor right-click menu** — Right-click temporarily releases mouse reporting so the terminal context menu remains available while fixed-editor mouse scrolling is enabled.
 - **Fixed-editor double-click selection** — Double-clicking chat or fixed-editor text now selects the whole line while mouse reporting is active.
 - **Fixed-editor keyboard scrolling** — Command+PageUp/PageDown and Ctrl+Shift+Up/Down now scroll the fixed-editor chat viewport, giving compact keyboards a default page-scroll shortcut.

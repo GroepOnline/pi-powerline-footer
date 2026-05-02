@@ -77,6 +77,69 @@ test("fixed cluster caps selector-style editor replacements around the selected 
   assert.deepEqual(rendered.lines, ["  option-b", "\x1b[38;5;39m→ \x1b[0m\x1b[38;5;39moption-c\x1b[0m", "  option-d"]);
 });
 
+test("fixed cluster keeps tail status lines when compact", () => {
+  const rendered = renderFixedEditorCluster({
+    width: 80,
+    terminalRows: 3,
+    statusLines: ["above-widget", "powerline-status", "⠏ Shaolin Switchblade Sync..."],
+    editorLines: ["edit"],
+  });
+
+  assert.deepEqual(rendered.lines, ["⠏ Shaolin Switchblade Sync...", "edit"]);
+});
+
+test("terminal split can render a hidden status container in the fixed cluster", () => {
+  const terminal = new FakeTerminal();
+  const status = {
+    text: "⠏ Shaolin Switchblade Sync...",
+    render() {
+      return ["", this.text];
+    },
+  };
+  const editor = {
+    render() {
+      return ["editor"];
+    },
+  };
+  const tui = {
+    terminal,
+    render() {
+      return ["chat"];
+    },
+    doRender() {
+      this.terminal.write("body");
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    getShowHardwareCursor: () => false,
+    renderCluster: (width) => ({
+      lines: [
+        ...compositor.renderHidden(status, width).filter((line) => visibleWidth(line) > 0),
+        ...compositor.renderHidden(editor, width),
+      ],
+      cursor: null,
+    }),
+  });
+
+  compositor.hideRenderable(status);
+  compositor.hideRenderable(editor);
+  compositor.install();
+
+  assert.deepEqual(status.render(), []);
+  tui.doRender();
+  assert.ok(terminal.writes.at(-1)?.includes("⠏ Shaolin Switchblade Sync..."));
+
+  status.text = "⠙ Shaolin Switchblade Sync...";
+  compositor.requestRepaint();
+  assert.ok(terminal.writes.at(-1)?.includes("⠙ Shaolin Switchblade Sync..."));
+
+  compositor.dispose();
+  assert.deepEqual(status.render(), ["", "⠙ Shaolin Switchblade Sync..."]);
+});
+
 test("terminal split escape helpers generate DEC scroll region controls", () => {
   assert.equal(beginSynchronizedOutput(), "\x1b[?2026h");
   assert.equal(endSynchronizedOutput(), "\x1b[?2026l");
@@ -605,6 +668,49 @@ test("terminal split selection does not expose OSC control sequences as text", (
   compositor.dispose();
 });
 
+test("terminal split selection highlighting does not duplicate wide glyphs", () => {
+  for (const glyph of ["🪃", "👨‍👩‍👧‍👦"]) {
+    const terminal = new FakeTerminal();
+    terminal.columns = 30;
+    let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+    const prefix = "Done shows ";
+    const line = `${prefix}${glyph} auto${" ".repeat(30 - visibleWidth(`${prefix}${glyph} auto`))}`;
+    const tui = {
+      terminal,
+      addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+        inputListener = listener;
+        return () => {
+          inputListener = null;
+        };
+      },
+      requestRender() {},
+      render() {
+        return ["old-0", "old-1", "old-2", "old-3", "old-4", "old-5", "old-6", "old-7", "old-8", line];
+      },
+    };
+
+    const compositor = new TerminalSplitCompositor({
+      tui,
+      terminal,
+      renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+    });
+
+    compositor.install();
+    tui.render(30);
+
+    const glyphCol = visibleWidth(prefix);
+    assert.deepEqual(inputListener?.(`\x1b[<0;${glyphCol + 1};10M`), { consume: true });
+    assert.deepEqual(inputListener?.(`\x1b[<32;${glyphCol + 2};10M`), { consume: true });
+    const selectedLine = tui.render(30).at(-1) ?? "";
+
+    assert.ok(visibleWidth(selectedLine) <= 30);
+    assert.equal(selectedLine.includes(glyph), true);
+    assert.ok(selectedLine.includes(`\x1b[7m${glyph}\x1b[27m`));
+
+    compositor.dispose();
+  }
+});
+
 test("terminal split copies chat and fixed cluster selections", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
@@ -667,6 +773,142 @@ test("terminal split copies chat and fixed cluster selections", () => {
   assert.ok(terminal.writes.at(-1)?.includes("\x1b[7m  > hello world\x1b[27m"));
   assert.deepEqual(inputListener?.("\x1b[<0;9;12m"), { consume: true });
   assert.deepEqual(copied, ["india nine\njuli", "hello", "charlie three", "  > hello world"]);
+
+  compositor.dispose();
+});
+
+test("terminal split selection scrolls when dragged to viewport edges", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: string[] = [];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render();
+  inputListener?.("\x1b[5~");
+  assert.equal(tui.render()[0], "line-10");
+
+  assert.deepEqual(inputListener?.("\x1b[<0;1;9M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;5;12M"), { consume: true });
+  assert.equal(tui.render()[0], "line-11");
+  assert.ok(tui.render()[9]?.includes("\x1b[7mline\x1b[27m-20"));
+  assert.deepEqual(inputListener?.("\x1b[<0;5;12m"), { consume: true });
+  assert.deepEqual(copied, ["line-18\nline-19\nline"]);
+
+  compositor.jumpToRootBottom();
+  assert.equal(tui.render()[0], "line-20");
+  assert.deepEqual(inputListener?.("\x1b[<0;1;2M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;5;1M"), { consume: true });
+  assert.equal(tui.render()[0]?.replace(/\x1b\[[0-9;]*m/g, ""), "line-19");
+  assert.ok(tui.render()[0]?.includes("line\x1b[7m-19\x1b[27m"));
+  assert.deepEqual(inputListener?.("\x1b[<0;5;1m"), { consume: true });
+  assert.deepEqual(copied, ["line-18\nline-19\nline", "-19\nline-20"]);
+
+  compositor.dispose();
+});
+
+test("terminal split copies edge-scrolled selections without waiting for render", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: string[] = [];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render();
+  inputListener?.("\x1b[5~");
+  tui.render();
+
+  inputListener?.("\x1b[<0;1;9M");
+  inputListener?.("\x1b[<32;5;12M");
+  inputListener?.("\x1b[<0;5;12m");
+  assert.deepEqual(copied, ["line-18\nline-19\nline"]);
+
+  inputListener?.("\x1b[<0;1;9M");
+  for (let i = 0; i < 9; i++) {
+    inputListener?.("\x1b[<32;5;12M");
+  }
+  inputListener?.("\x1b[<0;5;12m");
+  assert.deepEqual(copied.at(-1), [
+    "line-19", "line-20", "line-21", "line-22", "line-23",
+    "line-24", "line-25", "line-26", "line-27", "line-28", "line",
+  ].join("\n"));
+
+  compositor.dispose();
+});
+
+test("terminal split maps post-edge-scroll drags against the updated viewport", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: string[] = [];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render();
+  inputListener?.("\x1b[5~");
+  tui.render();
+
+  inputListener?.("\x1b[<0;1;9M");
+  inputListener?.("\x1b[<32;1;12M");
+  inputListener?.("\x1b[<32;1;3M");
+  inputListener?.("\x1b[<0;5;4m");
+  assert.deepEqual(copied, ["-14\nline-15\nline-16\nline-17"]);
 
   compositor.dispose();
 });

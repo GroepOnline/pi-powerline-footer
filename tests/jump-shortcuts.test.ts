@@ -72,6 +72,32 @@ test("editor submits follow the fixed chat viewport to bottom", () => {
   assert.match(source, /keybindings\.matches\(data, "app\.message\.followUp"\)/);
 });
 
+test("extension status changes invalidate powerline status rendering", () => {
+  assert.match(source, /let forceNextLayoutRecompute = false/);
+  assert.match(source, /let restoreFooterStatusRepaintHook: \(\(\) => void\) \| null = null/);
+  assert.match(source, /const requestImmediateStatusRender = \(\) => \{/);
+  assert.match(source, /if \(Date\.now\(\) - lastEditorInputAt < EDITOR_STATUS_DEFER_MS\) \{\n\s+statusRenderScheduler\.schedule\(\);\n\s+return;\n\s+\}/);
+  assert.match(source, /forceNextLayoutRecompute = true;\n\s+statusRenderScheduler\.cancel\(\);\n\s+statusRenderScheduler\.schedule\(0\);/);
+  assert.match(source, /const installFooterStatusRepaintHook = \(footerData: ReadonlyFooterDataProvider\) => \{/);
+  assert.match(source, /setExtensionStatus\?: \(key: string, text: string \| undefined\) => void/);
+  assert.match(source, /const setExtensionStatusAndRepaint = function setExtensionStatusAndRepaint/);
+  assert.match(source, /originalSetExtensionStatus\.call\(this, key, text\);\n\s+requestImmediateStatusRender\(\);/);
+  assert.match(source, /installFooterStatusRepaintHook\(footerData\);/);
+  assert.match(source, /if \(writableFooterData\.setExtensionStatus === setExtensionStatusAndRepaint\) \{\n\s+writableFooterData\.setExtensionStatus = originalSetExtensionStatus;/);
+  assert.match(source, /if \(clearExtensionStatusesAndRepaint && writableFooterData\.clearExtensionStatuses === clearExtensionStatusesAndRepaint\)/);
+  assert.match(source, /restoreFooterStatusRepaintHook\?\.\(\);\n\s+restoreFooterStatusRepaintHook = null;/);
+});
+
+test("fixed editor captures Pi status messages with the editor cluster", () => {
+  assert.match(source, /let fixedStatusContainer: any = null/);
+  assert.match(source, /const statusContainerCandidate = tuiChildren\[editorContainerMatch\.index - 2\] \?\? null/);
+  assert.match(source, /fixedStatusContainer = statusContainerCandidate && typeof statusContainerCandidate\.render === "function"/);
+  assert.match(source, /compositor\.renderHidden\(fixedStatusContainer, width\)\.filter\(\(line\) => visibleWidth\(line\) > 0\)/);
+  assert.match(source, /statusLines: \[\.\.\.aboveWidgetLines, \.\.\.renderPowerlineStatusLines\(width\), \.\.\.statusContainerLines\]/);
+  assert.match(source, /if \(fixedStatusContainer\?\.render\) compositor\.hideRenderable\(fixedStatusContainer\)/);
+  assert.match(source, /fixedStatusContainer = null/);
+});
+
 test("shutdown cleanup resets terminal modes even before compositor install", () => {
   assert.match(source, /import \{ emergencyTerminalModeReset, TerminalSplitCompositor \}/);
   assert.match(source, /const hadCompositor = fixedEditorCompositor !== null/);

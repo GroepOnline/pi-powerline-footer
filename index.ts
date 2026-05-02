@@ -925,7 +925,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let getThinkingLevelFn: (() => string) | null = null;
   let isStreaming = false;
   let tuiRef: any = null;
+  let restoreFooterStatusRepaintHook: (() => void) | null = null;
   let fixedEditorCompositor: TerminalSplitCompositor | null = null;
+  let fixedStatusContainer: any = null;
   let fixedEditorContainer: any = null;
   let fixedWidgetContainerAbove: any = null;
   let fixedWidgetContainerBelow: any = null;
@@ -948,6 +950,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let lastLayoutResult: { topContent: string; secondaryContent: string } | null = null;
   let lastLayoutTimestamp = 0;
   let layoutDirty = true;
+  let forceNextLayoutRecompute = false;
   let lastEditorInputAt = 0;
 
   const getShellPath = () => process.env.SHELL || "/bin/sh";
@@ -960,7 +963,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   const statusRenderScheduler = createRenderScheduler(() => {
     const msSinceInput = Date.now() - lastEditorInputAt;
-    if (layoutDirty && msSinceInput < EDITOR_STATUS_DEFER_MS) {
+    if (layoutDirty && !forceNextLayoutRecompute && msSinceInput < EDITOR_STATUS_DEFER_MS) {
       statusRenderScheduler.schedule(Math.max(0, EDITOR_STATUS_DEFER_MS - msSinceInput));
       return;
     }
@@ -976,6 +979,55 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   const requestStatusRender = (delayMs?: number) => {
     layoutDirty = true;
     statusRenderScheduler.schedule(delayMs);
+  };
+
+  const requestImmediateStatusRender = () => {
+    layoutDirty = true;
+    if (Date.now() - lastEditorInputAt < EDITOR_STATUS_DEFER_MS) {
+      statusRenderScheduler.schedule();
+      return;
+    }
+
+    forceNextLayoutRecompute = true;
+    statusRenderScheduler.cancel();
+    statusRenderScheduler.schedule(0);
+  };
+
+  const installFooterStatusRepaintHook = (footerData: ReadonlyFooterDataProvider) => {
+    restoreFooterStatusRepaintHook?.();
+    restoreFooterStatusRepaintHook = null;
+
+    const writableFooterData = footerData as ReadonlyFooterDataProvider & {
+      setExtensionStatus?: (key: string, text: string | undefined) => void;
+      clearExtensionStatuses?: () => void;
+    };
+    if (typeof writableFooterData.setExtensionStatus !== "function") return;
+
+    const originalSetExtensionStatus = writableFooterData.setExtensionStatus;
+    const originalClearExtensionStatuses = writableFooterData.clearExtensionStatuses;
+    const setExtensionStatusAndRepaint = function setExtensionStatusAndRepaint(this: unknown, key: string, text: string | undefined) {
+      originalSetExtensionStatus.call(this, key, text);
+      requestImmediateStatusRender();
+    };
+    writableFooterData.setExtensionStatus = setExtensionStatusAndRepaint;
+
+    let clearExtensionStatusesAndRepaint: (() => void) | null = null;
+    if (typeof originalClearExtensionStatuses === "function") {
+      clearExtensionStatusesAndRepaint = function clearExtensionStatusesAndRepaint(this: unknown) {
+        originalClearExtensionStatuses.call(this);
+        requestImmediateStatusRender();
+      };
+      writableFooterData.clearExtensionStatuses = clearExtensionStatusesAndRepaint;
+    }
+
+    restoreFooterStatusRepaintHook = () => {
+      if (writableFooterData.setExtensionStatus === setExtensionStatusAndRepaint) {
+        writableFooterData.setExtensionStatus = originalSetExtensionStatus;
+      }
+      if (clearExtensionStatusesAndRepaint && writableFooterData.clearExtensionStatuses === clearExtensionStatusesAndRepaint) {
+        writableFooterData.clearExtensionStatuses = originalClearExtensionStatuses;
+      }
+    };
   };
 
   const getShellHistoryEntries = (prefix: string): string[] => {
@@ -1164,6 +1216,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     welcomeOverlayShouldDismiss = false;
     welcomeDismissScheduler.cancel();
     statusRenderScheduler.cancel();
+    restoreFooterStatusRepaintHook?.();
+    restoreFooterStatusRepaintHook = null;
     teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
     stashShortcutInputUnsubscribe?.();
     stashShortcutInputUnsubscribe = null;
@@ -1590,6 +1644,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
           ctx.ui.setStatus("stash", undefined);
+          restoreFooterStatusRepaintHook?.();
+          restoreFooterStatusRepaintHook = null;
           teardownFixedEditorCompositor();
           stashShortcutInputUnsubscribe?.();
           stashShortcutInputUnsubscribe = null;
@@ -1996,7 +2052,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       const msSinceInput = now - lastEditorInputAt;
       const typingRecently = msSinceInput < EDITOR_STATUS_DEFER_MS;
 
-      if (typingRecently && (layoutDirty || now - lastLayoutTimestamp >= cacheTtl)) {
+      if (!forceNextLayoutRecompute && typingRecently && (layoutDirty || now - lastLayoutTimestamp >= cacheTtl)) {
         return lastLayoutResult;
       }
 
@@ -2012,6 +2068,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, width);
     lastLayoutTimestamp = now;
     layoutDirty = false;
+    forceNextLayoutRecompute = false;
     
     return lastLayoutResult;
   }
@@ -2107,6 +2164,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
     }
     fixedEditorCompositor = null;
+    fixedStatusContainer = null;
     fixedEditorContainer = null;
     fixedWidgetContainerAbove = null;
     fixedWidgetContainerBelow = null;
@@ -2138,6 +2196,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     const tuiChildren = Array.isArray(tui.children) ? tui.children : [];
     fixedEditorContainer = editorContainerMatch.container;
+    const statusContainerCandidate = tuiChildren[editorContainerMatch.index - 2] ?? null;
+    fixedStatusContainer = statusContainerCandidate && typeof statusContainerCandidate.render === "function"
+      ? statusContainerCandidate
+      : null;
     fixedWidgetContainerAbove = tuiChildren[editorContainerMatch.index - 1] ?? null;
     fixedWidgetContainerBelow = tuiChildren[editorContainerMatch.index + 1] ?? null;
 
@@ -2150,12 +2212,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
         const theme = currentCtx?.ui?.theme ?? ctx.ui.theme;
+        const statusContainerLines = fixedStatusContainer
+          ? compositor.renderHidden(fixedStatusContainer, width).filter((line) => visibleWidth(line) > 0)
+          : [];
         const aboveWidgetLines = fixedWidgetContainerAbove ? compositor.renderHidden(fixedWidgetContainerAbove, width) : [];
         const belowWidgetLines = fixedWidgetContainerBelow ? compositor.renderHidden(fixedWidgetContainerBelow, width) : [];
         return renderFixedEditorCluster({
           width,
           terminalRows,
-          statusLines: [...aboveWidgetLines, ...renderPowerlineStatusLines(width)],
+          statusLines: [...aboveWidgetLines, ...renderPowerlineStatusLines(width), ...statusContainerLines],
           topLines: renderPowerlineTopLines(width, theme),
           editorLines: fixedEditorContainer ? compositor.renderHidden(fixedEditorContainer, width) : [],
           secondaryLines: [...renderPowerlineSecondaryLines(width, theme), ...belowWidgetLines],
@@ -2166,6 +2231,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     });
 
     fixedEditorCompositor = compositor;
+    if (fixedStatusContainer?.render) compositor.hideRenderable(fixedStatusContainer);
     if (fixedWidgetContainerAbove?.render) compositor.hideRenderable(fixedWidgetContainerAbove);
     compositor.hideRenderable(fixedEditorContainer);
     if (fixedWidgetContainerBelow?.render) compositor.hideRenderable(fixedWidgetContainerBelow);
@@ -2525,10 +2591,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
       footerDataRef = footerData;
       tuiRef = tui;
+      installFooterStatusRepaintHook(footerData);
       const unsub = footerData.onBranchChange(() => requestStatusRender());
 
       return {
-        dispose: unsub,
+        dispose() {
+          unsub();
+          restoreFooterStatusRepaintHook?.();
+          restoreFooterStatusRepaintHook = null;
+        },
         invalidate() {
           requestStatusRender();
         },

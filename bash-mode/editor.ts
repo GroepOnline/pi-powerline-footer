@@ -105,12 +105,12 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
-      if (!isKeyRelease(data) && (matchesKey(data, "super+up") || /^\x1b\[(?:1;9(?::[12])?A|57419;9(?::[12])?u)$/.test(data))) {
+      if (!isKeyRelease(data) && (matchesKey(data, "super+up") || /^\x1b\[(?:1;9(?::[12])?[AH]|574(?:19|23);9(?::[12])?u|27;9;65~)$/.test(data))) {
         this.moveCursorToEditorBoundary("start");
         return;
       }
 
-      if (!isKeyRelease(data) && (matchesKey(data, "super+down") || /^\x1b\[(?:1;9(?::[12])?B|57420;9(?::[12])?u)$/.test(data))) {
+      if (!isKeyRelease(data) && (matchesKey(data, "super+down") || /^\x1b\[(?:1;9(?::[12])?[BF]|574(?:20|24);9(?::[12])?u|27;9;66~)$/.test(data))) {
         this.moveCursorToEditorBoundary("end");
         return;
       }

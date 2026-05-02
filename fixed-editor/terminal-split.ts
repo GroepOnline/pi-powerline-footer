@@ -209,16 +209,17 @@ function stripAnsi(line: string): string {
     .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
 }
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 function sliceColumns(text: string, startCol: number, endCol: number): string {
   let col = 0;
   let result = "";
-  for (const char of text) {
-    const width = Math.max(0, visibleWidth(char));
-    const nextCol = col + width;
-    if (nextCol > startCol && col < endCol) {
-      result += char;
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    const width = Math.max(0, visibleWidth(segment));
+    if (col >= startCol && col < endCol) {
+      result += segment;
     }
-    col = nextCol;
+    col += width;
   }
   return result;
 }
@@ -306,6 +307,7 @@ export class TerminalSplitCompositor {
   private scrollOffset = 0;
   private maxScrollOffset = 0;
   private lastRootLineCount = 0;
+  private rootLines: string[] = [];
   private visibleRootStart = 0;
   private visibleScrollableRows = 0;
   private visibleRootLines: string[] = [];
@@ -513,6 +515,7 @@ export class TerminalSplitCompositor {
       const cluster = this.getCluster(renderWidth, rawRows);
       const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
       const lines = this.originalRender(renderWidth);
+      this.rootLines = lines;
       if (this.scrollOffset > 0 && this.lastRootLineCount > 0 && lines.length > this.lastRootLineCount) {
         this.scrollOffset += lines.length - this.lastRootLineCount;
       }
@@ -520,15 +523,8 @@ export class TerminalSplitCompositor {
       this.maxScrollOffset = Math.max(0, lines.length - scrollableRows);
       this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset));
 
-      const start = Math.max(0, lines.length - scrollableRows - this.scrollOffset);
-      const visibleLines = lines.slice(start, start + scrollableRows);
-      while (visibleLines.length < scrollableRows) {
-        visibleLines.push("");
-      }
-      this.visibleRootStart = start;
-      this.visibleScrollableRows = scrollableRows;
-      this.visibleRootLines = visibleLines;
-      return visibleLines.map((line, index) => this.renderSelectionHighlight(line, start + index, "root"));
+      const start = this.updateVisibleRootWindow(scrollableRows);
+      return this.visibleRootLines.map((line, index) => this.renderSelectionHighlight(line, start + index, "root"));
     } finally {
       this.renderingScrollableRoot = false;
     }
@@ -567,8 +563,9 @@ export class TerminalSplitCompositor {
       return;
     }
 
-    const location = this.selectionLocationForPacket(packet);
+    if (this.scrollSelectionAtViewportEdge(packet)) return;
 
+    const location = this.selectionLocationForPacket(packet);
     if (this.selectionDragging && isMouseRelease(packet)) {
       this.finishSelection(packet, location);
       return;
@@ -583,10 +580,25 @@ export class TerminalSplitCompositor {
 
     if (this.selectionDragging && isLeftDrag(packet) && location.area === this.selectionArea) {
       this.lastLeftPress = null;
+      this.preserveSelectionFocusOnRelease = false;
       this.selectionFocus = location.point;
       this.requestRender();
       return;
     }
+  }
+
+  private updateVisibleRootWindow(scrollableRows = this.visibleScrollableRows): number {
+    const rows = Math.max(1, scrollableRows);
+    const start = Math.max(0, this.rootLines.length - rows - this.scrollOffset);
+    const visibleLines = this.rootLines.slice(start, start + rows);
+    while (visibleLines.length < rows) {
+      visibleLines.push("");
+    }
+
+    this.visibleRootStart = start;
+    this.visibleScrollableRows = rows;
+    this.visibleRootLines = visibleLines;
+    return start;
   }
 
   private finishSelection(packet: SgrMousePacket, location: SelectionLocation | null): void {
@@ -656,6 +668,28 @@ export class TerminalSplitCompositor {
     };
   }
 
+  private scrollSelectionAtViewportEdge(packet: SgrMousePacket): boolean {
+    if (!this.selectionDragging || this.selectionArea !== "root" || !isLeftDrag(packet)) return false;
+
+    const delta = packet.row <= 1 ? 1 : packet.row >= this.visibleScrollableRows ? -1 : 0;
+    if (delta === 0) return false;
+
+    const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
+    if (nextOffset === this.scrollOffset) return false;
+
+    this.lastLeftPress = null;
+    this.preserveSelectionFocusOnRelease = true;
+    this.scrollOffset = nextOffset;
+    const start = this.updateVisibleRootWindow();
+    const edgeLine = delta > 0 ? start : start + Math.max(0, this.visibleScrollableRows - 1);
+    this.selectionFocus = {
+      line: edgeLine,
+      col: Math.max(0, packet.col - 1),
+    };
+    this.requestRender();
+    return true;
+  }
+
   private clampedSelectionPointForPacket(packet: SgrMousePacket, area: SelectionArea | null): SelectionPoint {
     if (area === "cluster") {
       return {
@@ -701,11 +735,10 @@ export class TerminalSplitCompositor {
     const end = start === this.selectionAnchor ? this.selectionFocus : this.selectionAnchor;
     if (start.line === end.line && start.col === end.col) return "";
 
-    const lines = this.selectionArea === "root" ? this.visibleRootLines : this.visibleClusterLines;
-    const firstLine = this.selectionArea === "root" ? this.visibleRootStart : 0;
+    const lines = this.selectionArea === "root" ? this.rootLines : this.visibleClusterLines;
     const selected: string[] = [];
     for (let lineIndex = start.line; lineIndex <= end.line; lineIndex++) {
-      const line = stripAnsi(lines[lineIndex - firstLine] ?? "");
+      const line = stripAnsi(lines[lineIndex] ?? "");
       const startCol = lineIndex === start.line ? start.col : 0;
       const endCol = lineIndex === end.line ? end.col : Number.POSITIVE_INFINITY;
       selected.push(sliceColumns(line, startCol, endCol));

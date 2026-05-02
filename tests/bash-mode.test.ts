@@ -1070,9 +1070,21 @@ test("bash editor command arrows jump to editor boundaries", async () => {
     editor.handleInput("\x1b[57420;9u");
     assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
 
+    editor.handleInput("\x1b[1;9H");
+    assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
+
+    editor.handleInput("\x1b[57424;9u");
+    assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
+
+    editor.handleInput("\x1b[27;9;65~");
+    assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
+
+    editor.handleInput("\x1b[27;9;66~");
+    assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
+
     editor.handleInput("\x1b[1;9:3A");
     assert.deepEqual(editor.getCursor(), { line: 2, col: 7 });
-    assert.equal(renderRequests, 2);
+    assert.equal(renderRequests, 6);
   } finally {
     links.cleanup();
   }
