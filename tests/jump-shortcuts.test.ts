@@ -127,7 +127,8 @@ test("context usage changes repaint from live streaming message usage", () => {
   assert.match(source, /pi\.on\("agent_end", async \(_event, ctx\) => \{\n\s+isStreaming = false;\n\s+liveAssistantUsage = null;\n\s+currentCtx = ctx;/);
   assert.match(source, /pi\.on\("session_tree", async \(_event, ctx\) => \{\n\s+currentCtx = ctx;\n\s+currentThinkingLevel = null;\n\s+liveAssistantUsage = null;\n\s+requestImmediateStatusRender\(\{ deferDuringTyping: false \}\);\n\s+\}\);/);
   assert.match(source, /if \(getUsageTokenTotal\(m\.usage\) > 0\) \{\n\s+lastAssistant = m;\n\s+\}/);
-  assert.match(source, /const latestUsage = isStreaming \? liveAssistantUsage \?\? lastAssistant\?\.usage : lastAssistant\?\.usage;\n\s+const contextTokens = latestUsage \? getUsageTokenTotal\(latestUsage\) : 0/);
+  assert.match(source, /const coreContextUsage = isStreaming && liveAssistantUsage \? null : readCoreContextUsage\(ctx\)/);
+  assert.match(source, /const contextTokens = coreContextUsage\?\.contextTokens \?\? \(latestUsage \? getUsageTokenTotal\(latestUsage\) : 0\)/);
 });
 
 test("extension status changes invalidate powerline status rendering", () => {

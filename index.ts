@@ -33,6 +33,7 @@ import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
+import { readCoreContextUsage } from "./context-usage.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.js";
@@ -2083,11 +2084,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
     }
 
-    // Calculate context percentage (total tokens used in last turn)
+    // Calculate context percentage.
     const latestUsage = isStreaming ? liveAssistantUsage ?? lastAssistant?.usage : lastAssistant?.usage;
-    const contextTokens = latestUsage ? getUsageTokenTotal(latestUsage) : 0;
-    const contextWindow = ctx.model?.contextWindow || 0;
-    const contextPercent = contextWindow > 0 ? (contextTokens / contextWindow) * 100 : 0;
+    const coreContextUsage = isStreaming && liveAssistantUsage ? null : readCoreContextUsage(ctx);
+    const contextTokens = coreContextUsage?.contextTokens ?? (latestUsage ? getUsageTokenTotal(latestUsage) : 0);
+    const contextWindow = coreContextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
+    const contextPercent = coreContextUsage?.contextPercent ?? (contextWindow > 0 ? (contextTokens / contextWindow) * 100 : 0);
 
     // Get git status (cached)
     const gitBranch = footerDataRef?.getGitBranch() ?? null;
