@@ -676,6 +676,7 @@ test("terminal split selects visible chat text and copies it on drag release", (
   assert.deepEqual(inputListener?.("\x1b[<0;7;4m"), { consume: true });
 
   assert.deepEqual(copied, ["ravo two\ncharlie three\ndelta"]);
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
   assert.deepEqual(renderRequests, [undefined, undefined, undefined]);
 
   compositor.dispose();

@@ -3,13 +3,7 @@ import { spawnSync } from "node:child_process";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "@mariozechner/pi-tui";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory } from "./history.ts";
-import { createNativeCompletionAdapters } from "./native-completion.ts";
-import type {
-  CompletionRequest,
-  ExtendedCompletionItem,
-  GhostSuggestion,
-  NativeCompletionAdapter,
-} from "./types.ts";
+import type { ExtendedCompletionItem, GhostSuggestion } from "./types.ts";
 
 interface TokenContext {
   line: string;
@@ -297,10 +291,6 @@ function findNewestHistoryMatchForHead(entries: string[], prefix: string, head: 
   return null;
 }
 
-function nativeIncludesCommand(items: ExtendedCompletionItem[], command: string): boolean {
-  return items.some((item) => item.replacement === command || item.value === command || item.label === command);
-}
-
 function getCuratedCommandFallback(prefix: string): GhostSuggestion | null {
   const trimmed = prefix.trim();
   if (!trimmed) return null;
@@ -316,11 +306,9 @@ function getCuratedCommandFallback(prefix: string): GhostSuggestion | null {
   return null;
 }
 
-function isLikelyGitCommandHead(prefix: string, native: ExtendedCompletionItem[]): boolean {
+function isLikelyGitCommandHead(prefix: string): boolean {
   const trimmed = prefix.trim();
-  if (!trimmed || !"git".startsWith(trimmed)) return false;
-  if (trimmed.length >= 2) return true;
-  return nativeIncludesCommand(native, "git");
+  return trimmed.length >= 2 && "git".startsWith(trimmed);
 }
 
 function boostValidatedItemsFromGlobalHistory(
@@ -344,8 +332,6 @@ function boostValidatedItemsFromGlobalHistory(
 }
 
 export class BashCompletionEngine {
-  private readonly adapters: NativeCompletionAdapter[] = createNativeCompletionAdapters();
-
   async getGhostSuggestion(line: string, cwd: string, shellPath: string, signal: AbortSignal): Promise<GhostSuggestion | null> {
     const projectHistoryEntries = readProjectHistory(cwd);
 
@@ -375,20 +361,15 @@ export class BashCompletionEngine {
       return { value: projectHistory[0]!, source: "project-history" };
     }
 
-    const native = withRange(
-      await this.getNativeSuggestions({ line, cursorCol: line.length, cwd, shellPath, signal }),
-      ctx.tokenStart,
-      ctx.tokenEnd,
-    );
     if (ctx.tokenIndex === 0) {
-      return this.getCommandPositionGhostSuggestion(line, native, readGlobalShellHistory(shellPath));
+      return this.getCommandPositionGhostSuggestion(line, readGlobalShellHistory(shellPath));
     }
 
     const deterministic = this.getDeterministicInlineSuggestions(ctx, cwd);
     const globalHistory = matchHistoryEntries(readGlobalShellHistory(shellPath), line, 5);
     const ranked = boostValidatedItemsFromGlobalHistory(
       line,
-      uniqueByReplacement([...native, ...deterministic]),
+      uniqueByReplacement(deterministic),
       globalHistory,
     );
 
@@ -404,10 +385,9 @@ export class BashCompletionEngine {
 
   private getCommandPositionGhostSuggestion(
     line: string,
-    native: ExtendedCompletionItem[],
     globalHistoryEntries: string[],
   ): GhostSuggestion | null {
-    if (isLikelyGitCommandHead(line, native)) {
+    if (isLikelyGitCommandHead(line)) {
       const globalMatch = findNewestHistoryMatchForHead(globalHistoryEntries, line, "git");
       if (globalMatch) {
         return { value: globalMatch, source: "global-history" };
@@ -433,19 +413,6 @@ export class BashCompletionEngine {
     return value;
   }
 
-  private async getNativeSuggestions(request: CompletionRequest): Promise<ExtendedCompletionItem[]> {
-    const shellName = basename(request.shellPath).toLowerCase();
-    const adapter = this.adapters.find((candidate) => candidate.shellNames.some((name) => shellName.includes(name)));
-    if (!adapter) return [];
-    try {
-      return await adapter.getCompletions(request);
-    } catch (error) {
-      if (!(error instanceof Error) || error.message !== "aborted") {
-        console.debug(`[powerline-footer] Native completion failed for ${shellName}:`, error);
-      }
-      return [];
-    }
-  }
 }
 
 export class BashAutocompleteProvider implements AutocompleteProvider {

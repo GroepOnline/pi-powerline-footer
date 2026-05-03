@@ -28,7 +28,6 @@ export interface GhostSuggestion {
   source:
     | "project-history"
     | "global-history"
-    | "native"
     | "git"
     | "path"
     | "executable";
@@ -44,24 +43,10 @@ export interface ExtendedCompletionItem {
   source:
     | "project-history"
     | "global-history"
-    | "native"
     | "git"
     | "path"
     | "executable";
   score: number;
-}
-
-export interface CompletionRequest {
-  line: string;
-  cursorCol: number;
-  cwd: string;
-  shellPath: string;
-  signal: AbortSignal;
-}
-
-export interface NativeCompletionAdapter {
-  readonly shellNames: string[];
-  getCompletions(request: CompletionRequest): Promise<ExtendedCompletionItem[]>;
 }
 
 export interface ShellSessionState {

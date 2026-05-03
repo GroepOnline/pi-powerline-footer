@@ -674,6 +674,7 @@ export class TerminalSplitCompositor {
     if (selectedText) {
       this.lastLeftPress = null;
       this.onCopySelection?.(selectedText);
+      this.pauseMouseReportingForContextMenu();
     } else {
       this.clearSelection();
     }

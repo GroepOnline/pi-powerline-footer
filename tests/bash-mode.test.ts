@@ -224,16 +224,6 @@ test("ghost suggestion stays empty when the prompt is empty and no history exist
   writeFileSync(histfile, "");
 
   const engine = new BashCompletionEngine();
-  Reflect.set(engine, "getNativeSuggestions", async () => [{
-    value: "develop",
-    label: "develop",
-    replacement: "develop",
-    startCol: 0,
-    endCol: 0,
-    source: "native",
-    score: 99,
-  }]);
-
   const suggestion = await engine.getGhostSuggestion(
     "",
     cwd,
@@ -269,20 +259,14 @@ test("ghost suggestion can extend the current token from deterministic path comp
   assert.equal(escapedSuggestion?.source, "path");
 });
 
-test("ghost suggestion uses shell-native completions before deterministic fallback", async () => {
-  const cwd = mkdtempSync(join(tmpdir(), "powerline-native-ghost-"));
+test("ghost suggestion does not invoke shell-native completion hooks", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-no-native-ghost-"));
   mkdirSync(join(cwd, "dev"), { recursive: true });
 
   const engine = new BashCompletionEngine();
-  Reflect.set(engine, "getNativeSuggestions", async () => [{
-    value: "develop",
-    label: "develop",
-    replacement: "develop",
-    startCol: 0,
-    endCol: 0,
-    source: "native",
-    score: 99,
-  }]);
+  Reflect.set(engine, "getNativeSuggestions", async () => {
+    throw new Error("native completion should stay disabled");
+  });
 
   const suggestion = await engine.getGhostSuggestion(
     "cd d",
@@ -291,8 +275,8 @@ test("ghost suggestion uses shell-native completions before deterministic fallba
     new AbortController().signal,
   );
 
-  assert.equal(suggestion?.value, "cd develop");
-  assert.equal(suggestion?.source, "native");
+  assert.equal(suggestion?.value, "cd dev/");
+  assert.equal(suggestion?.source, "path");
 });
 
 test("command-position ghost prefers the newest successful project-history command", async () => {
@@ -321,25 +305,23 @@ test("command-position ghost uses guarded global git history when project histor
   writeFileSync(histfile, ": 1711111111:0;git stash\n");
 
   const engine = new BashCompletionEngine();
-  Reflect.set(engine, "getNativeSuggestions", async () => [{
-    value: "git",
-    label: "git",
-    replacement: "git",
-    startCol: 0,
-    endCol: 0,
-    source: "native",
-    score: 60,
-  }]);
-
-  const suggestion = await engine.getGhostSuggestion(
+  const shortStemSuggestion = await engine.getGhostSuggestion(
     "g",
     cwd,
     "/bin/zsh",
     new AbortController().signal,
   );
+  const guardedSuggestion = await engine.getGhostSuggestion(
+    "gi",
+    cwd,
+    "/bin/zsh",
+    new AbortController().signal,
+  );
 
-  assert.equal(suggestion?.value, "git stash");
-  assert.equal(suggestion?.source, "global-history");
+  assert.equal(shortStemSuggestion?.value, "git status");
+  assert.equal(shortStemSuggestion?.source, "git");
+  assert.equal(guardedSuggestion?.value, "git stash");
+  assert.equal(guardedSuggestion?.source, "global-history");
 });
 
 test("command-position ghost falls back to git status when git is likely but history is absent", async () => {
@@ -349,16 +331,6 @@ test("command-position ghost falls back to git status when git is likely but his
   writeFileSync(histfile, "");
 
   const engine = new BashCompletionEngine();
-  Reflect.set(engine, "getNativeSuggestions", async () => [{
-    value: "git",
-    label: "git",
-    replacement: "git",
-    startCol: 0,
-    endCol: 0,
-    source: "native",
-    score: 60,
-  }]);
-
   const suggestion = await engine.getGhostSuggestion(
     "g",
     cwd,
@@ -395,16 +367,6 @@ test("command-position ghost stays empty when there is no supported history-back
   writeFileSync(histfile, "");
 
   const engine = new BashCompletionEngine();
-  Reflect.set(engine, "getNativeSuggestions", async () => [{
-    value: "xxd",
-    label: "xxd",
-    replacement: "xxd",
-    startCol: 0,
-    endCol: 0,
-    source: "native",
-    score: 60,
-  }]);
-
   const suggestion = await engine.getGhostSuggestion(
     "x",
     cwd,
@@ -415,23 +377,13 @@ test("command-position ghost stays empty when there is no supported history-back
   assert.equal(suggestion, null);
 });
 
-test("ghost suggestion ignores invalid raw global history and picks a validated candidate", async () => {
+test("ghost suggestion ignores invalid raw global history and keeps a deterministic git candidate", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "powerline-global-history-ghost-"));
   const histfile = join(cwd, ".zsh_history");
   process.env.HISTFILE = histfile;
   writeFileSync(histfile, ": 1711111111:0;git statis\n");
 
   const engine = new BashCompletionEngine();
-  Reflect.set(engine, "getNativeSuggestions", async () => [{
-    value: "status",
-    label: "status",
-    replacement: "status",
-    startCol: 0,
-    endCol: 0,
-    source: "native",
-    score: 60,
-  }]);
-
   const suggestion = await engine.getGhostSuggestion(
     "git st",
     cwd,
@@ -439,38 +391,17 @@ test("ghost suggestion ignores invalid raw global history and picks a validated 
     new AbortController().signal,
   );
 
-  assert.equal(suggestion?.value, "git status");
-  assert.equal(suggestion?.source, "native");
+  assert.match(suggestion?.value ?? "", /^git sta(?:sh|tus)$/);
+  assert.equal(suggestion?.source, "git");
 });
 
-test("global history breaks ties among already-valid native ghost candidates", async () => {
+test("global history boosts already-valid deterministic git candidates", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "powerline-global-history-tiebreak-ghost-"));
   const histfile = join(cwd, ".zsh_history");
   process.env.HISTFILE = histfile;
   writeFileSync(histfile, ": 1711111111:0;git stash\n");
 
   const engine = new BashCompletionEngine();
-  Reflect.set(engine, "getNativeSuggestions", async () => [
-    {
-      value: "status",
-      label: "status",
-      replacement: "status",
-      startCol: 0,
-      endCol: 0,
-      source: "native",
-      score: 60,
-    },
-    {
-      value: "stash",
-      label: "stash",
-      replacement: "stash",
-      startCol: 0,
-      endCol: 0,
-      source: "native",
-      score: 60,
-    },
-  ]);
-
   const suggestion = await engine.getGhostSuggestion(
     "git st",
     cwd,
@@ -479,11 +410,11 @@ test("global history breaks ties among already-valid native ghost candidates", a
   );
 
   assert.equal(suggestion?.value, "git stash");
-  assert.equal(suggestion?.source, "native");
+  assert.equal(suggestion?.source, "git");
 });
 
-test("zsh shell native completion keeps directory suffixes for escaped paths", async () => {
-  const cwd = mkdtempSync(join(tmpdir(), "powerline-zsh-native-path-"));
+test("deterministic path completion keeps directory suffixes for escaped paths", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-path-escaped-"));
   const histfile = join(cwd, ".zsh_history");
   process.env.HISTFILE = histfile;
   writeFileSync(histfile, "");
@@ -498,11 +429,11 @@ test("zsh shell native completion keeps directory suffixes for escaped paths", a
   );
 
   assert.equal(suggestion?.value, "cd My\\ Folder/");
-  assert.equal(suggestion?.source, "native");
+  assert.equal(suggestion?.source, "path");
 });
 
-test("bash shell native completion does not override path completion in argument position", async () => {
-  const cwd = mkdtempSync(join(tmpdir(), "powerline-bash-native-path-"));
+test("deterministic path completion handles bash argument position", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-bash-path-"));
   mkdirSync(join(cwd, "devdir"), { recursive: true });
 
   const engine = new BashCompletionEngine();
@@ -514,7 +445,7 @@ test("bash shell native completion does not override path completion in argument
   );
 
   assert.equal(suggestion?.value, "cd devdir/");
-  assert.equal(suggestion?.source, "native");
+  assert.equal(suggestion?.source, "path");
 });
 
 test("managed shell session preserves cwd changes across commands", async () => {
