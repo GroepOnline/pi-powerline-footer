@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-05-02
+
+### Fixed
+- **Fixed-editor context-menu copy** — Right-clicking inside an app-owned text selection now restores the full highlighted range after terminal context-menu Copy, instead of leaving only the clicked word on the clipboard.
+
 ## [0.5.0] - 2026-05-02
 
 ### Changed

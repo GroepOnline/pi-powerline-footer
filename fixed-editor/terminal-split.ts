@@ -73,6 +73,8 @@ interface DisposeOptions {
 type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
 
 const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
+const CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS = 5000;
+const CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS = 100;
 const DOUBLE_CLICK_MS = 500;
 const DEFAULT_KEYBOARD_SCROLL_SHORTCUTS: KeyboardScrollShortcuts = {
   up: "super+up",
@@ -157,21 +159,17 @@ export function emergencyTerminalModeReset(): string {
     + endSynchronizedOutput();
 }
 
-function matchesConfiguredKeyboardScrollShortcut(data: string, shortcut: string): boolean {
-  return matchesConfiguredShortcut(data, shortcut);
-}
-
 function parseKeyboardScrollDelta(data: string, shortcuts: KeyboardScrollShortcuts = DEFAULT_KEYBOARD_SCROLL_SHORTCUTS): number {
   if (isKeyRelease(data)) return 0;
 
   if (
-    matchesConfiguredKeyboardScrollShortcut(data, shortcuts.up)
+    matchesConfiguredShortcut(data, shortcuts.up)
     || matchesKey(data, "pageUp")
     || matchesKey(data, "ctrl+shift+up")
     || /^\x1b\[(?:5;9(?::[12])?~|1;6(?::[12])?A|57421;9(?::[12])?u|57419;6(?::[12])?u)$/.test(data)
   ) return 10;
   if (
-    matchesConfiguredKeyboardScrollShortcut(data, shortcuts.down)
+    matchesConfiguredShortcut(data, shortcuts.down)
     || matchesKey(data, "pageDown")
     || matchesKey(data, "ctrl+shift+down")
     || /^\x1b\[(?:6;9(?::[12])?~|1;6(?::[12])?B|57422;9(?::[12])?u|57420;6(?::[12])?u)$/.test(data)
@@ -331,6 +329,7 @@ export class TerminalSplitCompositor {
   private removeInputListener: (() => void) | null = null;
   private emergencyCleanup: (() => void) | null = null;
   private mouseReportingResumeTimer: ReturnType<typeof setTimeout> | null = null;
+  private clipboardRestoreTimer: ReturnType<typeof setTimeout> | null = null;
   private installed = false;
   private disposed = false;
   private writing = false;
@@ -523,6 +522,10 @@ export class TerminalSplitCompositor {
       clearTimeout(this.mouseReportingResumeTimer);
       this.mouseReportingResumeTimer = null;
     }
+    if (this.clipboardRestoreTimer) {
+      clearTimeout(this.clipboardRestoreTimer);
+      this.clipboardRestoreTimer = null;
+    }
 
     this.terminal.write = this.originalWrite;
     if (this.originalDoRender) {
@@ -616,7 +619,19 @@ export class TerminalSplitCompositor {
       return;
     }
 
+    const location = this.selectionLocationForPacket(packet);
+
     if (isRightPress(packet)) {
+      this.selectionDragging = false;
+      this.preserveSelectionFocusOnRelease = false;
+      const selectedText = this.isLocationInsideSelection(location) ? this.getSelectedText() : "";
+      if (selectedText) {
+        this.onCopySelection?.(selectedText);
+        this.lastLeftPress = null;
+        this.pauseMouseReportingForContextMenu(selectedText);
+        return;
+      }
+
       this.clearSelection();
       this.lastLeftPress = null;
       this.pauseMouseReportingForContextMenu();
@@ -624,8 +639,6 @@ export class TerminalSplitCompositor {
     }
 
     if (this.scrollSelectionAtViewportEdge(packet)) return;
-
-    const location = this.selectionLocationForPacket(packet);
     if (this.selectionDragging && isMouseRelease(packet)) {
       this.finishSelection(packet, location);
       return;
@@ -674,7 +687,6 @@ export class TerminalSplitCompositor {
     if (selectedText) {
       this.lastLeftPress = null;
       this.onCopySelection?.(selectedText);
-      this.pauseMouseReportingForContextMenu();
     } else {
       this.clearSelection();
     }
@@ -823,6 +835,12 @@ export class TerminalSplitCompositor {
     };
   }
 
+  private isLocationInsideSelection(location: SelectionLocation | null): boolean {
+    if (!location || location.area !== this.selectionArea) return false;
+    const range = this.getSelectionRangeForLine(location.point.line, location.area);
+    return Boolean(range && location.point.col >= range.startCol && location.point.col < range.endCol);
+  }
+
   private scrollBy(delta: number): void {
     const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
     if (nextOffset === this.scrollOffset) return;
@@ -839,9 +857,13 @@ export class TerminalSplitCompositor {
     }
   }
 
-  private pauseMouseReportingForContextMenu(): void {
+  private pauseMouseReportingForContextMenu(textToRestoreToClipboard: string | null = null): void {
     if (this.mouseReportingResumeTimer) {
       clearTimeout(this.mouseReportingResumeTimer);
+    }
+    if (this.clipboardRestoreTimer) {
+      clearTimeout(this.clipboardRestoreTimer);
+      this.clipboardRestoreTimer = null;
     }
 
     this.originalWrite(beginSynchronizedOutput() + disableMouseReporting() + endSynchronizedOutput());
@@ -855,6 +877,31 @@ export class TerminalSplitCompositor {
     if (typeof this.mouseReportingResumeTimer === "object" && "unref" in this.mouseReportingResumeTimer) {
       this.mouseReportingResumeTimer.unref();
     }
+
+    const restoreClipboard = this.onCopySelection;
+    if (!textToRestoreToClipboard || !restoreClipboard) return;
+
+    let remainingRestores = Math.ceil(CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS / CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS);
+    const scheduleClipboardRestore = () => {
+      this.clipboardRestoreTimer = setTimeout(() => {
+        this.clipboardRestoreTimer = null;
+        if (this.disposed) return;
+
+        remainingRestores -= 1;
+        if (this.getSelectedText() !== textToRestoreToClipboard) return;
+
+        restoreClipboard(textToRestoreToClipboard);
+        if (remainingRestores > 0) {
+          scheduleClipboardRestore();
+        }
+      }, CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS);
+
+      if (typeof this.clipboardRestoreTimer === "object" && "unref" in this.clipboardRestoreTimer) {
+        this.clipboardRestoreTimer.unref();
+      }
+    };
+
+    scheduleClipboardRestore();
   }
 
   private clearSelection(): void {

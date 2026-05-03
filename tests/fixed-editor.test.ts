@@ -676,8 +676,75 @@ test("terminal split selects visible chat text and copies it on drag release", (
   assert.deepEqual(inputListener?.("\x1b[<0;7;4m"), { consume: true });
 
   assert.deepEqual(copied, ["ravo two\ncharlie three\ndelta"]);
-  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
+  assert.ok(!terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
   assert.deepEqual(renderRequests, [undefined, undefined, undefined]);
+
+  compositor.dispose();
+});
+
+test("terminal split restores app-owned selection after context menu copy", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  let clipboard = "";
+  const rootLines = [
+    "old-0", "old-1", "old-2", "old-3", "old-4",
+    "alpha one", "bravo two", "charlie three", "delta four", "echo five",
+    "foxtrot six", "golf seven", "hotel eight", "india nine", "juliet ten",
+  ];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render(_width?: number) {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => {
+      clipboard = text;
+    },
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;2;2M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;7;4M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;7;4m"), { consume: true });
+  assert.equal(clipboard, "ravo two\ncharlie three\ndelta");
+
+  clipboard = "clicked-word";
+  assert.deepEqual(inputListener?.("\x1b[<2;4;3M"), { consume: true });
+  assert.equal(clipboard, "ravo two\ncharlie three\ndelta");
+  assert.ok(tui.render(40)[1]?.includes("b\x1b[7mravo two\x1b[27m"));
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
+
+  clipboard = "terminal-clicked-word-copy";
+  t.mock.timers.tick(1200);
+  assert.equal(clipboard, "ravo two\ncharlie three\ndelta");
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1002h\x1b[?1006h"));
+
+  clipboard = "late-terminal-clicked-word-copy";
+  t.mock.timers.tick(100);
+  assert.equal(clipboard, "ravo two\ncharlie three\ndelta");
+
+  clipboard = "other-copy";
+  assert.deepEqual(inputListener?.("\x1b[<2;5;5M"), { consume: true });
+  assert.equal(clipboard, "other-copy");
+  t.mock.timers.tick(1200);
+  assert.equal(clipboard, "other-copy");
+  assert.ok(!tui.render(40)[1]?.includes("\x1b[7mravo two\x1b[27m"));
 
   compositor.dispose();
 });
