@@ -850,7 +850,8 @@ export class TerminalSplitCompositor {
   }
 
   private scrollBy(delta: number): void {
-    this.refreshRootWindow(Math.max(1, this.terminal.columns || 80));
+    const width = Math.max(1, this.terminal.columns || 80);
+    this.refreshRootWindow(width);
 
     const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
     if (nextOffset === this.scrollOffset) return;
@@ -858,6 +859,7 @@ export class TerminalSplitCompositor {
     this.clearSelection();
     this.lastLeftPress = null;
     this.scrollOffset = nextOffset;
+    this.repaintScrollableViewport(width);
     this.requestRender();
   }
 
@@ -865,6 +867,26 @@ export class TerminalSplitCompositor {
     if (typeof this.tui.requestRender === "function") {
       this.tui.requestRender();
     }
+  }
+
+  private repaintScrollableViewport(width: number): void {
+    if (this.disposed || this.writing || this.hasVisibleOverlay()) return;
+
+    const rawRows = this.getRawRows();
+    const cluster = this.getCluster(width, rawRows);
+    const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
+    const start = this.updateVisibleRootWindow(scrollableRows);
+    let buffer = beginSynchronizedOutput() + setScrollRegion(1, scrollableRows) + moveCursor(1, 1);
+
+    for (let row = 0; row < scrollableRows; row++) {
+      if (row > 0) buffer += "\r\n";
+      buffer += clearLine();
+      buffer += sanitizeLine(this.renderSelectionHighlight(this.visibleRootLines[row] ?? "", start + row, "root"), width);
+    }
+
+    buffer += buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor());
+    buffer += endSynchronizedOutput();
+    this.originalWrite(buffer);
   }
 
   private pauseMouseReportingForContextMenu(textToRestoreToClipboard: string | null = null): void {

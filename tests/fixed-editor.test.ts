@@ -575,6 +575,8 @@ test("terminal split refreshes scroll bounds after fixed status rows appear", ()
 
   assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
   assert.deepEqual(renderRequests, [undefined]);
+  assert.match(terminal.writes.at(-1) ?? "", /line-0/);
+  assert.match(terminal.writes.at(-1) ?? "", /⠏ fixed status/);
   assert.deepEqual(tui.render(40), [
     "line-0", "line-1", "line-2", "line-3", "line-4",
     "line-5", "line-6", "line-7", "line-8", "line-9",

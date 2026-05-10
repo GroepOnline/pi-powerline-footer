@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-05-10
+
+### Fixed
+- **Fixed-editor status scrolling** — Mouse wheel scrolling now repaints the app-owned chat viewport immediately when fixed status rows are present, instead of waiting for a later TUI diff render.
+
 ## [0.5.2] - 2026-05-09
 
 ### Fixed
