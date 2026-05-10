@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { GitStatus } from "./types.js";
+import type { GitStatus } from "./types.ts";
 
 interface CachedGitStatus {
   staged: number;

@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "@mariozechner/pi-tui";
+import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory } from "./history.ts";
 import type { ExtendedCompletionItem, GhostSuggestion } from "./types.ts";
 

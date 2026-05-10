@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-05-09
+
+### Fixed
+- **Editor file drops** — Finder file, folder, image, and screenshot drops now insert path strings into the custom editor, including terminals that send `file://` URI drops.
+- **Fixed-editor status scrolling** — Mouse wheel and keyboard scrolling now refresh viewport bounds when fixed Pi/status rows appear, so fixed status messages no longer stop chat scrolling.
+
 ## [0.5.1] - 2026-05-02
 
 ### Fixed

@@ -199,8 +199,7 @@ Selecting an entry inserts it into the editor. If the editor already has text, y
 - `ctrl+alt+,` — jump the fixed-editor chat viewport to the previous LLM message
 - `ctrl+alt+.` — jump the fixed-editor chat viewport to the next LLM message
 - `ctrl+shift+g` — jump the fixed-editor chat viewport to the bottom
-
-Copy/cut actions do not modify stash state or stash history. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. Submitting editor text also returns that viewport to the bottom so new output stays in view.
+Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. Submitting editor text also returns that viewport to the bottom so new output stays in view.
 
 ### Shortcut configuration
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { KEYBINDINGS } from "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/core/keybindings.js";
+import { KEYBINDINGS } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import {
   isSupportedSuperShortcut,
   matchesConfiguredShortcut,
@@ -85,12 +85,12 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
 
 test("super shortcut matching rejects plain keys and unsupported command aliases", () => {
   assert.equal(matchesConfiguredShortcut("c", "super+c"), false);
-  assert.equal(matchesConfiguredShortcut("G", "super+shift+g"), false);
+  assert.equal(matchesConfiguredShortcut("X", "super+shift+x"), false);
   assert.equal(matchesConfiguredShortcut("\x1b[A", "super+up"), false);
   assert.equal(matchesConfiguredShortcut("\x1b[1;9A", "super+up"), true);
   assert.equal(matchesConfiguredShortcut("\x1b[1;10A", "super+shift+up"), true);
   assert.equal(isSupportedSuperShortcut("super+c"), false);
-  assert.equal(isSupportedSuperShortcut("super+shift+g"), false);
+  assert.equal(isSupportedSuperShortcut("super+shift+x"), false);
   assert.equal(isSupportedSuperShortcut("super+up"), true);
   assert.equal(shortcutConflictKey("super+home"), "super+up");
   assert.equal(shortcutConflictKey("super+end"), "super+down");

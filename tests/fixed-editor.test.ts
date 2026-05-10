@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TUI, visibleWidth } from "@mariozechner/pi-tui";
+import { TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { CURSOR_MARKER, renderFixedEditorCluster } from "../fixed-editor/cluster.ts";
 import {
   buildFixedClusterPaint,
@@ -533,6 +533,54 @@ test("terminal split renders chat through an app-owned scroll viewport", () => {
 
   compositor.dispose();
   assert.equal(inputListener, null);
+});
+
+test("terminal split refreshes scroll bounds after fixed status rows appear", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  const rootLines = Array.from({ length: 11 }, (_, index) => `line-${index}`);
+  let statusVisible = false;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({
+      lines: statusVisible ? ["⠏ fixed status", "editor"] : ["editor"],
+      cursor: null,
+    }),
+  });
+
+  compositor.install();
+
+  assert.deepEqual(tui.render(40), rootLines);
+
+  statusVisible = true;
+  compositor.requestRepaint();
+
+  assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.deepEqual(tui.render(40), [
+    "line-0", "line-1", "line-2", "line-3", "line-4",
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+  ]);
+
+  compositor.dispose();
 });
 
 test("terminal split handles modified SGR wheel packets", () => {

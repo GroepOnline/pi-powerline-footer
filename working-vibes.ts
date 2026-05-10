@@ -2,8 +2,8 @@
 // AI-generated contextual working messages that match a user's preferred theme/vibe.
 // Uses module-level state (matching powerline-footer pattern).
 
-import { complete, type Context } from "@mariozechner/pi-ai";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { complete, type Context } from "@earendil-works/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";

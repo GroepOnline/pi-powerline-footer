@@ -24,28 +24,30 @@ function getMethod(target: object, name: string): Function {
 }
 
 function ensureEditorModuleLinks(): { cleanup: () => void } {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@earendil-works");
   mkdirSync(nodeModulesDir, { recursive: true });
   const links = [
     {
       link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+      target: "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent",
     },
     {
       link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui",
+      target: "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui",
     },
   ];
 
+  const createdLinks: string[] = [];
   for (const { link, target } of links) {
     if (!existsSync(link)) {
       symlinkSync(target, link);
+      createdLinks.push(link);
     }
   }
 
   return {
     cleanup() {
-      for (const { link } of links.reverse()) {
+      for (const link of createdLinks.reverse()) {
         if (existsSync(link)) {
           rmSync(link, { recursive: true, force: true });
         }
@@ -557,7 +559,7 @@ test("bash editor does not submit pasted multiline input while bracketed paste i
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { CustomEditor } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
+    const { CustomEditor } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js", import.meta.url).href);
 
     let delegated = 0;
     let submitted = 0;
@@ -605,7 +607,7 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { CustomEditor } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
+    const { CustomEditor } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js", import.meta.url).href);
 
     let delegated = 0;
     let scheduled = 0;
@@ -653,6 +655,66 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
     }
 
     assert.equal(delegated, 1);
+    assert.equal(scheduled, 1);
+  } finally {
+    links.cleanup();
+  }
+});
+
+test("bash editor inserts Finder file drops as path strings", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const keybindings = KeybindingsManager.create();
+    let scheduled = 0;
+    const editor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+
+    editor.handleInput("\x1b[200~file:///Users/nico/Desktop/Screen%20Shot%202026-05-08.png\x1b[201~");
+    assert.equal(editor.getText(), "/Users/nico/Desktop/Screen Shot 2026-05-08.png");
+
+    editor.handleInput(" ");
+    editor.handleInput("\x1b[200~/Users/nico/Documents/Project\\ Folder\x1b[201~");
+    assert.equal(editor.getText(), "/Users/nico/Desktop/Screen Shot 2026-05-08.png /Users/nico/Documents/Project\\ Folder");
+
+    const shellEditor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => true,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+    Reflect.set(shellEditor, "scheduleGhostUpdate", () => {
+      scheduled += 1;
+    });
+
+    shellEditor.handleInput("\x1b[200~file:///Users/nico/Pictures/Finder%20Image.png\nfile:///Users/nico/Desktop/Capture.png\x1b[201~");
+    assert.equal(shellEditor.getText(), "/Users/nico/Pictures/Finder Image.png /Users/nico/Desktop/Capture.png");
     assert.equal(scheduled, 1);
   } finally {
     links.cleanup();
@@ -926,8 +988,8 @@ test("bash editor runs copied Pi app action handlers for alt-enter", async () =>
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/core/keybindings.js");
-    const { setKittyProtocolActive } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui/dist/keys.js");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const { setKittyProtocolActive } = await import(new URL("../node_modules/@earendil-works/pi-tui/dist/keys.js", import.meta.url).href);
     const keybindings = KeybindingsManager.create();
     const editor = new BashModeEditor(
       { requestRender() {}, terminal: { columns: 80, rows: 24 } },
@@ -972,7 +1034,7 @@ test("bash editor command arrows jump to editor boundaries", async () => {
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/core/keybindings.js");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
     const keybindings = KeybindingsManager.create();
     let renderRequests = 0;
     const editor = new BashModeEditor(
@@ -1170,7 +1232,7 @@ test("one-off bang submit does not accept ghost text before submitting", async (
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { CustomEditor } = await import("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
+    const { CustomEditor } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js", import.meta.url).href);
 
     let delegated = 0;
     const superHandleInput = CustomEditor.prototype.handleInput;

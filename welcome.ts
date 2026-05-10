@@ -1,9 +1,9 @@
 import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir as osHomedir } from "node:os";
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth as tuiTruncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { ansi, fgOnly, getFgAnsiCode } from "./colors.js";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth as tuiTruncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { ansi, fgOnly, getFgAnsiCode } from "./colors.ts";
 
 export interface RecentSession {
   name: string;

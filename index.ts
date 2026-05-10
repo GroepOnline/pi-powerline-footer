@@ -3,15 +3,15 @@ import {
   type ExtensionAPI,
   type ReadonlyFooterDataProvider,
   type Theme,
-} from "@mariozechner/pi-coding-agent";
-import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { isKeyRelease, matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { isKeyRelease, matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
-import type { PowerlineConfig } from "./powerline-config.js";
+import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { PowerlineConfig } from "./powerline-config.ts";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
   BashCompletionEngine,
@@ -24,19 +24,19 @@ import { BashModeEditor } from "./bash-mode/editor.ts";
 import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
-import { getPreset, PRESETS } from "./presets.js";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
-import { getSeparator } from "./separators.js";
-import { renderSegment } from "./segments.js";
-import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
-import { ansi, getFgAnsiCode } from "./colors.js";
-import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
+import { getPreset, PRESETS } from "./presets.ts";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
+import { getSeparator } from "./separators.ts";
+import { renderSegment } from "./segments.ts";
+import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.ts";
+import { ansi, getFgAnsiCode } from "./colors.ts";
+import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.ts";
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { readCoreContextUsage } from "./context-usage.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
-import { getDefaultColors } from "./theme.js";
+import { getDefaultColors } from "./theme.ts";
 import {
   isSupportedSuperShortcut,
   matchesConfiguredShortcut,
@@ -58,7 +58,7 @@ import {
   hasVibeFile,
   getVibeFileCount,
   generateVibesBatch,
-} from "./working-vibes.js";
+} from "./working-vibes.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -1732,7 +1732,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           welcomeDismissScheduler.cancel();
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
-          ctx.ui.setStatus("stash", undefined);
+                ctx.ui.setStatus("stash", undefined);
           restoreFooterStatusRepaintHook?.();
           restoreFooterStatusRepaintHook = null;
           teardownFixedEditorCompositor();
@@ -2109,6 +2109,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       model: ctx.model,
       thinkingLevel,
       sessionId: ctx.sessionManager?.getSessionId?.(),
+      cwd: ctx.cwd,
       usageStats: { input, output, cacheRead, cacheWrite, cost },
       contextPercent,
       contextWindow,

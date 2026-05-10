@@ -1,4 +1,4 @@
-import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "../shortcuts.ts";
 import type { FixedEditorClusterRender } from "./cluster.ts";
 
@@ -573,24 +573,32 @@ export class TerminalSplitCompositor {
 
     this.renderingScrollableRoot = true;
     try {
-      const rawRows = this.getRawRows();
-      const renderWidth = Math.max(1, width);
-      const cluster = this.getCluster(renderWidth, rawRows);
-      const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
-      const lines = this.originalRender(renderWidth);
-      this.rootLines = lines;
-      if (this.scrollOffset > 0 && this.lastRootLineCount > 0 && lines.length > this.lastRootLineCount) {
-        this.scrollOffset += lines.length - this.lastRootLineCount;
-      }
-      this.lastRootLineCount = lines.length;
-      this.maxScrollOffset = Math.max(0, lines.length - scrollableRows);
-      this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset));
-
-      const start = this.updateVisibleRootWindow(scrollableRows);
-      return this.visibleRootLines.map((line, index) => this.renderSelectionHighlight(line, start + index, "root"));
+      const start = this.refreshRootWindow(width);
+      return this.visibleRootLines.map((line, index) => {
+        return this.renderSelectionHighlight(line, start + index, "root");
+      });
     } finally {
       this.renderingScrollableRoot = false;
     }
+  }
+
+  private refreshRootWindow(width: number): number {
+    if (!this.originalRender) return this.updateVisibleRootWindow();
+
+    const rawRows = this.getRawRows();
+    const renderWidth = Math.max(1, width);
+    const cluster = this.getCluster(renderWidth, rawRows);
+    const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
+    const lines = this.originalRender(renderWidth);
+    this.rootLines = lines;
+    if (this.scrollOffset > 0 && this.lastRootLineCount > 0 && lines.length > this.lastRootLineCount) {
+      this.scrollOffset += lines.length - this.lastRootLineCount;
+    }
+    this.lastRootLineCount = lines.length;
+    this.maxScrollOffset = Math.max(0, lines.length - scrollableRows);
+    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset));
+
+    return this.updateVisibleRootWindow(scrollableRows);
   }
 
   private handleInput(data: string): { consume?: boolean; data?: string } | undefined {
@@ -842,6 +850,8 @@ export class TerminalSplitCompositor {
   }
 
   private scrollBy(delta: number): void {
+    this.refreshRootWindow(Math.max(1, this.terminal.columns || 80));
+
     const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
     if (nextOffset === this.scrollOffset) return;
 

@@ -1,7 +1,8 @@
-import { CustomEditor } from "@mariozechner/pi-coding-agent";
-import { isKeyRelease, matchesKey, visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
-import type { KeybindingsManager } from "@mariozechner/pi-coding-agent/dist/core/keybindings.js";
-import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+import { fileURLToPath } from "node:url";
+import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { isKeyRelease, matchesKey, visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
+import type { KeybindingsManager } from "@earendil-works/pi-coding-agent/dist/core/keybindings.js";
+import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "../shortcuts.ts";
 import { getOneOffBashCommandContext } from "./completion.ts";
 import type { GhostSuggestion } from "./types.ts";
@@ -36,6 +37,53 @@ function isPrintableInput(data: string): boolean {
 
 function matchesEditorBoundaryShortcut(data: string, shortcut: string): boolean {
   return matchesConfiguredShortcut(data, shortcut);
+}
+
+function bracketedPasteContent(data: string): string | null {
+  const startMarker = "\x1b[200~";
+  const endMarker = "\x1b[201~";
+  const start = data.indexOf(startMarker);
+  if (start !== 0) return null;
+
+  const end = data.indexOf(endMarker, startMarker.length);
+  if (end === -1 || end + endMarker.length !== data.length) return null;
+
+  return data.slice(startMarker.length, end);
+}
+
+function decodeFileUriList(text: string): string | null {
+  const entries = text
+    .split(/\r?\n|\s+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0 && !entry.startsWith("#"));
+
+  if (entries.length === 0 || entries.some((entry) => !entry.startsWith("file://"))) {
+    return null;
+  }
+
+  try {
+    return entries.map((entry) => fileURLToPath(entry)).join(" ");
+  } catch {
+    return null;
+  }
+}
+
+function droppedPathTextFromInput(data: string): string | null {
+  const pasteContent = bracketedPasteContent(data);
+  const text = pasteContent ?? data;
+  const uriList = decodeFileUriList(text);
+  if (uriList) return uriList;
+
+  const trimmed = text.replace(/^[\r\n]+|[\r\n]+$/g, "");
+  if (trimmed.length <= 1 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(trimmed)) {
+    return null;
+  }
+
+  if (/^(?:\/|~\/|\.\.?\/)/.test(trimmed) && !/[\r\n]/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return null;
 }
 
 export class BashModeEditor extends CustomEditor {
@@ -91,6 +139,20 @@ export class BashModeEditor extends CustomEditor {
   }
 
   handleInput(data: string): void {
+    const droppedPathText = droppedPathTextFromInput(data);
+    if (droppedPathText !== null) {
+      this.insertTextAtCursor(droppedPathText);
+      this.shellHistoryIndex = -1;
+      this.shellHistoryItems = [];
+      this.shellHistoryDraft = "";
+      if (this.isShellCompletionContext()) {
+        this.scheduleGhostUpdate();
+      } else {
+        this.clearGhostSuggestion();
+      }
+      return;
+    }
+
     const pasteInProgress = data.includes("\x1b[200~") || Reflect.get(this, "isInPaste") === true;
     if (pasteInProgress) {
       super.handleInput(data);

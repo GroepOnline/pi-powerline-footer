@@ -4,31 +4,33 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const FAUX_PROVIDER_PATH = "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-ai/dist/providers/faux.js";
+const FAUX_PROVIDER_PATH = new URL("../node_modules/@earendil-works/pi-ai/dist/providers/faux.js", import.meta.url).href;
 
 function ensurePiModuleLinks(): { cleanup: () => void } {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@mariozechner");
+  const nodeModulesDir = join(process.cwd(), "node_modules", "@earendil-works");
   mkdirSync(nodeModulesDir, { recursive: true });
   const links = [
     {
       link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent",
+      target: "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent",
     },
     {
       link: join(nodeModulesDir, "pi-ai"),
-      target: "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-ai",
+      target: "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai",
     },
   ];
 
+  const createdLinks: string[] = [];
   for (const { link, target } of links) {
     if (!existsSync(link)) {
       symlinkSync(target, link);
+      createdLinks.push(link);
     }
   }
 
   return {
     cleanup() {
-      for (const { link } of links.reverse()) {
+      for (const link of createdLinks.reverse()) {
         if (existsSync(link)) {
           rmSync(link, { recursive: true, force: true });
         }
