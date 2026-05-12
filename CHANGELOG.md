@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-05-10
+
+### Fixed
+- **Editor undo shortcut** — Command-Z now restores deleted prompt text through the custom editor undo stack.
+
 ## [0.5.3] - 2026-05-10
 
 ### Fixed

@@ -1029,6 +1029,155 @@ test("bash editor runs copied Pi app action handlers for alt-enter", async () =>
   }
 });
 
+test("bash editor command-z undoes deleted text for supported encodings only", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const keybindings = KeybindingsManager.create();
+    const createEditor = (options: {
+      keybindings?: typeof keybindings;
+      isBashModeActive?: () => boolean;
+      isShellRunning?: () => boolean;
+      onExitBashMode?: () => void;
+      onInterrupt?: () => void;
+      resolveGhostSuggestion?: (text: string) => Promise<null>;
+    } = {}) => new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      options.keybindings ?? keybindings,
+      {
+        keybindings: options.keybindings ?? keybindings,
+        isBashModeActive: options.isBashModeActive ?? (() => false),
+        isShellRunning: options.isShellRunning ?? (() => false),
+        onExitBashMode: options.onExitBashMode ?? (() => {}),
+        onSubmitCommand() {},
+        onInterrupt: options.onInterrupt ?? (() => {}),
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: options.resolveGhostSuggestion ?? (async () => null),
+      },
+    );
+
+    for (const data of ["\x1b[122;9u", "\x1b[122;9:1u", "\x1b[122;9:2u", "\x1b[27;9;122~"]) {
+      const editor = createEditor();
+
+      for (const char of "hello") editor.handleInput(char);
+      editor.handleInput("\x7f");
+      assert.equal(editor.getText(), "hell");
+
+      editor.handleInput(data);
+      assert.equal(editor.getText(), "hello");
+    }
+
+    const editor = createEditor();
+
+    for (const char of "hello") editor.handleInput(char);
+    editor.handleInput("\x7f");
+    editor.handleInput("\x1b[122;9u");
+    assert.equal(editor.getText(), "hello");
+
+    editor.handleInput("\x1b[122;9:3u");
+    assert.equal(editor.getText(), "hello");
+
+    editor.handleInput("\x7f");
+    editor.handleInput("\x1b[27;9;90~");
+    assert.equal(editor.getText(), "hell");
+
+    const plainEditor = createEditor();
+    plainEditor.handleInput("z");
+    assert.equal(plainEditor.getText(), "z");
+
+    for (const action of ["app.interrupt", "app.clear"]) {
+      let exited = false;
+      let interrupted = false;
+      const customizedKeybindings = new KeybindingsManager({ [action]: "super+z" });
+      assert.equal(customizedKeybindings.matches("\x1b[122;9u", action), true);
+      const customizedEditor = createEditor({
+        keybindings: customizedKeybindings,
+        isBashModeActive: () => true,
+        isShellRunning: () => true,
+        onExitBashMode: () => {
+          exited = true;
+        },
+        onInterrupt: () => {
+          interrupted = true;
+        },
+      });
+
+      for (const char of "hello") customizedEditor.handleInput(char);
+      customizedEditor.handleInput("\x7f");
+      customizedEditor.handleInput("\x1b[122;9u");
+
+      assert.equal(customizedEditor.getText(), "hello");
+      assert.equal(exited, false);
+      assert.equal(interrupted, false);
+    }
+  } finally {
+    links.cleanup();
+  }
+});
+
+test("bash editor command-z resets shell history and updates ghost state", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const keybindings = KeybindingsManager.create();
+    const createEditor = (options: {
+      isBashModeActive?: () => boolean;
+      resolveGhostSuggestion?: (text: string) => Promise<null>;
+    } = {}) => new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: options.isBashModeActive ?? (() => false),
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: options.resolveGhostSuggestion ?? (async () => null),
+      },
+    );
+    const ghostRefreshes: string[] = [];
+    const shellEditor = createEditor({
+      isBashModeActive: () => true,
+      resolveGhostSuggestion: async (text) => {
+        ghostRefreshes.push(text);
+        return null;
+      },
+    });
+
+    shellEditor.handleInput("a");
+    shellEditor.handleInput("\x7f");
+    Reflect.set(shellEditor, "shellHistoryIndex", 0);
+    Reflect.set(shellEditor, "shellHistoryItems", ["git status"]);
+    Reflect.set(shellEditor, "shellHistoryDraft", "git");
+    shellEditor.handleInput("\x1b[122;9u");
+
+    assert.equal(shellEditor.getText(), "a");
+    assert.equal(Reflect.get(shellEditor, "shellHistoryIndex"), -1);
+    assert.deepEqual(Reflect.get(shellEditor, "shellHistoryItems"), []);
+    assert.equal(Reflect.get(shellEditor, "shellHistoryDraft"), "");
+    assert.equal(ghostRefreshes.at(-1), "a");
+
+    const plainEditor = createEditor();
+    plainEditor.handleInput("z");
+    plainEditor.handleInput("\x7f");
+    Reflect.set(plainEditor, "ghost", { value: "stale" });
+    plainEditor.handleInput("\x1b[122;9u");
+    assert.equal(Reflect.get(plainEditor, "ghost"), null);
+  } finally {
+    links.cleanup();
+  }
+});
+
 test("bash editor command arrows jump to editor boundaries", async () => {
   const links = ensureEditorModuleLinks();
 

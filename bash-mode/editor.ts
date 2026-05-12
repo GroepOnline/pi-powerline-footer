@@ -35,8 +35,11 @@ function isPrintableInput(data: string): boolean {
   return data.length === 1 && data.charCodeAt(0) >= 32;
 }
 
-function matchesEditorBoundaryShortcut(data: string, shortcut: string): boolean {
-  return matchesConfiguredShortcut(data, shortcut);
+function isCommandUndoShortcut(data: string): boolean {
+  return data === "\x1b[122;9u"
+    || data === "\x1b[122;9:1u"
+    || data === "\x1b[122;9:2u"
+    || data === "\x1b[27;9;122~";
 }
 
 function bracketedPasteContent(data: string): string | null {
@@ -163,6 +166,19 @@ export class BashModeEditor extends CustomEditor {
       const bashMode = this.optionsRef.isBashModeActive();
       const oneOffBashCommand = !bashMode && this.isOneOffBashCommandContext();
 
+      if (isCommandUndoShortcut(data)) {
+        this.undo();
+        this.shellHistoryIndex = -1;
+        this.shellHistoryItems = [];
+        this.shellHistoryDraft = "";
+        if (this.isShellCompletionContext()) {
+          this.scheduleGhostUpdate();
+        } else {
+          this.clearGhostSuggestion();
+        }
+        return;
+      }
+
       if (bashMode && this.keybindingsRef.matches(data, "app.interrupt")) {
         this.optionsRef.onExitBashMode();
         return;
@@ -184,12 +200,12 @@ export class BashModeEditor extends CustomEditor {
       }
 
       const editorBoundaryShortcuts = this.optionsRef.editorBoundaryShortcuts ?? DEFAULT_EDITOR_BOUNDARY_SHORTCUTS;
-      if (!isKeyRelease(data) && matchesEditorBoundaryShortcut(data, editorBoundaryShortcuts.start)) {
+      if (!isKeyRelease(data) && matchesConfiguredShortcut(data, editorBoundaryShortcuts.start)) {
         this.moveCursorToEditorBoundary("start");
         return;
       }
 
-      if (!isKeyRelease(data) && matchesEditorBoundaryShortcut(data, editorBoundaryShortcuts.end)) {
+      if (!isKeyRelease(data) && matchesConfiguredShortcut(data, editorBoundaryShortcuts.end)) {
         this.moveCursorToEditorBoundary("end");
         return;
       }
