@@ -634,6 +634,37 @@ test("terminal split handles modified SGR wheel packets", () => {
   compositor.dispose();
 });
 
+test("terminal split guards wrapped terminal writes", () => {
+  const terminal = new FakeTerminal();
+  const tui = {
+    terminal,
+    hardwareCursorRow: 2,
+    previousViewportTop: 0,
+    render() {
+      return Array.from({ length: 15 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  terminal.write("\x1b[?1006l\x1b[?1002l" + "x".repeat(40));
+
+  const write = terminal.writes.at(-1) ?? "";
+  assert.ok(write.includes("\x1b[?1006l\x1b[?1002l" + "x".repeat(40)));
+  assert.ok(write.indexOf("\x1b[?7l") < write.indexOf("x".repeat(40)));
+  assert.ok(write.lastIndexOf("\x1b[?7h") > write.lastIndexOf("x".repeat(40)));
+  assert.ok(write.lastIndexOf("\x1b[?1002h\x1b[?1006h") > write.lastIndexOf("\x1b[?1006l\x1b[?1002l"));
+
+  compositor.dispose();
+});
+
 test("terminal split pauses mouse reporting on right click for the terminal context menu", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;

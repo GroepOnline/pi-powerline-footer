@@ -129,6 +129,14 @@ function disableAlternateScrollMode(): string {
   return "\x1b[?1007l";
 }
 
+function disableAutoWrap(): string {
+  return "\x1b[?7l";
+}
+
+function enableAutoWrap(): string {
+  return "\x1b[?7h";
+}
+
 function enableMouseReporting(): string {
   return "\x1b[?1002h\x1b[?1006h";
 }
@@ -378,7 +386,7 @@ export class TerminalSplitCompositor {
       + enterAlternateScreen()
       + this.enableAlternateScreenKeyboardMode()
       + disableAlternateScrollMode()
-      + (this.mouseScroll ? enableMouseReporting() : "")
+      + this.mouseReportingStateGuard()
       + endSynchronizedOutput(),
     );
     this.emergencyCleanup = () => {
@@ -499,7 +507,10 @@ export class TerminalSplitCompositor {
 
     this.originalWrite(
       beginSynchronizedOutput()
+      + disableAutoWrap()
       + buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor())
+      + enableAutoWrap()
+      + this.mouseReportingStateGuard()
       + endSynchronizedOutput(),
     );
   }
@@ -876,7 +887,7 @@ export class TerminalSplitCompositor {
     const cluster = this.getCluster(width, rawRows);
     const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
     const start = this.updateVisibleRootWindow(scrollableRows);
-    let buffer = beginSynchronizedOutput() + setScrollRegion(1, scrollableRows) + moveCursor(1, 1);
+    let buffer = beginSynchronizedOutput() + disableAutoWrap() + setScrollRegion(1, scrollableRows) + moveCursor(1, 1);
 
     for (let row = 0; row < scrollableRows; row++) {
       if (row > 0) buffer += "\r\n";
@@ -885,6 +896,8 @@ export class TerminalSplitCompositor {
     }
 
     buffer += buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor());
+    buffer += enableAutoWrap();
+    buffer += this.mouseReportingStateGuard();
     buffer += endSynchronizedOutput();
     this.originalWrite(buffer);
   }
@@ -1007,16 +1020,23 @@ export class TerminalSplitCompositor {
       const viewportTop = typeof this.tui.previousViewportTop === "number" ? this.tui.previousViewportTop : 0;
       const screenRow = Math.max(1, Math.min(scrollBottom, hardwareCursorRow - viewportTop + 1));
       const buffer = beginSynchronizedOutput()
+        + disableAutoWrap()
         + setScrollRegion(1, scrollBottom)
         + moveCursor(screenRow, 1)
         + data
         + buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor())
+        + enableAutoWrap()
+        + this.mouseReportingStateGuard()
         + endSynchronizedOutput();
 
       this.originalWrite(buffer);
     } finally {
       this.writing = false;
     }
+  }
+
+  private mouseReportingStateGuard(): string {
+    return this.mouseScroll && !this.mouseReportingResumeTimer ? enableMouseReporting() : "";
   }
 
   private getCluster(width: number, terminalRows: number): FixedEditorClusterRender {
