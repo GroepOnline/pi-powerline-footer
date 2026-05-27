@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-05-26
+
+### Fixed
+- **Pi 0.75 extension installs** — Widened Pi package peer dependency ranges so `pi-powerline-footer` can install alongside extensions that require Pi 0.75.x packages.
+
 ## [0.5.4] - 2026-05-10
 
 ### Fixed
