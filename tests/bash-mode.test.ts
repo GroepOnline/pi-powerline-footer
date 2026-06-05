@@ -876,6 +876,50 @@ test("bash editor shell history state does not clobber the base prompt history i
   }
 });
 
+test("bash editor recalls prompt history when Up is pressed at the editor end", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const keybindings = KeybindingsManager.create();
+    const createEditor = () => new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+
+    const editor = createEditor();
+    editor.addToHistory("older prompt");
+    editor.addToHistory("previous prompt");
+    editor.setText("draft");
+
+    editor.handleInput("\x1b[A");
+    assert.equal(editor.getText(), "previous prompt");
+
+    const midLineEditor = createEditor();
+    midLineEditor.addToHistory("previous prompt");
+    midLineEditor.setText("draft");
+    midLineEditor.handleInput("\x1b[D");
+    midLineEditor.handleInput("\x1b[A");
+
+    assert.equal(midLineEditor.getText(), "draft");
+  } finally {
+    links.cleanup();
+  }
+});
+
 test("bash editor escape exits bash mode", async () => {
   const links = ensureEditorModuleLinks();
 

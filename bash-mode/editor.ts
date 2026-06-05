@@ -223,6 +223,14 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
+      if (!bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorUp") && this.isPromptHistoryRecallPosition()) {
+        const navigateHistory = Reflect.get(this, "navigateHistory");
+        if (typeof navigateHistory === "function") {
+          navigateHistory.call(this, -1);
+          return;
+        }
+      }
+
       if (bashMode && this.keybindingsRef.matches(data, "tui.input.submit") && !this.keybindingsRef.matches(data, "tui.input.newLine")) {
         if (this.optionsRef.isShellRunning()) {
           this.optionsRef.onNotify("Shell command already running", "warning");
@@ -343,6 +351,18 @@ export class BashModeEditor extends CustomEditor {
     this.setText(this.ghost.value);
     this.clearGhostSuggestion();
     return true;
+  }
+
+  private isPromptHistoryRecallPosition(): boolean {
+    if (this.isShowingAutocomplete()) return false;
+
+    const history = Reflect.get(this, "history");
+    if (!Array.isArray(history) || history.length === 0) return false;
+
+    const lines = this.getLines();
+    const cursor = this.getCursor();
+    const lastLine = Math.max(0, lines.length - 1);
+    return cursor.line === lastLine && cursor.col === (lines[lastLine]?.length ?? 0);
   }
 
   private navigateShellHistory(direction: -1 | 1): void {

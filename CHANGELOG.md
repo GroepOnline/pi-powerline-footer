@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Prompt history recall** — Pressing Up at the end of non-bash editor text now recalls the previous submitted prompt, while Up inside the text keeps normal cursor movement.
+
 ## [0.5.6] - 2026-05-26
 
 ### Fixed
