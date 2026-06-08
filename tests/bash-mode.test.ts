@@ -876,7 +876,7 @@ test("bash editor shell history state does not clobber the base prompt history i
   }
 });
 
-test("bash editor recalls prompt history when Up is pressed at the editor end", async () => {
+test("bash editor recalls prompt history from the editor end without losing the live draft", async () => {
   const links = ensureEditorModuleLinks();
 
   try {
@@ -907,6 +907,15 @@ test("bash editor recalls prompt history when Up is pressed at the editor end", 
 
     editor.handleInput("\x1b[A");
     assert.equal(editor.getText(), "previous prompt");
+
+    editor.handleInput("\x1b[A");
+    assert.equal(editor.getText(), "older prompt");
+
+    editor.handleInput("\x1b[B");
+    assert.equal(editor.getText(), "previous prompt");
+
+    editor.handleInput("\x1b[B");
+    assert.equal(editor.getText(), "draft");
 
     const midLineEditor = createEditor();
     midLineEditor.addToHistory("previous prompt");

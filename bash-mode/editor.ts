@@ -96,6 +96,7 @@ export class BashModeEditor extends CustomEditor {
   private shellHistoryIndex = -1;
   private shellHistoryItems: string[] = [];
   private shellHistoryDraft = "";
+  private promptHistoryDraft: string | null = null;
   private ghost: GhostSuggestion | null = null;
   private ghostAbort: AbortController | null = null;
   private ghostToken = 0;
@@ -226,8 +227,32 @@ export class BashModeEditor extends CustomEditor {
       if (!bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorUp") && this.isPromptHistoryRecallPosition()) {
         const navigateHistory = Reflect.get(this, "navigateHistory");
         if (typeof navigateHistory === "function") {
+          if (Reflect.get(this, "historyIndex") === -1) {
+            this.promptHistoryDraft = this.getText();
+          }
           navigateHistory.call(this, -1);
           return;
+        }
+      }
+
+      if (!bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorDown") && Reflect.get(this, "historyIndex") > -1) {
+        const isOnLastVisualLine = Reflect.get(this, "isOnLastVisualLine");
+        if (typeof isOnLastVisualLine !== "function" || isOnLastVisualLine.call(this)) {
+          const navigateHistory = Reflect.get(this, "navigateHistory");
+          if (typeof navigateHistory === "function") {
+            navigateHistory.call(this, 1);
+            if (Reflect.get(this, "historyIndex") === -1 && this.promptHistoryDraft !== null) {
+              const draft = this.promptHistoryDraft;
+              this.promptHistoryDraft = null;
+              const setTextInternal = Reflect.get(this, "setTextInternal");
+              if (typeof setTextInternal === "function") {
+                setTextInternal.call(this, draft);
+              } else {
+                this.setText(draft);
+              }
+            }
+            return;
+          }
         }
       }
 

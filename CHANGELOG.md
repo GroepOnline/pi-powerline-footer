@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-08
+
+### Fixed
+- **Prompt history draft preservation** — Returning from prompt-history browsing with Down now restores the unsent editor draft instead of clearing it.
+
 ## [0.6.0] - 2026-06-05
 
 ### Changed
