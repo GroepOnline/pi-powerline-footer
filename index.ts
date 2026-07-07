@@ -35,7 +35,7 @@ import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { readCoreContextUsage } from "./context-usage.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
-import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
+import { DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.ts";
 import {
   isSupportedSuperShortcut,
@@ -120,7 +120,7 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   jumpNextUserMessage: "ctrl+shift+i",
   jumpPreviousLlmMessage: "ctrl+alt+,",
   jumpNextLlmMessage: "ctrl+alt+.",
-  jumpChatBottom: "ctrl+shift+g",
+  jumpChatBottom: "ctrl+alt+g",
   scrollChatUp: "super+up",
   scrollChatDown: "super+down",
   editorStart: "super+shift+up",
@@ -689,6 +689,10 @@ function normalizeShortcut(value: string): string {
   const modifierRank = new Map(SHORTCUT_MODIFIER_ORDER.map((modifier, index) => [modifier, index]));
   const modifiers = parts.slice(0, -1).sort((a, b) => (modifierRank.get(a) ?? 99) - (modifierRank.get(b) ?? 99));
   return [...modifiers, parts[parts.length - 1]].join("+");
+}
+
+function formatShortcutLabel(shortcut: string): string {
+  return shortcut.split("+").map((part) => part.toLowerCase() === "super" ? "cmd" : part).join("+");
 }
 
 function reservedShortcuts(): Set<string> {
@@ -2342,6 +2346,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         up: resolvedShortcuts.scrollChatUp,
         down: resolvedShortcuts.scrollChatDown,
       },
+      scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
+      scrollAwayNavigationCard: {
+        shortcuts: [
+          { id: "bottom", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpChatBottom) },
+          { id: "previousUser", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousUserMessage) },
+          { id: "nextUser", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextUserMessage) },
+          { id: "previousAssistant", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousLlmMessage) },
+          { id: "nextAssistant", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextLlmMessage) },
+        ],
+        onClickBottom: () => jumpChatToBottom(ctx),
+      },
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
@@ -2434,17 +2449,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return [...new Set(targets)].sort((a, b) => a - b);
   }
 
-  function jumpToChatMessage(ctx: any, role: ChatJumpRole, direction: ChatJumpDirection): void {
+  function jumpToChatMessage(ctx: any, role: ChatJumpRole, direction: ChatJumpDirection): boolean {
     if (!fixedEditorCompositor) {
       ctx.ui.notify("Chat message jumps require /powerline fixed-editor on", "warning");
-      return;
+      return false;
     }
 
     const targets = collectChatMessageStartLines(role);
     const label = role === "assistant" ? "LLM" : "user";
     if (targets.length === 0) {
       ctx.ui.notify(`No ${label} messages found`, "info");
-      return;
+      return false;
     }
 
     const jumped = direction === "previous"
@@ -2452,16 +2467,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : fixedEditorCompositor.jumpToNextRootTarget(targets);
     if (!jumped) {
       ctx.ui.notify(`No ${direction} ${label} message`, "info");
+      return false;
     }
+
+    return true;
   }
 
-  function jumpChatToBottom(ctx: any): void {
+  function jumpChatToBottom(ctx: any): boolean {
     if (!fixedEditorCompositor) {
       ctx.ui.notify("Chat bottom jump requires /powerline fixed-editor on", "warning");
-      return;
+      return false;
     }
 
-    fixedEditorCompositor.jumpToRootBottom();
+    return fixedEditorCompositor.jumpToRootBottom();
   }
 
   function followSubmittedEditorToBottom(): void {

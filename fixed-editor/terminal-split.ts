@@ -14,6 +14,18 @@ interface KeyboardScrollShortcuts {
   down: string;
 }
 
+export type ScrollAwayNavigationShortcutId = "bottom" | "previousUser" | "nextUser" | "previousAssistant" | "nextAssistant";
+
+export interface ScrollAwayNavigationShortcut {
+  id: ScrollAwayNavigationShortcutId;
+  shortcutLabel: string;
+}
+
+export interface ScrollAwayNavigationCardOptions {
+  shortcuts: ScrollAwayNavigationShortcut[];
+  onClickBottom?: () => boolean;
+}
+
 interface TerminalSplitCompositorOptions {
   tui: any;
   terminal: TerminalLike;
@@ -21,7 +33,9 @@ interface TerminalSplitCompositorOptions {
   getShowHardwareCursor?: () => boolean;
   mouseScroll?: boolean;
   keyboardScrollShortcuts?: KeyboardScrollShortcuts;
+  scrollAwayNavigationCard?: ScrollAwayNavigationCardOptions;
   onCopySelection?: (text: string) => void;
+  scrollRepaintThrottleMs?: number;
 }
 
 interface PatchedRenderable {
@@ -66,6 +80,34 @@ interface SelectionLocation {
   point: SelectionPoint;
 }
 
+interface ScrollAwayCardBounds {
+  row: number;
+  startCol: number;
+  endCol: number;
+}
+
+interface ScrollAwayCardCandidate {
+  lines: string[];
+}
+
+interface ScrollAwayCardLayout extends ScrollAwayCardCandidate {
+  width: number;
+  startCol: number;
+  bounds: ScrollAwayCardBounds[];
+}
+
+interface ScrollAwayCardContentRow {
+  kind: "content";
+  left: string;
+  right?: string;
+}
+
+interface ScrollAwayCardDividerRow {
+  kind: "divider";
+}
+
+type ScrollAwayCardRow = ScrollAwayCardContentRow | ScrollAwayCardDividerRow;
+
 interface DisposeOptions {
   resetExtendedKeyboardModes?: boolean;
 }
@@ -75,6 +117,8 @@ type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
 const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
 const CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS = 5000;
 const CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS = 100;
+export const DEFAULT_SCROLL_REPAINT_THROTTLE_MS = 16;
+const SCROLL_SETTLED_RENDER_MS = 80;
 const DOUBLE_CLICK_MS = 500;
 const DEFAULT_KEYBOARD_SCROLL_SHORTCUTS: KeyboardScrollShortcuts = {
   up: "super+up",
@@ -292,6 +336,136 @@ function normalizeOverlayCompositionLine(line: string): string {
   return line.includes("\t") ? line.replace(/\t/g, "   ") : line;
 }
 
+function padVisibleEnd(text: string, width: number): string {
+  return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
+}
+
+function cardRowContentWidth(row: ScrollAwayCardContentRow): number {
+  return row.right === undefined
+    ? visibleWidth(row.left)
+    : visibleWidth(row.left) + 2 + visibleWidth(row.right);
+}
+
+function alignCardRow(row: ScrollAwayCardContentRow, contentWidth: number): string {
+  if (row.right === undefined) return padVisibleEnd(row.left, contentWidth);
+
+  const gap = Math.max(2, contentWidth - visibleWidth(row.left) - visibleWidth(row.right));
+  return `${row.left}${" ".repeat(gap)}${row.right}`;
+}
+
+function buildBoxedScrollAwayCard(rows: ScrollAwayCardRow[]): ScrollAwayCardCandidate {
+  const contentRows = rows.filter((row): row is ScrollAwayCardContentRow => row.kind === "content");
+  const contentWidth = Math.max(1, ...contentRows.map(cardRowContentWidth));
+  const lines = [`┌${"─".repeat(contentWidth)}┐`];
+
+  for (const row of rows) {
+    if (row.kind === "divider") {
+      lines.push(`├${"─".repeat(contentWidth)}┤`);
+      continue;
+    }
+
+    lines.push(`│${alignCardRow(row, contentWidth)}│`);
+  }
+
+  lines.push(`└${"─".repeat(contentWidth)}┘`);
+  return { lines };
+}
+
+function splitShortcutLabel(label: string): { modifiers: string[]; key: string } {
+  const parts = label.split("+").filter((part) => part.length > 0);
+  if (parts.length === 0) return { modifiers: [], key: "" };
+  return { modifiers: parts.slice(0, -1), key: parts[parts.length - 1] ?? "" };
+}
+
+function compactShortcutModifiers(modifiers: string[]): string {
+  return modifiers.map((modifier) => {
+    switch (modifier.toLowerCase()) {
+      case "ctrl":
+      case "control":
+        return "⌃";
+      case "shift":
+        return "⇧";
+      case "alt":
+      case "option":
+        return "⌥";
+      case "cmd":
+      case "command":
+      case "super":
+        return "⌘";
+      default:
+        return `${modifier}+`;
+    }
+  }).join("");
+}
+
+function compactShortcutKey(key: string): string {
+  switch (key.toLowerCase()) {
+    case "up":
+      return "↑";
+    case "down":
+      return "↓";
+    case "left":
+      return "←";
+    case "right":
+      return "→";
+    default:
+      return /^[a-z]$/i.test(key) ? key.toUpperCase() : key;
+  }
+}
+
+function compactShortcutLabel(label: string): string {
+  const shortcut = splitShortcutLabel(label);
+  return `${compactShortcutModifiers(shortcut.modifiers)}${compactShortcutKey(shortcut.key)}`;
+}
+
+function compactShortcutPair(previous: string, next: string): string {
+  const previousShortcut = splitShortcutLabel(previous);
+  const nextShortcut = splitShortcutLabel(next);
+  const sameModifiers = previousShortcut.modifiers.length === nextShortcut.modifiers.length
+    && previousShortcut.modifiers.every((modifier, index) => modifier.toLowerCase() === nextShortcut.modifiers[index]?.toLowerCase());
+
+  if (sameModifiers) {
+    return `${compactShortcutModifiers(previousShortcut.modifiers)}${compactShortcutKey(previousShortcut.key)}/${compactShortcutKey(nextShortcut.key)}`;
+  }
+
+  return `${compactShortcutLabel(previous)}/${compactShortcutLabel(next)}`;
+}
+
+function buildScrollAwayCardCandidates(
+  bottom: ScrollAwayNavigationShortcut,
+  previousUser: ScrollAwayNavigationShortcut,
+  nextUser: ScrollAwayNavigationShortcut,
+  previousAssistant: ScrollAwayNavigationShortcut,
+  nextAssistant: ScrollAwayNavigationShortcut,
+): ScrollAwayCardCandidate[] {
+  const bottomShortcut = `${bottom.shortcutLabel} ↓`;
+  const userShortcut = compactShortcutPair(previousUser.shortcutLabel, nextUser.shortcutLabel);
+  const assistantShortcut = compactShortcutPair(previousAssistant.shortcutLabel, nextAssistant.shortcutLabel);
+
+  return [
+    buildBoxedScrollAwayCard([
+      { kind: "content", left: "Jump to bottom", right: bottomShortcut },
+      { kind: "divider" },
+      { kind: "content", left: "User messages", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
+      { kind: "content", left: "Assistant responses", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
+    ]),
+    buildBoxedScrollAwayCard([
+      { kind: "content", left: "Bottom", right: bottomShortcut },
+      { kind: "divider" },
+      { kind: "content", left: "User", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
+      { kind: "content", left: "Assistant", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
+    ]),
+    buildBoxedScrollAwayCard([
+      { kind: "content", left: "Bottom", right: bottomShortcut },
+      { kind: "divider" },
+      { kind: "content", left: "User prev/next", right: userShortcut },
+      { kind: "content", left: "Asst prev/next", right: assistantShortcut },
+    ]),
+    { lines: [`Bottom ${bottomShortcut}`] },
+    { lines: ["Bottom ↓"] },
+  ];
+}
+
 export function buildFixedClusterPaint(
   cluster: FixedEditorClusterRender,
   terminalRows: number,
@@ -330,7 +504,9 @@ export class TerminalSplitCompositor {
   private readonly getShowHardwareCursor: () => boolean;
   private readonly mouseScroll: boolean;
   private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
+  private readonly scrollAwayNavigationCard: ScrollAwayNavigationCardOptions | null;
   private readonly onCopySelection: ((text: string) => void) | null;
+  private readonly scrollRepaintThrottleMs: number;
   private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
   private readonly rowsDescriptor: PropertyDescriptor | undefined;
   private readonly originalWrite: (data: string) => void;
@@ -342,6 +518,8 @@ export class TerminalSplitCompositor {
   private emergencyCleanup: (() => void) | null = null;
   private mouseReportingResumeTimer: ReturnType<typeof setTimeout> | null = null;
   private clipboardRestoreTimer: ReturnType<typeof setTimeout> | null = null;
+  private scrollRepaintTimer: ReturnType<typeof setTimeout> | null = null;
+  private scrollSettledRenderTimer: ReturnType<typeof setTimeout> | null = null;
   private installed = false;
   private disposed = false;
   private writing = false;
@@ -365,6 +543,7 @@ export class TerminalSplitCompositor {
   private preserveSelectionFocusOnRelease = false;
   private lastLeftPress: { area: SelectionArea; line: number; at: number } | null = null;
   private pendingImageCleanup = false;
+  private pendingScrollDeltas: number[] = [];
 
   constructor(options: TerminalSplitCompositorOptions) {
     this.tui = options.tui;
@@ -373,7 +552,9 @@ export class TerminalSplitCompositor {
     this.getShowHardwareCursor = options.getShowHardwareCursor ?? (() => false);
     this.mouseScroll = options.mouseScroll !== false;
     this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
+    this.scrollAwayNavigationCard = options.scrollAwayNavigationCard ?? null;
     this.onCopySelection = options.onCopySelection ?? null;
+    this.scrollRepaintThrottleMs = Math.max(0, options.scrollRepaintThrottleMs ?? 0);
     this.rowsDescriptor = descriptorForRows(options.terminal);
     this.originalWrite = options.terminal.write.bind(options.terminal);
     this.originalDoRender = typeof options.tui.doRender === "function" ? options.tui.doRender.bind(options.tui) : null;
@@ -469,7 +650,10 @@ export class TerminalSplitCompositor {
   }
 
   jumpToRootBottom(): boolean {
-    if (this.disposed || this.hasVisibleOverlay() || this.scrollOffset === 0) return false;
+    if (this.disposed || this.hasVisibleOverlay()) return false;
+
+    this.cancelQueuedScroll();
+    if (this.scrollOffset === 0) return false;
 
     this.clearSelection();
     this.lastLeftPress = null;
@@ -482,6 +666,7 @@ export class TerminalSplitCompositor {
   private jumpToRootTarget(targetLines: readonly number[], direction: "previous" | "next"): boolean {
     if (this.disposed || targetLines.length === 0 || this.hasVisibleOverlay()) return false;
 
+    this.cancelQueuedScroll();
     const start = this.visibleRootStart;
     const candidates = direction === "previous"
       ? targetLines.filter((line) => line < start).sort((a, b) => b - a)
@@ -544,6 +729,15 @@ export class TerminalSplitCompositor {
       clearTimeout(this.clipboardRestoreTimer);
       this.clipboardRestoreTimer = null;
     }
+    if (this.scrollRepaintTimer) {
+      clearTimeout(this.scrollRepaintTimer);
+      this.scrollRepaintTimer = null;
+    }
+    if (this.scrollSettledRenderTimer) {
+      clearTimeout(this.scrollSettledRenderTimer);
+      this.scrollSettledRenderTimer = null;
+    }
+    this.pendingScrollDeltas = [];
 
     this.terminal.write = this.originalWrite;
     if (this.originalDoRender) {
@@ -591,10 +785,9 @@ export class TerminalSplitCompositor {
 
     this.renderingScrollableRoot = true;
     try {
-      const start = this.refreshRootWindow(width);
-      return this.visibleRootLines.map((line, index) => {
-        return this.renderSelectionHighlight(line, start + index, "root");
-      });
+      const renderWidth = Math.max(1, Number.isFinite(width) ? width : this.terminal.columns || 80);
+      const start = this.refreshRootWindow(renderWidth);
+      return this.renderVisibleRootLines(start, renderWidth, this.visibleScrollableRows);
     } finally {
       this.renderingScrollableRoot = false;
     }
@@ -604,7 +797,7 @@ export class TerminalSplitCompositor {
     if (!this.originalRender) return this.updateVisibleRootWindow();
 
     const rawRows = this.getRawRows();
-    const renderWidth = Math.max(1, width);
+    const renderWidth = Math.max(1, Number.isFinite(width) ? width : this.terminal.columns || 80);
     const cluster = this.getCluster(renderWidth, rawRows);
     const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
     const lines = this.originalRender(renderWidth);
@@ -629,8 +822,25 @@ export class TerminalSplitCompositor {
 
     const mousePackets = this.mouseScroll ? parseSgrMousePackets(data) : null;
     if (mousePackets) {
+      let wheelDeltas: number[] = [];
       for (const packet of mousePackets) {
-        this.handleMousePacket(packet);
+        const delta = mouseScrollDelta(packet);
+        if (delta !== 0) {
+          wheelDeltas.push(delta);
+          continue;
+        }
+        if (wheelDeltas.length > 0) {
+          this.queueScrollDeltas(wheelDeltas);
+          wheelDeltas = [];
+        }
+        const width = Math.max(1, this.terminal.columns || 80);
+        const hadQueuedScroll = this.pendingScrollDeltas.length > 0;
+        if (this.handleScrollAwayCardClick(packet, width)) continue;
+        const flushedQueuedScroll = this.flushQueuedScroll();
+        this.handleMousePacket(packet, { skipScrollAwayCard: hadQueuedScroll || flushedQueuedScroll });
+      }
+      if (wheelDeltas.length > 0) {
+        this.queueScrollDeltas(wheelDeltas);
       }
       return { consume: true };
     }
@@ -638,19 +848,21 @@ export class TerminalSplitCompositor {
     const keyboardDelta = parseKeyboardScrollDelta(data, this.keyboardScrollShortcuts);
     if (keyboardDelta === 0) return undefined;
 
+    this.flushQueuedScroll();
     this.scrollBy(keyboardDelta);
     return { consume: true };
   }
 
-  private handleMousePacket(packet: SgrMousePacket): void {
+  private handleMousePacket(packet: SgrMousePacket, options: { skipScrollAwayCard?: boolean } = {}): void {
     const delta = mouseScrollDelta(packet);
     if (delta !== 0) {
-      this.selectionDragging = false;
-      this.scrollBy(delta);
+      this.queueScrollBy(delta);
       return;
     }
 
-    this.refreshRootWindow(Math.max(1, this.terminal.columns || 80));
+    const width = Math.max(1, this.terminal.columns || 80);
+    this.refreshRootWindow(width);
+    if (!options.skipScrollAwayCard && this.handleScrollAwayCardClick(packet, width)) return;
     const location = this.selectionLocationForPacket(packet);
 
     if (isRightPress(packet)) {
@@ -704,6 +916,84 @@ export class TerminalSplitCompositor {
     this.visibleScrollableRows = rows;
     this.visibleRootLines = visibleLines;
     return start;
+  }
+
+  private renderVisibleRootLines(start: number, width: number, scrollableRows: number): string[] {
+    const renderedLines = this.visibleRootLines.map((line, index) => {
+      return this.renderSelectionHighlight(line, start + index, "root");
+    });
+    const card = this.computeScrollAwayNavigationCard(width, scrollableRows);
+    if (!card) return renderedLines;
+
+    const firstCardRow = scrollableRows - card.lines.length;
+    for (let index = 0; index < card.lines.length; index++) {
+      const row = firstCardRow + index;
+      if (row < 0 || row >= renderedLines.length) continue;
+      renderedLines[row] = this.composeScrollAwayCardLine(renderedLines[row] ?? "", card.lines[index] ?? "", card.startCol, card.width, width);
+    }
+
+    return renderedLines;
+  }
+
+  private composeScrollAwayCardLine(baseLine: string, overlayLine: string, startCol: number, overlayWidth: number, totalWidth: number): string {
+    const base = sanitizeOverlayBaseLine(baseLine, totalWidth);
+    if (typeof this.tui.compositeLineAt === "function") {
+      return sanitizeLine(this.tui.compositeLineAt(base, overlayLine, startCol, overlayWidth, totalWidth), totalWidth);
+    }
+
+    const plainBase = stripAnsi(base);
+    const before = padVisibleEnd(sliceColumns(plainBase, 0, startCol), startCol);
+    const after = sliceColumns(plainBase, startCol + overlayWidth, Number.POSITIVE_INFINITY);
+    return sanitizeLine(`${before}${overlayLine}${after}`, totalWidth);
+  }
+
+  private handleScrollAwayCardClick(packet: SgrMousePacket, width: number): boolean {
+    if (!isLeftPress(packet) || this.selectionDragging) return false;
+    if (!this.isScrollAwayCardClick(packet, width) || !this.scrollAwayNavigationCard?.onClickBottom?.()) return false;
+
+    this.lastLeftPress = null;
+    return true;
+  }
+
+  private isScrollAwayCardClick(packet: SgrMousePacket, width: number): boolean {
+    const card = this.computeScrollAwayNavigationCard(width, this.visibleScrollableRows);
+    if (!card) return false;
+
+    const col = Math.max(0, packet.col - 1);
+    return card.bounds.some((bound) => {
+      return packet.row === bound.row && col >= bound.startCol && col < bound.endCol;
+    });
+  }
+
+  private computeScrollAwayNavigationCard(width: number, scrollableRows: number): ScrollAwayCardLayout | null {
+    if (!this.scrollAwayNavigationCard || this.scrollOffset <= 0 || scrollableRows < 1 || width < visibleWidth("Bottom ↓")) {
+      return null;
+    }
+
+    const shortcutById = new Map(this.scrollAwayNavigationCard.shortcuts.map((shortcut) => [shortcut.id, shortcut]));
+    const bottom = shortcutById.get("bottom");
+    const previousUser = shortcutById.get("previousUser");
+    const nextUser = shortcutById.get("nextUser");
+    const previousAssistant = shortcutById.get("previousAssistant");
+    const nextAssistant = shortcutById.get("nextAssistant");
+    if (!bottom || !previousUser || !nextUser || !previousAssistant || !nextAssistant) return null;
+
+    for (const candidate of buildScrollAwayCardCandidates(bottom, previousUser, nextUser, previousAssistant, nextAssistant)) {
+      const candidateWidth = Math.max(...candidate.lines.map((line) => visibleWidth(line)));
+      if (candidateWidth > width || candidate.lines.length > scrollableRows) continue;
+
+      const startCol = Math.max(0, Math.floor((width - candidateWidth) / 2));
+      const firstRow = scrollableRows - candidate.lines.length + 1;
+      const bounds: ScrollAwayCardBounds[] = candidate.lines.map((_, index) => ({
+        row: firstRow + index,
+        startCol,
+        endCol: startCol + candidateWidth,
+      }));
+
+      return { ...candidate, width: candidateWidth, startCol, bounds };
+    }
+
+    return null;
   }
 
   private finishSelection(packet: SgrMousePacket, location: SelectionLocation | null): void {
@@ -874,11 +1164,70 @@ export class TerminalSplitCompositor {
     return Boolean(range && location.point.col >= range.startCol && location.point.col < range.endCol);
   }
 
-  private scrollBy(delta: number): void {
+  private queueScrollBy(delta: number): void {
+    this.queueScrollDeltas([delta]);
+  }
+
+  private queueScrollDeltas(deltas: number[]): void {
+    const nonZeroDeltas = deltas.filter((delta) => delta !== 0);
+    if (nonZeroDeltas.length === 0) return;
+
+    this.selectionDragging = false;
+    if (this.scrollRepaintThrottleMs <= 0) {
+      this.scrollByDeltas(nonZeroDeltas, { deferRender: false });
+      return;
+    }
+
+    this.pendingScrollDeltas.push(...nonZeroDeltas);
+    if (this.scrollRepaintTimer) return;
+
+    this.scrollRepaintTimer = setTimeout(() => {
+      this.scrollRepaintTimer = null;
+      if (!this.disposed) {
+        this.flushQueuedScroll();
+      }
+    }, this.scrollRepaintThrottleMs);
+
+    if (typeof this.scrollRepaintTimer === "object" && "unref" in this.scrollRepaintTimer) {
+      this.scrollRepaintTimer.unref();
+    }
+  }
+
+  private cancelQueuedScroll(): void {
+    if (this.scrollRepaintTimer) {
+      clearTimeout(this.scrollRepaintTimer);
+      this.scrollRepaintTimer = null;
+    }
+    this.pendingScrollDeltas = [];
+  }
+
+  private flushQueuedScroll(): boolean {
+    if (this.scrollRepaintTimer) {
+      clearTimeout(this.scrollRepaintTimer);
+      this.scrollRepaintTimer = null;
+    }
+
+    const deltas = this.pendingScrollDeltas;
+    this.pendingScrollDeltas = [];
+    if (deltas.length > 0 && !this.disposed && !this.hasVisibleOverlay()) {
+      this.scrollByDeltas(deltas, { deferRender: true });
+      return true;
+    }
+    return false;
+  }
+
+  private scrollBy(delta: number, options: { deferRender?: boolean } = {}): void {
+    this.scrollByDeltas([delta], options);
+  }
+
+  private scrollByDeltas(deltas: number[], options: { deferRender?: boolean } = {}): void {
     const width = Math.max(1, this.terminal.columns || 80);
     this.refreshRootWindow(width);
 
-    const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
+    let nextOffset = this.scrollOffset;
+    for (const delta of deltas) {
+      nextOffset = Math.max(0, Math.min(nextOffset + delta, this.maxScrollOffset));
+    }
     if (nextOffset === this.scrollOffset) return;
 
     this.clearSelection();
@@ -886,12 +1235,33 @@ export class TerminalSplitCompositor {
     this.scrollOffset = nextOffset;
     this.pendingImageCleanup = true;
     this.repaintScrollableViewport(width);
-    this.requestRender();
+    if (options.deferRender) {
+      this.scheduleScrollSettledRender();
+    } else {
+      this.requestRender();
+    }
   }
 
   private requestRender(): void {
     if (typeof this.tui.requestRender === "function") {
       this.tui.requestRender();
+    }
+  }
+
+  private scheduleScrollSettledRender(): void {
+    if (this.scrollSettledRenderTimer) {
+      clearTimeout(this.scrollSettledRenderTimer);
+    }
+
+    this.scrollSettledRenderTimer = setTimeout(() => {
+      this.scrollSettledRenderTimer = null;
+      if (!this.disposed) {
+        this.requestRender();
+      }
+    }, SCROLL_SETTLED_RENDER_MS);
+
+    if (typeof this.scrollSettledRenderTimer === "object" && "unref" in this.scrollSettledRenderTimer) {
+      this.scrollSettledRenderTimer.unref();
     }
   }
 
@@ -902,6 +1272,7 @@ export class TerminalSplitCompositor {
     const cluster = this.getCluster(width, rawRows);
     const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
     const start = this.updateVisibleRootWindow(scrollableRows);
+    const visibleLines = this.renderVisibleRootLines(start, width, scrollableRows);
     let buffer = beginSynchronizedOutput()
       + this.consumePendingImageCleanup()
       + disableAutoWrap()
@@ -911,7 +1282,7 @@ export class TerminalSplitCompositor {
     for (let row = 0; row < scrollableRows; row++) {
       if (row > 0) buffer += "\r\n";
       buffer += clearLine();
-      buffer += sanitizeLine(this.renderSelectionHighlight(this.visibleRootLines[row] ?? "", start + row, "root"), width);
+      buffer += sanitizeLine(visibleLines[row] ?? "", width);
     }
 
     buffer += buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor());

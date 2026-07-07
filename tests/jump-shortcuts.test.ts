@@ -54,7 +54,7 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
   assert.equal(defaults.get("jumpNextUserMessage"), "ctrl+shift+i");
   assert.equal(defaults.get("jumpPreviousLlmMessage"), "ctrl+alt+,");
   assert.equal(defaults.get("jumpNextLlmMessage"), "ctrl+alt+.");
-  assert.equal(defaults.get("jumpChatBottom"), "ctrl+shift+g");
+  assert.equal(defaults.get("jumpChatBottom"), "ctrl+alt+g");
   assert.equal(defaults.get("scrollChatUp"), "super+up");
   assert.equal(defaults.get("scrollChatDown"), "super+down");
   assert.equal(defaults.get("editorStart"), "super+shift+up");
@@ -77,6 +77,12 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
   assert.match(source, /let resolvedShortcuts = resolveShortcutConfig\(startupSettings\)/);
   assert.match(source, /resolvedShortcuts = resolveShortcutConfig\(settings\)/);
   assert.match(source, /keyboardScrollShortcuts: \{\n\s+up: resolvedShortcuts\.scrollChatUp,\n\s+down: resolvedShortcuts\.scrollChatDown,/);
+  assert.match(source, /scrollAwayNavigationCard: \{/);
+  assert.match(source, /shortcuts: \[/);
+  assert.match(source, /id: "bottom", shortcutLabel: formatShortcutLabel\(resolvedShortcuts\.jumpChatBottom\)/);
+  assert.match(source, /onClickBottom: \(\) => jumpChatToBottom\(ctx\)/);
+  assert.match(source, /function formatShortcutLabel\(shortcut: string\): string/);
+  assert.match(source, /part\.toLowerCase\(\) === "super" \? "cmd" : part/);
   assert.match(source, /editorBoundaryShortcuts: \{\n\s+start: resolvedShortcuts\.editorStart,\n\s+end: resolvedShortcuts\.editorEnd,/);
   assert.match(source, /modifier === "cmd" \|\| modifier === "command" \? "super" : modifier/);
   assert.match(source, /shortcutUsesSuper\(normalizedShortcut\) && !isSupportedSuperShortcut\(normalizedShortcut\)/);
@@ -90,6 +96,8 @@ test("super shortcut matching rejects plain keys and unsupported command aliases
   assert.equal(matchesConfiguredShortcut("\x1b[1;9A", "super+up"), true);
   assert.equal(matchesConfiguredShortcut("\x1b[1;10A", "super+shift+up"), true);
   assert.equal(matchesConfiguredShortcut("\x1b[122;9u", "super+z"), false);
+  assert.equal(matchesConfiguredShortcut("\x1b\x07", "ctrl+alt+g"), true);
+  assert.equal(matchesConfiguredShortcut("\x1b[103;7u", "ctrl+alt+g"), true);
   assert.equal(isSupportedSuperShortcut("super+c"), false);
   assert.equal(isSupportedSuperShortcut("super+shift+x"), false);
   assert.equal(isSupportedSuperShortcut("super+z"), false);
@@ -160,7 +168,7 @@ test("fixed editor captures Pi status messages with the editor cluster", () => {
 });
 
 test("shutdown cleanup resets terminal modes even before compositor install", () => {
-  assert.match(source, /import \{ emergencyTerminalModeReset, TerminalSplitCompositor \}/);
+  assert.match(source, /import \{ DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor \}/);
   assert.match(source, /const hadCompositor = fixedEditorCompositor !== null/);
   assert.match(source, /if \(!hadCompositor && options\?\.resetExtendedKeyboardModes\)/);
   assert.match(source, /process\.stdout\.write\(emergencyTerminalModeReset\(\)\)/);

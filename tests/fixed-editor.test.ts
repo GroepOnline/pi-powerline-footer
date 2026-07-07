@@ -10,6 +10,7 @@ import {
   moveCursor,
   resetScrollRegion,
   setScrollRegion,
+  type ScrollAwayNavigationCardOptions,
   TerminalSplitCompositor,
 } from "../fixed-editor/terminal-split.ts";
 
@@ -33,6 +34,19 @@ class FakeTerminal {
   hideCursor(): void {}
 
   showCursor(): void {}
+}
+
+function navigationCardOptions(onClickBottom: () => boolean = () => false): ScrollAwayNavigationCardOptions {
+  return {
+    shortcuts: [
+      { id: "bottom", shortcutLabel: "ctrl+alt+g" },
+      { id: "previousUser", shortcutLabel: "ctrl+shift+u" },
+      { id: "nextUser", shortcutLabel: "ctrl+shift+i" },
+      { id: "previousAssistant", shortcutLabel: "ctrl+alt+," },
+      { id: "nextAssistant", shortcutLabel: "ctrl+alt+." },
+    ],
+    onClickBottom,
+  };
 }
 
 test("fixed cluster keeps the editor visible before optional rows", () => {
@@ -533,6 +547,412 @@ test("terminal split renders chat through an app-owned scroll viewport", () => {
 
   compositor.dispose();
   assert.equal(inputListener, null);
+});
+
+test("terminal split coalesces throttled wheel bursts", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  terminal.columns = 40;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  const rootLines = Array.from({ length: 15 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollRepaintThrottleMs: 16,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  terminal.writes = [];
+
+  assert.deepEqual(inputListener?.("\x1b[<65;1;1M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
+  assert.equal(terminal.writes.length, 0);
+  assert.deepEqual(renderRequests, []);
+
+  t.mock.timers.tick(16);
+  assert.equal(terminal.writes.length, 1);
+  assert.deepEqual(tui.render(40), [
+    "line-2", "line-3", "line-4", "line-5", "line-6",
+    "line-7", "line-8", "line-9", "line-10", "line-11",
+  ]);
+  assert.deepEqual(renderRequests, []);
+
+  t.mock.timers.tick(80);
+  assert.deepEqual(renderRequests, [undefined]);
+
+  compositor.dispose();
+});
+
+test("terminal split cancels queued wheel scroll when jumping to bottom", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  terminal.columns = 40;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  const rootLines = Array.from({ length: 15 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollRepaintThrottleMs: 16,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.deepEqual(tui.render(40), [
+    "line-0", "line-1", "line-2", "line-3", "line-4",
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+  ]);
+
+  terminal.writes = [];
+  renderRequests.length = 0;
+  assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
+  assert.equal(compositor.jumpToRootBottom(), true);
+
+  t.mock.timers.tick(16);
+  assert.equal(terminal.writes.length, 0);
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.deepEqual(tui.render(40), [
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+    "line-10", "line-11", "line-12", "line-13", "line-14",
+  ]);
+
+  compositor.dispose();
+});
+
+test("terminal split ignores card clicks created only by a queued wheel flush", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  let bottomClicks = 0;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollRepaintThrottleMs: 16,
+    scrollAwayNavigationCard: navigationCardOptions(() => {
+      bottomClicks++;
+      return true;
+    }),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  assert.deepEqual(inputListener?.("\x1b[<64;20;6M"), { consume: true });
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+  assert.deepEqual(inputListener?.("\x1b[<0;20;6M"), { consume: true });
+
+  assert.equal(bottomClicks, 0);
+  assert.ok(tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  compositor.dispose();
+});
+
+test("terminal split renders a scroll-away navigation card in render and repaint paths", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  let rootLines = Array.from({ length: 30 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return rootLines;
+    },
+  };
+
+  let compositor: TerminalSplitCompositor;
+  compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollAwayNavigationCard: navigationCardOptions(() => compositor.jumpToRootBottom()),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+  terminal.writes = [];
+
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.match(terminal.writes.at(-1) ?? "", /Jump to bottom/);
+  assert.match(terminal.writes.at(-1) ?? "", /ctrl\+alt\+g/);
+
+  const away = tui.render(80);
+  assert.ok(away.some((line) => line.includes("Jump to bottom")));
+  assert.ok(away.some((line) => line.includes("User messages")));
+  assert.ok(away.some((line) => line.includes("Assistant responses")));
+
+  const firstVisibleLine = away[0];
+  rootLines = [...rootLines, "line-30"];
+  const anchored = tui.render(80);
+  assert.equal(anchored[0], firstVisibleLine);
+  assert.ok(anchored.some((line) => line.includes("Jump to bottom")));
+
+  const bottomRowIndex = anchored.findIndex((line) => line.includes("Jump to bottom"));
+  const bottomCol = (anchored[bottomRowIndex] ?? "").indexOf("│") + 2;
+  assert.deepEqual(inputListener?.(`\x1b[<0;${bottomCol};${bottomRowIndex + 1}M`), { consume: true });
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  compositor.dispose();
+});
+
+test("terminal split routes every scroll-away shortcut card click to bottom", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const bottomClicks: string[] = [];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollAwayNavigationCard: navigationCardOptions(() => {
+      bottomClicks.push("bottom");
+      return true;
+    }),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(80);
+  inputListener?.("\x1b[5~");
+  const rendered = tui.render(80);
+
+  const topRowIndex = rendered.findIndex((line) => line.includes("┌") && line.includes("┐"));
+  const dividerRowIndex = rendered.findIndex((line) => line.includes("├") && line.includes("┤"));
+  const bottomBorderRowIndex = rendered.findIndex((line) => line.includes("└") && line.includes("┘"));
+  assert.notEqual(topRowIndex, -1, "card top border should render");
+  assert.notEqual(dividerRowIndex, -1, "card divider should render");
+  assert.notEqual(bottomBorderRowIndex, -1, "card bottom border should render");
+
+  const topLine = rendered[topRowIndex] ?? "";
+  const start = topLine.indexOf("┌");
+  const end = topLine.indexOf("┐");
+  assert.ok(start >= 0 && end > start, "card should have horizontal bounds");
+
+  function rowFor(label: string): number {
+    const rowIndex = rendered.findIndex((line) => line.includes(label));
+    assert.notEqual(rowIndex, -1, `${label} row should render`);
+    return rowIndex + 1;
+  }
+
+  const firstCol = start + 1;
+  const lastCol = end + 1;
+  const rightHalfCol = start + Math.floor((end - start + 1) / 2) + 1;
+  const clickTargets = [
+    { col: firstCol, row: topRowIndex + 1 },
+    { col: rightHalfCol, row: rowFor("Jump to bottom") },
+    { col: firstCol, row: dividerRowIndex + 1 },
+    { col: firstCol, row: rowFor("User messages") },
+    { col: rightHalfCol, row: rowFor("User messages") },
+    { col: firstCol, row: rowFor("Assistant responses") },
+    { col: rightHalfCol, row: rowFor("Assistant responses") },
+    { col: lastCol, row: bottomBorderRowIndex + 1 },
+  ];
+
+  for (const target of clickTargets) {
+    assert.deepEqual(inputListener?.(`\x1b[<0;${target.col};${target.row}M`), { consume: true });
+  }
+  assert.deepEqual(inputListener?.(`\x1b[<0;${lastCol + 1};${rowFor("Jump to bottom")}M`), { consume: true });
+
+  assert.deepEqual(bottomClicks, clickTargets.map(() => "bottom"));
+
+  compositor.dispose();
+});
+
+test("terminal split scroll-away navigation card width tiers collapse without wrapping", () => {
+  const cases = [
+    { width: 80, includes: ["Jump to bottom", "User messages", "Assistant responses"], excludes: [], clickText: "┌" },
+    { width: 50, includes: ["Bottom", "User", "Assistant", "prev ctrl+shift+u"], excludes: ["Jump to bottom"], clickText: "┌" },
+    { width: 30, includes: ["User prev/next", "⌃⇧U/I", "Asst prev/next", "⌃⌥,/."], excludes: ["User messages"], clickText: "┌" },
+    { width: 20, includes: ["Bottom ctrl+alt+g ↓"], excludes: ["User prev/next"], clickText: "Bottom ctrl+alt+g ↓" },
+    { width: 8, includes: ["Bottom ↓"], excludes: ["ctrl+alt+g"], clickText: "Bottom ↓" },
+    { width: 7, includes: [], excludes: ["Bottom"], clickText: null },
+  ];
+
+  for (const { width, includes, excludes, clickText } of cases) {
+    const terminal = new FakeTerminal();
+    terminal.columns = width;
+    let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+    let bottomClicks = 0;
+    const tui = {
+      terminal,
+      addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+        inputListener = listener;
+        return () => {
+          inputListener = null;
+        };
+      },
+      requestRender() {},
+      render() {
+        return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+      },
+    };
+
+    const compositor = new TerminalSplitCompositor({
+      tui,
+      terminal,
+      scrollAwayNavigationCard: navigationCardOptions(() => {
+        bottomClicks++;
+        return true;
+      }),
+      renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+    });
+
+    compositor.install();
+    tui.render(width);
+    inputListener?.("\x1b[5~");
+    const rendered = tui.render(width);
+    const output = rendered.join("\n");
+
+    for (const expected of includes) {
+      assert.ok(output.includes(expected), `width ${width} should include ${expected}`);
+    }
+    for (const unexpected of excludes) {
+      assert.ok(!output.includes(unexpected), `width ${width} should not include ${unexpected}`);
+    }
+    for (const line of rendered) {
+      assert.ok(visibleWidth(line) <= width, `width ${width} line should not wrap: ${line}`);
+    }
+
+    if (clickText) {
+      const rowIndex = rendered.findIndex((line) => line.includes(clickText));
+      assert.notEqual(rowIndex, -1, `width ${width} should have a clickable card row`);
+      const line = rendered[rowIndex] ?? "";
+      const start = line.indexOf(clickText);
+      const clickWidth = clickText === "┌"
+        ? visibleWidth(line.slice(start, line.indexOf("┐") + 1))
+        : visibleWidth(clickText);
+      assert.deepEqual(inputListener?.(`\x1b[<0;${start + 1};${rowIndex + 1}M`), { consume: true });
+      if (start + clickWidth < width) {
+        assert.deepEqual(inputListener?.(`\x1b[<0;${start + clickWidth + 1};${rowIndex + 1}M`), { consume: true });
+      } else {
+        assert.deepEqual(inputListener?.("\x1b[<0;1;1M"), { consume: true });
+      }
+      assert.equal(bottomClicks, 1, `width ${width} should only click inside the card`);
+    } else {
+      assert.deepEqual(inputListener?.("\x1b[<0;1;1M"), { consume: true });
+      assert.equal(bottomClicks, 0, `width ${width} should not render a clickable card`);
+    }
+
+    compositor.dispose();
+  }
+});
+
+test("terminal split suppresses the scroll-away navigation card while overlays are visible", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const overlayStack: unknown[] = [];
+  const tui = {
+    terminal,
+    overlayStack,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollAwayNavigationCard: navigationCardOptions(),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(80);
+  inputListener?.("\x1b[5~");
+  assert.ok(tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  overlayStack.push({});
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  compositor.dispose();
 });
 
 test("terminal split refreshes scroll bounds after fixed status rows appear", () => {

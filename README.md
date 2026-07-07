@@ -18,7 +18,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed Pi working/status line, powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Scroll chat with the mouse wheel, PageUp/PageDown, Command+PageUp/PageDown, Ctrl+Shift+Up/Down, or message-jump shortcuts; the editor stays put. Drag text to copy it, drag selection to the viewport edge to scroll, double-click a line to select it, and right-click to open the terminal menu. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
+**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed Pi working/status line, powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Scroll chat with the mouse wheel, PageUp/PageDown, Command+PageUp/PageDown, Ctrl+Shift+Up/Down, or message-jump shortcuts; the editor stays put. When you are scrolled away from the bottom, a stacked shortcut hint card appears over the bottom of the chat viewport with the configured bottom, user-message, and assistant-response jump shortcuts. When mouse scrolling is enabled, click anywhere in that card to jump back to the bottom. Drag text to copy it, drag selection to the viewport edge to scroll, double-click a line to select it, and right-click to open the terminal menu. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
 
@@ -63,7 +63,7 @@ You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/setting
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling.
+Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience.
 
 | Preset | Description |
 |--------|-------------|
@@ -198,8 +198,9 @@ Selecting an entry inserts it into the editor. If the editor already has text, y
 - `ctrl+shift+i` — jump the fixed-editor chat viewport to the next user message
 - `ctrl+alt+,` — jump the fixed-editor chat viewport to the previous LLM message
 - `ctrl+alt+.` — jump the fixed-editor chat viewport to the next LLM message
-- `ctrl+shift+g` — jump the fixed-editor chat viewport to the bottom
-Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. Submitting editor text also returns that viewport to the bottom so new output stays in view.
+- `ctrl+alt+g` — jump the fixed-editor chat viewport to the bottom
+
+Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. When fixed-editor chat is scrolled away from the bottom, the viewport shows a shortcut hint card with these configured shortcut labels; with mouse scrolling enabled, clicking anywhere in the card jumps to the bottom. Submitting editor text also returns that viewport to the bottom so new output stays in view.
 
 ### Shortcut configuration
 
@@ -215,7 +216,7 @@ You can override shortcut keys in `~/.pi/agent/settings.json`:
     "jumpNextUserMessage": "ctrl+shift+i",
     "jumpPreviousLlmMessage": "ctrl+alt+,",
     "jumpNextLlmMessage": "ctrl+alt+.",
-    "jumpChatBottom": "ctrl+shift+g",
+    "jumpChatBottom": "ctrl+alt+g",
     "scrollChatUp": "cmd+up",
     "scrollChatDown": "cmd+down",
     "editorStart": "cmd+shift+up",
