@@ -1,9 +1,9 @@
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
-import { homedir as osHomedir } from "node:os";
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth as tuiTruncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { ansi, fgOnly, getFgAnsiCode } from "./colors.ts";
+import { getAgentPath, getAgentSessionDirs, getHomeDir } from "./paths.ts";
 
 export interface RecentSession {
   name: string;
@@ -343,7 +343,7 @@ function logDiscoveryError(scope: string, error: unknown): void {
  * Discover loaded counts by scanning filesystem.
  */
 export function discoverLoadedCounts(): LoadedCounts {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || osHomedir();
+  const homeDir = getHomeDir();
   const cwd = process.cwd();
   
   let contextFiles = 0;
@@ -352,7 +352,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   let promptTemplates = 0;
 
   const agentsMdPaths = [
-    join(homeDir, ".pi", "agent", "AGENTS.md"),
+    getAgentPath("AGENTS.md"),
     join(homeDir, ".claude", "AGENTS.md"),
     join(cwd, "AGENTS.md"),
     join(cwd, ".pi", "AGENTS.md"),
@@ -364,7 +364,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   }
 
   const extensionDirs = [
-    join(homeDir, ".pi", "agent", "extensions"),
+    getAgentPath("extensions"),
     join(cwd, "extensions"),
     join(cwd, ".pi", "extensions"),
   ];
@@ -372,7 +372,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   const countedExtensions = new Set<string>();
 
   const settingsPaths = [
-    join(homeDir, ".pi", "agent", "settings.json"),
+    getAgentPath("settings.json"),
     join(cwd, ".pi", "settings.json"),
   ];
 
@@ -469,7 +469,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   }
 
   const skillDirs = [
-    join(homeDir, ".pi", "agent", "skills"),
+    getAgentPath("skills"),
     join(cwd, ".pi", "skills"),
     join(cwd, "skills"),
   ];
@@ -502,7 +502,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   }
 
   const templateDirs = [
-    join(homeDir, ".pi", "agent", "commands"),
+    getAgentPath("commands"),
     join(homeDir, ".claude", "commands"),
     join(cwd, ".pi", "commands"),
     join(cwd, ".claude", "commands"),
@@ -580,12 +580,7 @@ function sessionProjectNameFromDirectory(dir: string): string {
 }
 
 export function getRecentSessions(maxCount: number = 3): RecentSession[] {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || osHomedir();
-  
-  const sessionsDirs = [
-    join(homeDir, ".pi", "agent", "sessions"),
-    join(homeDir, ".pi", "sessions"),
-  ];
+  const sessionsDirs = getAgentSessionDirs();
   
   const sessions: { name: string; mtime: number }[] = [];
   

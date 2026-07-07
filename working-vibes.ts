@@ -6,7 +6,7 @@ import type { AssistantMessage, Context, Model, ProviderStreamOptions } from "@e
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { getAgentPath } from "./paths.ts";
 
 type VibeMode = "generate" | "file";
 type CompleteFunction = (model: Model<string>, context: Context, options?: ProviderStreamOptions) => Promise<AssistantMessage>;
@@ -100,8 +100,7 @@ let recentVibes: string[] = [];
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getSettingsPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "settings.json");
+  return getAgentPath("settings.json");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,8 +230,7 @@ function saveModelConfig(): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getVibesDir(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "vibes");
+  return getAgentPath("vibes");
 }
 
 function toVibeFileSlug(theme: string): string {

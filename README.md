@@ -54,7 +54,7 @@ Fixed editor is on by default.
 - `/powerline fixed-editor on` — re-enable the fixed editor
 - `/powerline fixed-editor toggle` — switch between the two
 
-You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/settings.json`:
+You can also set it in the agent settings file (`~/.pi/agent/settings.json` by default, or under `PI_CODING_AGENT_DIR`) or project-local `.pi/settings.json`:
 
 ```json
 {
@@ -80,7 +80,7 @@ Use `"fixedEditor": true` to enable it again. Set `"welcome": false` to skip the
 
 **Environment:** `POWERLINE_NERD_FONTS=1` to force Nerd Fonts, `=0` for ASCII.
 
-Preset selection is saved to `~/.pi/agent/settings.json` under `powerline` and restored on startup.
+Preset selection is saved under `powerline` in the agent settings file and restored on startup.
 Run `/powerline default` to switch back to the default preset.
 
 ### Custom items from extension statuses
@@ -176,7 +176,7 @@ The managed shell is persistent for the current pi session. Command output appea
 
 ### Bash mode configuration
 
-In `~/.pi/agent/settings.json`:
+In `~/.pi/agent/settings.json` (or under `PI_CODING_AGENT_DIR` when that environment variable is set):
 
 ```json
 {
@@ -201,7 +201,7 @@ Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one ac
 
 Auto-restore after an agent run only happens when the editor is still empty. If you typed meanwhile, the stash is preserved.
 
-The `stash` indicator appears in the powerline bar (on presets with `extension_statuses`). Active stash is still session-local and resets on session switch / disable, but stash history is persisted to `~/.pi/agent/powerline-footer/stash-history.json` so it survives restarts.
+The `stash` indicator appears in the powerline bar (on presets with `extension_statuses`). Active stash is still session-local and resets on session switch / disable, but stash history is persisted to the agent dir at `powerline-footer/stash-history.json` so it survives restarts. By default the agent dir is `~/.pi/agent`; set `PI_CODING_AGENT_DIR` to move global powerline settings, stash history, sessions, vibes, skills, commands, and extension discovery with Pi.
 
 ### Stash history
 
@@ -235,7 +235,7 @@ Copy/cut actions do not modify stash state or stash history. Dragging files, fol
 
 ### Shortcut configuration
 
-You can override shortcut keys in `~/.pi/agent/settings.json`:
+You can override shortcut keys in the agent settings file:
 
 ```json
 {
@@ -256,7 +256,11 @@ You can override shortcut keys in `~/.pi/agent/settings.json`:
 }
 ```
 
-After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts (like `Alt+S`), or duplicate conflicts automatically fall back to safe defaults. `cmd` and `command` are accepted aliases for Pi's `super` modifier for the documented Command navigation keys; unsupported Command-letter bindings such as `cmd+c` are ignored instead of matching plain text input. Some terminals, including Ghostty, bind Command+Arrow themselves; remap those terminal keys to send `\x1b[1;9A` / `\x1b[1;9B` for chat scrolling and `\x1b[1;10A` / `\x1b[1;10B` for editor-boundary navigation if you want Pi to receive them.
+After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts (like `Alt+S`), or duplicate conflicts automatically fall back to safe defaults. Set a binding to `null` or `""` to disable that action; disabled actions are not registered, do not match raw terminal fallbacks, and are omitted from the fixed-editor scroll-away hint card. `bashMode.toggleShortcut` also accepts `null` or `""` to disable the keyboard toggle while keeping `/bash-mode` available. `cmd` and `command` are accepted aliases for Pi's `super` modifier for the documented Command navigation keys; unsupported Command-letter bindings such as `cmd+c` are ignored instead of matching plain text input. Some terminals, including Ghostty, bind Command+Arrow themselves; remap those terminal keys to send `\x1b[1;9A` / `\x1b[1;9B` for chat scrolling and `\x1b[1;10A` / `\x1b[1;10B` for editor-boundary navigation if you want Pi to receive them.
+
+### Editor autocomplete composition
+
+Powerline wraps Pi's autocomplete provider so bash mode can add shell-aware suggestions. When another editor extension was already installed, powerline now passes Pi's provider through that previous editor's `setAutocompleteProvider()` first and then wraps the resulting provider. This preserves prior autocomplete-provider wrappers where possible, but it is not full render/input composition between custom editors.
 
 ## Working Vibes
 
@@ -279,7 +283,7 @@ Transform boring "Working..." messages into themed phrases that match your style
 
 ### Configuration
 
-In `~/.pi/agent/settings.json`:
+In the agent settings file:
 
 ```json
 {
@@ -302,13 +306,13 @@ In `~/.pi/agent/settings.json`:
 
 **File mode setup:**
 ```bash
-/vibe generate mafia 200    # Generate 200 vibes, save to ~/.pi/agent/vibes/mafia.txt
+/vibe generate mafia 200    # Generate 200 vibes, save to the agent dir
 /vibe mode file             # Switch to file mode
 /vibe mafia                 # Now uses the file
 ```
 
 **How file mode works:**
-1. Vibes are loaded from `~/.pi/agent/vibes/{theme}.txt` into memory
+1. Vibes are loaded from `vibes/{theme}.txt` in the agent dir into memory
 2. Uses seeded shuffle (Mulberry32 PRNG) — cycles through all vibes before repeating
 3. New seed each session — different order every time you restart pi
 4. Zero latency, zero cost, works offline
@@ -397,7 +401,7 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 
 ### Custom Theme Override
 
-Create `~/.pi/agent/extensions/powerline-footer/theme.json`:
+Create `extensions/powerline-footer/theme.json` in the agent dir:
 
 ```json
 {

@@ -8,8 +8,8 @@ import { getOneOffBashCommandContext } from "./completion.ts";
 import type { GhostSuggestion } from "./types.ts";
 
 interface EditorBoundaryShortcuts {
-  start: string;
-  end: string;
+  start: string | null;
+  end: string | null;
 }
 
 interface BashModeEditorOptions {
@@ -105,6 +105,11 @@ export class BashModeEditor extends CustomEditor {
     super(tui, theme, keybindings);
     this.keybindingsRef = keybindings;
     this.optionsRef = options;
+  }
+
+  setAutocompleteProvider(provider: AutocompleteProvider): void {
+    super.setAutocompleteProvider(provider);
+    this.wrappedProviderInstalled = false;
   }
 
   installAutocompleteProvider(provider: AutocompleteProvider): void {

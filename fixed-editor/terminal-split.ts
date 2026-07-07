@@ -10,8 +10,8 @@ export interface TerminalLike {
 }
 
 interface KeyboardScrollShortcuts {
-  up: string;
-  down: string;
+  up: string | null;
+  down: string | null;
 }
 
 export type ScrollAwayNavigationShortcutId = "bottom" | "previousUser" | "nextUser" | "previousAssistant" | "nextAssistant";
@@ -214,18 +214,18 @@ export function emergencyTerminalModeReset(): string {
 function parseKeyboardScrollDelta(data: string, shortcuts: KeyboardScrollShortcuts = DEFAULT_KEYBOARD_SCROLL_SHORTCUTS): number {
   if (isKeyRelease(data)) return 0;
 
-  if (
+  if (shortcuts.up && (
     matchesConfiguredShortcut(data, shortcuts.up)
     || matchesKey(data, "pageUp")
     || matchesKey(data, "ctrl+shift+up")
     || /^\x1b\[(?:5;9(?::[12])?~|1;6(?::[12])?A|57421;9(?::[12])?u|57419;6(?::[12])?u)$/.test(data)
-  ) return 10;
-  if (
+  )) return 10;
+  if (shortcuts.down && (
     matchesConfiguredShortcut(data, shortcuts.down)
     || matchesKey(data, "pageDown")
     || matchesKey(data, "ctrl+shift+down")
     || /^\x1b\[(?:6;9(?::[12])?~|1;6(?::[12])?B|57422;9(?::[12])?u|57420;6(?::[12])?u)$/.test(data)
-  ) return -10;
+  )) return -10;
   return 0;
 }
 
@@ -431,39 +431,79 @@ function compactShortcutPair(previous: string, next: string): string {
   return `${compactShortcutLabel(previous)}/${compactShortcutLabel(next)}`;
 }
 
-function buildScrollAwayCardCandidates(
-  bottom: ScrollAwayNavigationShortcut,
-  previousUser: ScrollAwayNavigationShortcut,
-  nextUser: ScrollAwayNavigationShortcut,
-  previousAssistant: ScrollAwayNavigationShortcut,
-  nextAssistant: ScrollAwayNavigationShortcut,
-): ScrollAwayCardCandidate[] {
-  const bottomShortcut = `${bottom.shortcutLabel} ↓`;
-  const userShortcut = compactShortcutPair(previousUser.shortcutLabel, nextUser.shortcutLabel);
-  const assistantShortcut = compactShortcutPair(previousAssistant.shortcutLabel, nextAssistant.shortcutLabel);
+function buildScrollAwayCardCandidates(shortcuts: ReadonlyMap<ScrollAwayNavigationShortcutId, ScrollAwayNavigationShortcut>): ScrollAwayCardCandidate[] {
+  const bottom = shortcuts.get("bottom");
+  const previousUser = shortcuts.get("previousUser");
+  const nextUser = shortcuts.get("nextUser");
+  const previousAssistant = shortcuts.get("previousAssistant");
+  const nextAssistant = shortcuts.get("nextAssistant");
 
-  return [
-    buildBoxedScrollAwayCard([
-      { kind: "content", left: "Jump to bottom", right: bottomShortcut },
-      { kind: "divider" },
-      { kind: "content", left: "User messages", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
-      { kind: "content", left: "Assistant responses", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
-    ]),
-    buildBoxedScrollAwayCard([
-      { kind: "content", left: "Bottom", right: bottomShortcut },
-      { kind: "divider" },
-      { kind: "content", left: "User", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
-      { kind: "content", left: "Assistant", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
-    ]),
-    buildBoxedScrollAwayCard([
-      { kind: "content", left: "Bottom", right: bottomShortcut },
-      { kind: "divider" },
-      { kind: "content", left: "User prev/next", right: userShortcut },
-      { kind: "content", left: "Asst prev/next", right: assistantShortcut },
-    ]),
-    { lines: [`Bottom ${bottomShortcut}`] },
-    { lines: ["Bottom ↓"] },
-  ];
+  const longRows: ScrollAwayCardRow[] = [];
+  const shortRows: ScrollAwayCardRow[] = [];
+  const compactRows: ScrollAwayCardRow[] = [];
+
+  if (bottom) {
+    const bottomShortcut = `${bottom.shortcutLabel} ↓`;
+    longRows.push({ kind: "content", left: "Jump to bottom", right: bottomShortcut });
+    shortRows.push({ kind: "content", left: "Bottom", right: bottomShortcut });
+    compactRows.push({ kind: "content", left: "Bottom", right: bottomShortcut });
+  }
+
+  const longMessageRows: ScrollAwayCardContentRow[] = [];
+  const shortMessageRows: ScrollAwayCardContentRow[] = [];
+  const compactMessageRows: ScrollAwayCardContentRow[] = [];
+
+  if (previousUser && nextUser) {
+    longMessageRows.push({ kind: "content", left: "User messages", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` });
+    shortMessageRows.push({ kind: "content", left: "User", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` });
+    compactMessageRows.push({ kind: "content", left: "User prev/next", right: compactShortcutPair(previousUser.shortcutLabel, nextUser.shortcutLabel) });
+  } else {
+    if (previousUser) {
+      longMessageRows.push({ kind: "content", left: "Previous user", right: previousUser.shortcutLabel });
+      shortMessageRows.push({ kind: "content", left: "User prev", right: previousUser.shortcutLabel });
+      compactMessageRows.push({ kind: "content", left: "User prev", right: compactShortcutLabel(previousUser.shortcutLabel) });
+    }
+    if (nextUser) {
+      longMessageRows.push({ kind: "content", left: "Next user", right: nextUser.shortcutLabel });
+      shortMessageRows.push({ kind: "content", left: "User next", right: nextUser.shortcutLabel });
+      compactMessageRows.push({ kind: "content", left: "User next", right: compactShortcutLabel(nextUser.shortcutLabel) });
+    }
+  }
+
+  if (previousAssistant && nextAssistant) {
+    longMessageRows.push({ kind: "content", left: "Assistant responses", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` });
+    shortMessageRows.push({ kind: "content", left: "Assistant", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` });
+    compactMessageRows.push({ kind: "content", left: "Asst prev/next", right: compactShortcutPair(previousAssistant.shortcutLabel, nextAssistant.shortcutLabel) });
+  } else {
+    if (previousAssistant) {
+      longMessageRows.push({ kind: "content", left: "Previous assistant", right: previousAssistant.shortcutLabel });
+      shortMessageRows.push({ kind: "content", left: "Asst prev", right: previousAssistant.shortcutLabel });
+      compactMessageRows.push({ kind: "content", left: "Asst prev", right: compactShortcutLabel(previousAssistant.shortcutLabel) });
+    }
+    if (nextAssistant) {
+      longMessageRows.push({ kind: "content", left: "Next assistant", right: nextAssistant.shortcutLabel });
+      shortMessageRows.push({ kind: "content", left: "Asst next", right: nextAssistant.shortcutLabel });
+      compactMessageRows.push({ kind: "content", left: "Asst next", right: compactShortcutLabel(nextAssistant.shortcutLabel) });
+    }
+  }
+
+  if (longRows.length > 0 && longMessageRows.length > 0) longRows.push({ kind: "divider" });
+  longRows.push(...longMessageRows);
+  if (shortRows.length > 0 && shortMessageRows.length > 0) shortRows.push({ kind: "divider" });
+  shortRows.push(...shortMessageRows);
+  if (compactRows.length > 0 && compactMessageRows.length > 0) compactRows.push({ kind: "divider" });
+  compactRows.push(...compactMessageRows);
+
+  const candidates = [longRows, shortRows, compactRows]
+    .filter((rows) => rows.length > 0)
+    .map(buildBoxedScrollAwayCard);
+
+  if (bottom) {
+    const bottomShortcut = `${bottom.shortcutLabel} ↓`;
+    candidates.push({ lines: [`Bottom ${bottomShortcut}`] }, { lines: ["Bottom ↓"] });
+  }
+
+  return candidates;
 }
 
 export function buildFixedClusterPaint(
@@ -966,19 +1006,13 @@ export class TerminalSplitCompositor {
   }
 
   private computeScrollAwayNavigationCard(width: number, scrollableRows: number): ScrollAwayCardLayout | null {
-    if (!this.scrollAwayNavigationCard || this.scrollOffset <= 0 || scrollableRows < 1 || width < visibleWidth("Bottom ↓")) {
+    if (!this.scrollAwayNavigationCard || this.scrollAwayNavigationCard.shortcuts.length === 0 || this.scrollOffset <= 0 || scrollableRows < 1 || width < 1) {
       return null;
     }
 
     const shortcutById = new Map(this.scrollAwayNavigationCard.shortcuts.map((shortcut) => [shortcut.id, shortcut]));
-    const bottom = shortcutById.get("bottom");
-    const previousUser = shortcutById.get("previousUser");
-    const nextUser = shortcutById.get("nextUser");
-    const previousAssistant = shortcutById.get("previousAssistant");
-    const nextAssistant = shortcutById.get("nextAssistant");
-    if (!bottom || !previousUser || !nextUser || !previousAssistant || !nextAssistant) return null;
 
-    for (const candidate of buildScrollAwayCardCandidates(bottom, previousUser, nextUser, previousAssistant, nextAssistant)) {
+    for (const candidate of buildScrollAwayCardCandidates(shortcutById)) {
       const candidateWidth = Math.max(...candidate.lines.map((line) => visibleWidth(line)));
       if (candidateWidth > width || candidate.lines.length > scrollableRows) continue;
 

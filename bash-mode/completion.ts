@@ -478,7 +478,15 @@ export class OneOffBashAutocompleteProvider implements AutocompleteProvider {
   }
 }
 
+function getProviderTriggerCharacters(provider: AutocompleteProvider | undefined): string[] {
+  const candidate = provider && typeof provider === "object" ? Reflect.get(provider, "triggerCharacters") : undefined;
+  return Array.isArray(candidate)
+    ? candidate.filter((character): character is string => typeof character === "string" && character.length === 1)
+    : [];
+}
+
 export class ModeAwareAutocompleteProvider implements AutocompleteProvider {
+  readonly triggerCharacters: string[];
   private readonly defaultProvider: AutocompleteProvider | undefined;
   private readonly bashProvider: AutocompleteProvider;
   private readonly oneOffBashProvider: AutocompleteProvider;
@@ -494,6 +502,13 @@ export class ModeAwareAutocompleteProvider implements AutocompleteProvider {
     this.bashProvider = bashProvider;
     this.oneOffBashProvider = oneOffBashProvider;
     this.isBashModeActive = isBashModeActive;
+    this.triggerCharacters = [
+      ...new Set([
+        ...getProviderTriggerCharacters(defaultProvider),
+        ...getProviderTriggerCharacters(bashProvider),
+        ...getProviderTriggerCharacters(oneOffBashProvider),
+      ]),
+    ];
   }
 
   getSuggestions(

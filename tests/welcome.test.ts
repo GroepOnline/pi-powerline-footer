@@ -11,6 +11,7 @@ test("discoverLoadedCounts ignores dangling skill symlinks", () => {
   const project = join(root, "project");
   const skillsDir = join(home, ".pi", "agent", "skills");
   const originalHome = process.env.HOME;
+  const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
   const originalCwd = process.cwd();
   const originalDebug = console.debug;
   const debugCalls: unknown[][] = [];
@@ -26,6 +27,7 @@ test("discoverLoadedCounts ignores dangling skill symlinks", () => {
 
   try {
     process.env.HOME = home;
+    delete process.env.PI_CODING_AGENT_DIR;
     process.chdir(project);
 
     assert.equal(discoverLoadedCounts().skills, 1);
@@ -38,6 +40,11 @@ test("discoverLoadedCounts ignores dangling skill symlinks", () => {
     } else {
       process.env.HOME = originalHome;
     }
+    if (originalAgentDir === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });
@@ -45,15 +52,22 @@ test("discoverLoadedCounts ignores dangling skill symlinks", () => {
 function withTemporaryHome(run: (home: string) => void): void {
   const home = mkdtempSync(join(tmpdir(), "powerline-welcome-home-"));
   const originalHome = process.env.HOME;
+  const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 
   try {
     process.env.HOME = home;
+    delete process.env.PI_CODING_AGENT_DIR;
     run(home);
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalAgentDir === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = originalAgentDir;
     }
     rmSync(home, { recursive: true, force: true });
   }
@@ -87,5 +101,63 @@ test("getRecentSessions falls back to encoded directory when header cwd is unusa
     const names = getRecentSessions(10).map((session) => session.name);
     assert.ok(names.includes("json"));
     assert.ok(names.includes("cwd"));
+  });
+});
+
+test("welcome discovery respects PI_CODING_AGENT_DIR for agent-global files", () => {
+  withTemporaryHome((home) => {
+    const root = mkdtempSync(join(tmpdir(), "powerline-welcome-agent-dir-"));
+    const project = join(root, "project");
+    const agentDir = join(root, "agent-dir");
+    const originalCwd = process.cwd();
+
+    try {
+      process.env.PI_CODING_AGENT_DIR = agentDir;
+      mkdirSync(project, { recursive: true });
+      mkdirSync(join(agentDir, "extensions", "local-ext"), { recursive: true });
+      mkdirSync(join(agentDir, "skills", "skill-a"), { recursive: true });
+      mkdirSync(join(agentDir, "commands"), { recursive: true });
+      mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+      writeFileSync(join(agentDir, "AGENTS.md"), "# Agent instructions\n");
+      writeFileSync(join(agentDir, "extensions", "local-ext", "index.ts"), "export default {};\n");
+      writeFileSync(join(agentDir, "skills", "skill-a", "SKILL.md"), "# Skill\n");
+      writeFileSync(join(agentDir, "commands", "hello.md"), "hello\n");
+      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:pkg-one@1.0.0"] }));
+      writeFileSync(join(home, ".pi", "agent", "AGENTS.md"), "# Should not count\n");
+      process.chdir(project);
+
+      assert.deepEqual(discoverLoadedCounts(), {
+        contextFiles: 1,
+        extensions: 2,
+        skills: 1,
+        promptTemplates: 1,
+      });
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+test("getRecentSessions reads custom agent sessions and existing legacy sessions", () => {
+  withTemporaryHome((home) => {
+    const root = mkdtempSync(join(tmpdir(), "powerline-welcome-sessions-"));
+    const agentDir = join(root, "agent-dir");
+
+    try {
+      process.env.PI_CODING_AGENT_DIR = agentDir;
+      const customSessionDir = join(agentDir, "sessions", "--custom--");
+      const legacySessionDir = join(home, ".pi", "sessions", "--legacy--");
+      mkdirSync(customSessionDir, { recursive: true });
+      mkdirSync(legacySessionDir, { recursive: true });
+      writeFileSync(join(customSessionDir, "session.jsonl"), JSON.stringify({ cwd: "/tmp/custom-project" }) + "\n");
+      writeFileSync(join(legacySessionDir, "session.jsonl"), JSON.stringify({ cwd: "/tmp/legacy-project" }) + "\n");
+
+      const names = getRecentSessions(10).map((session) => session.name);
+      assert.ok(names.includes("custom-project"));
+      assert.ok(names.includes("legacy-project"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -918,6 +918,57 @@ test("terminal split scroll-away navigation card width tiers collapse without wr
   }
 });
 
+test("terminal split omits disabled scroll-away shortcut labels", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  let bottomClicks = 0;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollAwayNavigationCard: {
+      shortcuts: [
+        { id: "previousUser", shortcutLabel: "ctrl+shift+u" },
+        { id: "nextAssistant", shortcutLabel: "ctrl+alt+." },
+      ],
+      onClickBottom: undefined,
+    },
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(80);
+  inputListener?.("\x1b[5~");
+  const rendered = tui.render(80);
+  const output = rendered.join("\n");
+
+  assert.ok(output.includes("Previous user"));
+  assert.ok(output.includes("Next assistant"));
+  assert.ok(!output.includes("Jump to bottom"));
+  assert.ok(!output.includes("ctrl+alt+g"));
+
+  const rowIndex = rendered.findIndex((line) => line.includes("Previous user"));
+  assert.notEqual(rowIndex, -1);
+  assert.deepEqual(inputListener?.(`\x1b[<0;1;${rowIndex + 1}M`), { consume: true });
+  assert.equal(bottomClicks, 0);
+
+  compositor.dispose();
+});
+
 test("terminal split suppresses the scroll-away navigation card while overlays are visible", () => {
   const terminal = new FakeTerminal();
   terminal.columns = 80;
@@ -1631,6 +1682,41 @@ test("terminal split keyboard scroll supports Pi page aliases and preserves app 
   assert.equal(inputListener?.("\x1b[57419;10:3u"), undefined);
   assert.equal(inputListener?.("\x1bp"), undefined);
   assert.equal(inputListener?.("\x1bn"), undefined);
+
+  compositor.dispose();
+});
+
+test("terminal split keyboard scroll ignores disabled configured shortcuts and aliases", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    keyboardScrollShortcuts: { up: null, down: "ctrl+shift+d" },
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render();
+
+  assert.equal(inputListener?.("\x1b[5~"), undefined);
+  assert.equal(inputListener?.("\x1b[5;9~"), undefined);
+  assert.equal(inputListener?.("\x1b[1;9A"), undefined);
+  assert.deepEqual(inputListener?.("\x1b[100;6u"), { consume: true });
 
   compositor.dispose();
 });

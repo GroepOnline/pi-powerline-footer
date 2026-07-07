@@ -37,7 +37,9 @@ export function shortcutConflictKey(shortcut: string): string {
   }
 }
 
-export function matchesConfiguredShortcut(data: string, shortcut: string): boolean {
+export function matchesConfiguredShortcut(data: string, shortcut: string | null | undefined): boolean {
+  if (!shortcut) return false;
+
   const normalizedShortcut = shortcut.toLowerCase();
   if (shortcutUsesSuper(normalizedShortcut)) {
     return SUPER_SHORTCUT_PATTERNS.get(normalizedShortcut)?.test(data) ?? false;

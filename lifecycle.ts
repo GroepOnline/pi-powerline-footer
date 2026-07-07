@@ -6,6 +6,14 @@ export function shouldResetExtendedKeyboardModesOnShutdown(reason: unknown): boo
   return reason === "quit";
 }
 
+export function shouldRestoreInlineEditorCursorOnShutdown(
+  reason: unknown,
+  fixedEditorEnabled: boolean,
+  hadFixedEditorCompositor: boolean,
+): boolean {
+  return reason === "quit" && !fixedEditorEnabled && !hadFixedEditorCompositor;
+}
+
 export function isStaleExtensionContextError(error: unknown): boolean {
   return error instanceof Error && (
     error.message.includes("This extension instance is stale")
