@@ -6,6 +6,18 @@ import { join } from "node:path";
 
 const FAUX_PROVIDER_PATH = new URL("../node_modules/@earendil-works/pi-ai/dist/providers/faux.js", import.meta.url).href;
 
+async function importFauxProviderTools() {
+  try {
+    return await import("@earendil-works/pi-ai/compat");
+  } catch (error) {
+    const code = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
+    if (code !== "ERR_PACKAGE_PATH_NOT_EXPORTED" && code !== "ERR_MODULE_NOT_FOUND") {
+      throw error;
+    }
+    return import(FAUX_PROVIDER_PATH);
+  }
+}
+
 function ensurePiModuleLinks(): { cleanup: () => void } {
   const nodeModulesDir = join(process.cwd(), "node_modules", "@earendil-works");
   mkdirSync(nodeModulesDir, { recursive: true });
@@ -46,7 +58,7 @@ test("generateVibesBatch includes a system prompt so faux providers can return t
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, registerFauxProvider } = await import(FAUX_PROVIDER_PATH);
+    const { fauxAssistantMessage, registerFauxProvider } = await importFauxProviderTools();
     const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
 
     const registration = registerFauxProvider({
@@ -108,7 +120,7 @@ test("on-demand vibe generation includes a system prompt for providers that requ
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, registerFauxProvider } = await import(FAUX_PROVIDER_PATH);
+    const { fauxAssistantMessage, registerFauxProvider } = await importFauxProviderTools();
     const { initVibeManager, onVibeAgentStart, onVibeBeforeAgentStart, setVibeModel, setVibeTheme } = await import("../working-vibes.ts");
 
     const registration = registerFauxProvider({
@@ -175,7 +187,7 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, registerFauxProvider } = await import(FAUX_PROVIDER_PATH);
+    const { fauxAssistantMessage, registerFauxProvider } = await importFauxProviderTools();
     const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
 
     const registration = registerFauxProvider({

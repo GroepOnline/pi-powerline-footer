@@ -22,6 +22,8 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.customItems[1].hideWhenMissing, false);
   assert.equal(config.mouseScroll, true);
   assert.equal(config.fixedEditor, true);
+  assert.equal(config.welcome, true);
+  assert.equal(config.stashSharpSShortcut, false);
 });
 
 test("parsePowerlineConfig supports disabling mouse scroll", () => {
@@ -44,23 +46,38 @@ test("parsePowerlineConfig supports disabling fixed editor", () => {
   assert.equal(config.fixedEditor, false);
 });
 
+test("parsePowerlineConfig supports welcome and legacy sharp-S toggles", () => {
+  const disabled = parsePowerlineConfig(
+    { preset: "compact", welcome: false, stashSharpSShortcut: true },
+    ["default", "compact"],
+  );
+  const shorthand = parsePowerlineConfig("compact", ["default", "compact"]);
+
+  assert.equal(disabled.welcome, false);
+  assert.equal(disabled.stashSharpSShortcut, true);
+  assert.equal(shorthand.welcome, true);
+  assert.equal(shorthand.stashSharpSShortcut, false);
+});
+
 test("parsePowerlineConfig extracts supported segment options", () => {
   const config = parsePowerlineConfig(
     {
       preset: "default",
-      model: { showThinkingLevel: true },
+      model: { showThinkingLevel: true, display: "qualified" },
       path: { mode: "full", maxLength: 120 },
       git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch" },
       time: { format: "12h", showSeconds: true },
+      cost: { subscriptionDisplay: "both" },
     },
     ["default", "compact"],
   );
 
   assert.deepEqual(config.segmentOptions, {
-    model: { showThinkingLevel: true },
+    model: { showThinkingLevel: true, display: "qualified" },
     path: { mode: "full", maxLength: 120 },
     git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch" },
     time: { format: "12h", showSeconds: true },
+    cost: { subscriptionDisplay: "both" },
   });
 });
 
@@ -68,13 +85,14 @@ test("mergeSegmentOptions lets user config override preset segment defaults", ()
   assert.deepEqual(
     mergeSegmentOptions(
       { path: { mode: "basename", maxLength: 20 }, git: { showBranch: true, showUntracked: true } },
-      { path: { mode: "full" }, git: { showUntracked: false } },
+      { path: { mode: "full" }, git: { showUntracked: false }, cost: { subscriptionDisplay: "reported-cost" } },
     ),
     {
       model: {},
       path: { mode: "full", maxLength: 20 },
       git: { showBranch: true, showUntracked: false },
       time: {},
+      cost: { subscriptionDisplay: "reported-cost" },
     },
   );
 });

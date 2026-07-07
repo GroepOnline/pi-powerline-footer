@@ -5,7 +5,7 @@ import {
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isKeyRelease, matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
+import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -34,12 +34,14 @@ import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSession
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { readCoreContextUsage } from "./context-usage.ts";
+import { isStaleExtensionContextError, shouldResetExtendedKeyboardModesOnShutdown, shouldShowStartupWelcome } from "./lifecycle.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.ts";
 import {
   isSupportedSuperShortcut,
   matchesConfiguredShortcut,
+  matchesStashShortcutInput,
   shortcutConflictKey,
   shortcutUsesSuper,
 } from "./shortcuts.ts";
@@ -69,6 +71,8 @@ let config: PowerlineConfig = {
   customItems: [],
   mouseScroll: true,
   fixedEditor: true,
+  welcome: true,
+  stashSharpSShortcut: false,
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -627,7 +631,7 @@ function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = pro
 
 function writePowerlineOptionSetting(
   cwd: string,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor">>,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "welcome" | "stashSharpSShortcut">>,
   currentPreset: StatusLinePreset,
 ): boolean {
   return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
@@ -652,10 +656,6 @@ function normalizePreset(value: unknown): StatusLinePreset | null {
 
 function hasNonWhitespaceText(text: string): boolean {
   return text.trim().length > 0;
-}
-
-function isStaleExtensionContextError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("This extension instance is stale");
 }
 
 function getCurrentEditorText(ctx: any, editor: any): string {
@@ -1247,7 +1247,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
-      if (event.reason === "startup") {
+      if (shouldShowStartupWelcome(event.reason, config.welcome)) {
         if (settings.quietStartup === true) {
           setupWelcomeHeader(ctx);
         } else {
@@ -1261,11 +1261,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (event) => {
-    // When switching sessions (resume/new/fork), preserve keyboard modes
-    // (Kitty protocol, modifyOtherKeys) so that Shift+Enter and other
-    // modified keys continue to work. Only reset on quit/reload where
-    // the terminal should be restored to a clean state.
-    const isTerminalExit = event?.reason === "quit" || event?.reason === "reload";
+    // When switching sessions or reloading, preserve keyboard modes (Kitty
+    // protocol, modifyOtherKeys) so Shift+Enter and other modified keys keep
+    // working after the next session starts. Only a real quit should hard-reset
+    // the terminal back to plain keyboard mode.
+    const isTerminalExit = shouldResetExtendedKeyboardModesOnShutdown(event?.reason);
 
     sessionGeneration++;
     dismissWelcomeOverlay?.();
@@ -1576,15 +1576,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function isStashShortcutInput(data: string): boolean {
-    if (isKeyRelease(data)) return false;
-
-    return data === "ß"
-      || data === "\x1bs"
-      || data === "\x1bS"
-      || /^\x1b\[(?:83|115)(?::\d*)?(?::\d*)?;3(?::\d+)?u$/.test(data)
-      || data === "\x1b[27;3;115~"
-      || data === "\x1b[27;3;83~"
-      || matchesKey(data, "alt+s");
+    return matchesStashShortcutInput(data, { includePrintableSharpS: config.stashSharpSShortcut });
   }
 
   function getChatJumpShortcutAction(data: string): ChatJumpShortcutAction | null {
@@ -1706,20 +1698,37 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("agent_end", async (_event, ctx) => {
     isStreaming = false;
     liveAssistantUsage = null;
+
+    let hasUI = false;
+    try {
+      hasUI = Boolean(ctx.hasUI);
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
+      currentCtx = null;
+      return;
+    }
+
     currentCtx = ctx;
-    if (ctx.hasUI) {
-      onVibeAgentEnd(ctx.ui.setWorkingMessage); // working-vibes internal state + reset message
-      if (stashedEditorText !== null) {
-        if (ctx.ui.getEditorText().trim() === "") {
-          ctx.ui.setEditorText(stashedEditorText);
-          stashedEditorText = null;
-          ctx.ui.setStatus("stash", undefined);
-          ctx.ui.notify("Stash restored", "info");
-        } else {
-          ctx.ui.notify("Stash preserved — clear editor then Alt+S to restore", "info");
+    try {
+      if (hasUI) {
+        onVibeAgentEnd(ctx.ui.setWorkingMessage); // working-vibes internal state + reset message
+        if (stashedEditorText !== null) {
+          if (ctx.ui.getEditorText().trim() === "") {
+            ctx.ui.setEditorText(stashedEditorText);
+            stashedEditorText = null;
+            ctx.ui.setStatus("stash", undefined);
+            ctx.ui.notify("Stash restored", "info");
+          } else {
+            ctx.ui.notify("Stash preserved — clear editor then Alt+S to restore", "info");
+          }
         }
       }
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
+      currentCtx = null;
+      return;
     }
+
     requestStatusRender();
   });
 
@@ -1888,14 +1897,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     handler: async (ctx) => {
       if (!enabled || !ctx.hasUI) return;
       await setBashModeActive(!bashModeActive, ctx);
-    },
-  });
-
-  pi.registerShortcut("alt+s", {
-    description: "Stash/restore editor text",
-    handler: async (ctx) => {
-      if (!enabled || !ctx.hasUI) return;
-      stashOrRestoreEditorText(ctx);
     },
   });
 

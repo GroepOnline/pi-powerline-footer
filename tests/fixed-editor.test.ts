@@ -461,7 +461,8 @@ test("terminal split keeps tabbed overlay composition within terminal width", ()
   const overlay = "\x1b[38;2;119;125;136m[grep]: render.ts-706- \treturn [...lines.slice(0, visibleLines), truncLine(theme.fg(\"dim\", hint), width)];\x1b[39m";
 
   const before = tui.compositeLineAt("Validation before " + " ".repeat(232), overlay, 20, 210, 250);
-  assert.ok(visibleWidth(before) > 250);
+  assert.equal(visibleWidth(before), 250);
+  assert.match(before, /\t/);
 
   const compositor = new TerminalSplitCompositor({
     tui,

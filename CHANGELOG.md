@@ -4,14 +4,26 @@
 
 ### Added
 - **Fixed-editor scroll-away shortcut hint card** — Shows a stacked bottom/user/assistant shortcut card when chat is scrolled away from the bottom; clicking anywhere in the card jumps back to the bottom when fixed-editor mouse handling is enabled.
+- **Welcome toggle** — Added `powerline.welcome` so the startup welcome UI can be disabled without disabling the footer. Thanks to OCPdev25, miloslavnosek, vzeazy, and Florian Kinder (@fank) for #48/#89.
+- **Display options** — Added `powerline.cost.subscriptionDisplay` and `powerline.model.display` for subscription cost and provider-qualified model names. Thanks to Alexandr Burdiyan (@burdiyan), Meidhy (@dymayday), Mathu Mounasamy (@Mathuv), and pserey for #3/#83/#50.
+- **Legacy sharp-S stash opt-in** — Added `powerline.stashSharpSShortcut` for users who intentionally want printable `ß` to trigger stash. Thanks to SebastianRuettiRuettger and Filip (@filipores) for #39/#84.
+- **Contribution guide** — Added lightweight bug report, feature request, PR, testing, docs, and changelog guidance. Thanks to OCPdev25 for #49.
 
 ### Changed
 - **Herdr and tmux scroll guidance** — Keeps fixed-editor mouse scrolling enabled by default and documents that host multiplexer scrollback needs `/powerline fixed-editor off`.
 - **Bottom jump shortcut** — Uses `ctrl+alt+g` as the default fixed-editor jump-to-bottom shortcut instead of `ctrl+shift+g`.
+- **Stash shortcut safety** — Literal `ß` is no longer consumed as stash by default; unambiguous Alt/Meta-S escape encodings still work.
+- **Docs for UI and demo settings** — Clarified that the README screenshot is illustrative, documented a current footer setup, noted the old chrome limitation, and documented the URL Ctrl-click mouse-reporting limitation. Thanks to Yosof Badr (@yosofbadr), kaiwah, Jason (@itguy327), Oliver Mannion (@tekumara), and thurstonsand for #75/#63/#45.
+- **Pi 0.80 compatibility** — Widened peer ranges and refreshed dev dependencies against `@earendil-works/*` 0.80.3. Thanks to Alexander Gerdes (@Avg8888) and AlexKucera for #87.
 
 ### Fixed
 - **Fixed-editor wheel bursts** — Coalesces rapid mouse-wheel packets into throttled viewport repaints and defers the follow-up TUI render until scrolling settles, reducing flicker and slowdowns in terminal multiplexers.
 - **Welcome discovery noise** — Ignored vanished/dangling skill, extension, and prompt-template entries during welcome overlay discovery instead of printing stack traces.
+- **Reload keyboard protocol** — Preserves extended keyboard modes on `/reload` and only hard-resets them on real quit. Thanks to Francesco Buldo (@frabul) for #81/#82.
+- **Prompt history recall** — Up-arrow prompt history no longer clobbers multiline drafts from the last logical line. Thanks to Nelson Tam (@nelson) and ceblan for #79.
+- **Stale extension contexts** — Handles both old and new Pi stale-context messages and guards late `agent_end` UI access without swallowing unrelated errors. Thanks to JackIce (@jackice) and Salem Sayed Abdel Gawad (@salemsayed) for #62, and Joshua Brunner (@joshuajbrunner), Arthur Bodera (@Thinkscape), @k0valik, and ET (@EdrisT) for #33.
+- **Context icon glyph** — Switched the Nerd Font context icon to a stable v3-friendly database glyph. Thanks to Michael Leonard (@LeonardMH) for #41.
+- **Recent session names** — Recent-session project names now prefer the session JSONL header `cwd` basename before falling back to encoded directory names. Thanks to Jon Leemon (@nomeelnoj) for #76.
 
 ## [0.6.1] - 2026-06-08
 

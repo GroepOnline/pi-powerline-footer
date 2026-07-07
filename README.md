@@ -6,7 +6,9 @@
 
 Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a powerline-style status bar, welcome overlay, and AI-generated "vibes" for loading messages. Inspired by [Powerlevel10k](https://github.com/romkatv/powerlevel10k) and [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
-<img width="1261" height="817" alt="Image" src="https://github.com/user-attachments/assets/4cc43320-3fb8-4503-b857-69dffa7028f2" />
+<img width="1261" height="817" alt="Example powerline UI" src="https://github.com/user-attachments/assets/4cc43320-3fb8-4503-b857-69dffa7028f2" />
+
+The screenshot is illustrative and may differ from current Pi versions. The supported surface is the fixed-editor powerline cluster; the older oh-my-pi-style editor chrome is not configurable today.
 
 ## Features
 
@@ -14,7 +16,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
 
-**Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, and recent sessions. Auto-dismisses after 30 seconds or on any key press.
+**Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, and recent sessions. Auto-dismisses after 30 seconds or on any key press. Set `powerline.welcome` to `false` to disable it while keeping the footer enabled.
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
@@ -28,7 +30,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Context awareness** — Color-coded warnings at 70% (yellow) and 90% (red) context usage. During streaming, the context segment refreshes from live assistant usage instead of waiting for the next turn. Auto-compact indicator when enabled. If `pi-custom-compaction` is installed and enabled, the powerline automatically hides native context segments so the footer does not show stale post-summary usage.
 
-**Token intelligence** — Smart formatting (1.2k, 45M), subscription detection (shows "(sub)" vs dollar cost).
+**Token intelligence** — Smart formatting (1.2k, 45M), subscription detection, and configurable subscription cost display.
 
 **Sticky bash mode** — Toggle bash mode with `ctrl+shift+b` or `/bash-mode`. It keeps a managed shell session alive for the current pi session, shows a dedicated `shell_mode` segment, streams command output into an embedded transcript below the editor, and lets `cd` or exported state persist across commands.
 
@@ -58,12 +60,14 @@ You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/setting
 {
   "powerline": {
     "preset": "default",
-    "fixedEditor": false
+    "fixedEditor": false,
+    "welcome": true,
+    "mouseScroll": true
   }
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience.
+Use `"fixedEditor": true` to enable it again. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. Terminal-native URL Ctrl-click also needs `/powerline mouse-scroll off` or `/powerline fixed-editor off` while fixed-editor mouse reporting is enabled.
 
 | Preset | Description |
 |--------|-------------|
@@ -119,7 +123,34 @@ You can promote any extension status key into its own dedicated powerline item. 
 - `hideWhenMissing` (optional): hide item when no status is present (default `true`)
 - `excludeFromExtensionStatuses` (optional): omit this key from the aggregate `extension_statuses` segment (default `true`)
 
-If you still prefer the old style, `"powerline": "default"` continues to work.
+If you still prefer the older string preset config shape, `"powerline": "default"` continues to work. String preset shorthand keeps `welcome` enabled and uses the default shortcut/cost/model display settings.
+
+### Demo settings
+
+For a compact current footer setup:
+
+```json
+{
+  "powerline": {
+    "preset": "default",
+    "fixedEditor": true,
+    "mouseScroll": true,
+    "path": { "mode": "basename" },
+    "model": { "display": "name" },
+    "cost": { "subscriptionDisplay": "subscription" }
+  }
+}
+```
+
+Use `"model": { "display": "qualified" }` when two providers expose models with the same display name.
+
+Subscription cost display accepts:
+
+| Mode | Subscription + reported cost | Subscription + no reported cost |
+|------|------------------------------|----------------------------------|
+| `subscription` | `(sub)` | `(sub)` |
+| `reported-cost` | `$0.12` | `(sub)` |
+| `both` | `$0.12 (sub)` | `(sub)` |
 
 ## Bash mode
 
@@ -159,7 +190,7 @@ In `~/.pi/agent/settings.json`:
 
 ## Editor Stash
 
-Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one active stash and clears the editor when stashing.
+Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one active stash and clears the editor when stashing. Powerline listens for unambiguous Alt/Meta-S escape encodings by default. If your old terminal setup only emits the printable German sharp-S character for Option+S and you still want that to trigger stash, set `"stashSharpSShortcut": true` under `powerline`.
 
 | Editor | Stash | `Alt+S` result |
 |--------|-------|----------------|

@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir as osHomedir } from "node:os";
 import type { Component } from "@earendil-works/pi-tui";
@@ -38,6 +38,7 @@ const GRADIENT_COLORS = [
   "\x1b[38;5;75m",
   "\x1b[38;5;51m",
 ];
+const SESSION_HEADER_READ_BYTES = 8192;
 
 function bold(text: string): string {
   return `\x1b[1m${text}\x1b[22m`;
@@ -545,6 +546,39 @@ export function discoverLoadedCounts(): LoadedCounts {
 /**
  * Get recent sessions from the sessions directory.
  */
+function readSessionHeaderProjectName(filePath: string): string | null {
+  let fd: number | null = null;
+  try {
+    fd = openSync(filePath, "r");
+    const buffer = Buffer.alloc(SESSION_HEADER_READ_BYTES);
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
+    const firstLine = buffer.toString("utf8", 0, bytesRead).split(/\r?\n/, 1)[0]?.trim();
+    if (!firstLine) return null;
+
+    const header: unknown = JSON.parse(firstLine);
+    if (typeof header !== "object" || header === null || Array.isArray(header)) return null;
+
+    const cwd = Reflect.get(header, "cwd");
+    if (typeof cwd !== "string" || cwd.trim().length === 0) return null;
+
+    return basename(cwd) || cwd;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
+
+function sessionProjectNameFromDirectory(dir: string): string {
+  const parentName = basename(dir);
+  if (!parentName.startsWith("--")) {
+    return parentName;
+  }
+
+  const parts = parentName.split("-").filter(p => p);
+  return parts[parts.length - 1] || parentName;
+}
+
 export function getRecentSessions(maxCount: number = 3): RecentSession[] {
   const homeDir = process.env.HOME || process.env.USERPROFILE || osHomedir();
   
@@ -566,12 +600,7 @@ export function getRecentSessions(maxCount: number = 3): RecentSession[] {
           if (stats.isDirectory()) {
             scanDir(entryPath);
           } else if (entry.endsWith(".jsonl")) {
-            const parentName = basename(dir);
-            let projectName = parentName;
-            if (parentName.startsWith("--")) {
-              const parts = parentName.split("-").filter(p => p);
-              projectName = parts[parts.length - 1] || parentName;
-            }
+            const projectName = readSessionHeaderProjectName(entryPath) ?? sessionProjectNameFromDirectory(dir);
             sessions.push({ name: projectName, mtime: stats.mtimeMs });
           }
         } catch (error) {

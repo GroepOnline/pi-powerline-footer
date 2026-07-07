@@ -76,7 +76,7 @@ export type StatusLinePreset =
 
 // Per-segment options
 export interface StatusLineSegmentOptions {
-  model?: { showThinkingLevel?: boolean };
+  model?: { showThinkingLevel?: boolean; display?: "name" | "qualified" };
   path?: { 
     mode?: "basename" | "abbreviated" | "full";
     maxLength?: number;
@@ -89,6 +89,7 @@ export interface StatusLineSegmentOptions {
     polling?: "full" | "branch" | "off";
   };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
+  cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both" };
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";
@@ -146,7 +147,15 @@ export interface UsageStats {
 // Context passed to segment render functions
 export interface SegmentContext {
   // From pi-mono
-  model: { id: string; name?: string; reasoning?: boolean; contextWindow?: number } | undefined;
+  model: {
+    id: string;
+    name?: string;
+    provider?: string;
+    providerId?: string;
+    providerName?: string;
+    reasoning?: boolean;
+    contextWindow?: number;
+  } | undefined;
   thinkingLevel: string;
   sessionId: string | undefined;
   cwd?: string;

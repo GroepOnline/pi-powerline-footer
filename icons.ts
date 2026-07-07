@@ -57,7 +57,7 @@ export const NERD_ICONS: IconSet = {
   branch: "\uF126",     // nf-fa-code_fork (git branch)
   git: "\uF1D3",        // nf-fa-git (git logo)
   tokens: "\uE26B",     // nf-seti-html (tokens symbol)
-  context: "\uE70F",    // nf-dev-database (database)
+  context: "\uF1C0",    // nf-fa-database (stable Nerd Fonts v3 database)
   cost: "\uF155",       // nf-fa-dollar
   time: "\uF017",       // nf-fa-clock_o
   agents: "\uF0C0",     // nf-fa-users
