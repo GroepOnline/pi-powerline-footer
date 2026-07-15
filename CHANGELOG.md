@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-14
+
 ### Added
 - **Fixed-editor scroll-away shortcut hint card** — Shows a stacked bottom/user/assistant shortcut card when chat is scrolled away from the bottom; clicking anywhere in the card jumps back to the bottom when fixed-editor mouse handling is enabled.
 - **Welcome toggle** — Added `powerline.welcome` so the startup welcome UI can be disabled without disabling the footer. Thanks to OCPdev25, miloslavnosek, vzeazy, and Florian Kinder (@fank) for #48/#89.
