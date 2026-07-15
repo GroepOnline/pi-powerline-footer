@@ -1,6 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
+import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
@@ -12,6 +12,8 @@ export interface PowerlineConfig {
   segmentOptions: StatusLineSegmentOptions;
   mouseScroll: boolean;
   fixedEditor: boolean;
+  placement: PowerlinePlacement;
+  invalidPlacement: string | null;
   welcome: boolean;
   stashSharpSShortcut: boolean;
 }
@@ -24,6 +26,20 @@ function normalizePreset(value: unknown, presets: readonly StatusLinePreset[]): 
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
   return (presets as readonly string[]).includes(normalized) ? (normalized as StatusLinePreset) : null;
+}
+
+function normalizePlacement(value: unknown): { placement: PowerlinePlacement; invalidPlacement: string | null } {
+  if (value === undefined) return { placement: "above", invalidPlacement: null };
+
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "above" || normalized === "below") {
+    return { placement: normalized, invalidPlacement: null };
+  }
+
+  return {
+    placement: "above",
+    invalidPlacement: typeof value === "string" ? value.trim() : String(value),
+  };
 }
 
 function normalizeCustomItemId(value: unknown): string | null {
@@ -245,6 +261,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     segmentOptions: {},
     mouseScroll: true,
     fixedEditor: true,
+    placement: "above",
+    invalidPlacement: null,
     welcome: true,
     stashSharpSShortcut: false,
   };
@@ -257,6 +275,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   const customItems = normalizeCustomItems(value.customItems);
   const { disabledSegments, invalidDisabledSegments } = normalizeDisabledSegments(value.disabledSegments, customItems);
   const { layout, invalidLayoutSegments } = normalizeLayout(value.layout, customItems);
+  const { placement, invalidPlacement } = normalizePlacement(value.placement);
 
   return {
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
@@ -268,6 +287,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     segmentOptions: normalizeSegmentOptions(value),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
+    placement,
+    invalidPlacement,
     welcome: value.welcome !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
   };
@@ -330,7 +351,7 @@ export function nextPowerlineSettingWithPreset(existingPowerlineSetting: unknown
 
 export function nextPowerlineSettingWithOptions(
   existingPowerlineSetting: unknown,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "welcome" | "stashSharpSShortcut">>,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "welcome" | "stashSharpSShortcut" | "placement">>,
   currentPreset: StatusLinePreset,
 ): unknown {
   if (!isRecord(existingPowerlineSetting)) {

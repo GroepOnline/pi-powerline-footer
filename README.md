@@ -46,13 +46,16 @@ Restart pi to activate.
 
 ## Usage
 
-Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
+Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, primary-row placement with `/powerline placement above|below|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
 
 Fixed editor is on by default.
 
 - `/powerline fixed-editor off` — return to Pi’s regular scrolling layout
 - `/powerline fixed-editor on` — re-enable the fixed editor
 - `/powerline fixed-editor toggle` — switch between the two
+- `/powerline placement below` — move the primary powerline row below the editor
+- `/powerline placement above` — restore the default placement
+- `/powerline placement toggle` — switch between above and below
 
 You can also set it in the agent settings file (`~/.pi/agent/settings.json` by default, or under `PI_CODING_AGENT_DIR`) or project-local `.pi/settings.json`:
 
@@ -61,13 +64,14 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
   "powerline": {
     "preset": "default",
     "fixedEditor": false,
+    "placement": "below",
     "welcome": true,
     "mouseScroll": true
   }
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal’s normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
+Use `"fixedEditor": true` to enable it again. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal’s normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
 
 | Preset | Description |
 |--------|-------------|

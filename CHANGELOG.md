@@ -12,6 +12,7 @@
 - **Segment disabling** — Added `powerline.disabledSegments` to hide built-in or configured custom segments from any preset. Thanks to Brian Lange (@bjlange) for #88.
 - **Startup token estimate** — The welcome UI now shows an approximate initial system-prompt token count before the first message. Thanks to Ibrahim Mohammed (@IbrahimMohammed47) for #80.
 - **Configurable segment layout** — Added `powerline.layout` for exact `left`, `right`, and `secondary` group overrides on any preset, including explicit `custom:<id>` placement. This replaces the misleading fixed `custom` preset. Thanks to Bruno Orsolon (@brunoorsolon), Thurston Sandberg (@thurstonsand), and Arthur Bodera (@Thinkscape) for #54/#40/#37.
+- **Primary row placement** — Added `powerline.placement` and `/powerline placement above|below|toggle` to move the primary powerline row around the editor while keeping notifications and responsive overflow in their existing groups. Thanks to Rogerio Saulo (@rsaulo) for #77.
 
 ### Changed
 - **Herdr and tmux scroll guidance** — Keeps fixed-editor mouse scrolling enabled by default and documents that host multiplexer scrollback needs `/powerline fixed-editor off`.
@@ -27,7 +28,7 @@
 ### Fixed
 - **Fixed-editor wheel bursts** — Coalesces rapid mouse-wheel packets into throttled viewport repaints and defers the follow-up TUI render until scrolling settles, reducing flicker and slowdowns in terminal multiplexers.
 - **Welcome discovery noise** — Ignored vanished/dangling skill, extension, and prompt-template entries during welcome overlay discovery instead of printing stack traces.
-- **Reload keyboard protocol** — Preserves extended keyboard modes on `/reload` and only hard-resets them on real quit. Thanks to Francesco Buldo (@frabul) for #81/#82.
+- **Reload keyboard protocol** — Preserves extended keyboard modes on `/reload` and only hard-resets them on real quit. Thanks to Francesco Buldo (@frabul), Alexander Gerdes (@Avg8888), and Sylvain Rivierre (@slhad) for #81/#82/#85.
 - **Prompt history recall** — Up-arrow prompt history no longer clobbers multiline drafts from the last logical line. Thanks to Nelson Tam (@nelson) and ceblan for #79.
 - **Stale extension contexts** — Handles both old and new Pi stale-context messages and guards late `agent_end` UI access without swallowing unrelated errors. Thanks to JackIce (@jackice) and Salem Sayed Abdel Gawad (@salemsayed) for #62, and Joshua Brunner (@joshuajbrunner), Arthur Bodera (@Thinkscape), @k0valik, and ET (@EdrisT) for #33.
 - **Context icon glyph** — Switched the Nerd Font context icon to a stable v3-friendly database glyph. Thanks to Michael Leonard (@LeonardMH) for #41.

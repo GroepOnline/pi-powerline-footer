@@ -170,6 +170,17 @@ test("fixed editor captures Pi status messages with the editor cluster", () => {
   assert.match(source, /fixedStatusContainer = null/);
 });
 
+test("primary powerline placement applies in fixed and regular editor modes", () => {
+  assert.match(source, /Partial<Pick<PowerlineConfig, "mouseScroll" \| "fixedEditor" \| "welcome" \| "stashSharpSShortcut" \| "placement">>/);
+  assert.match(source, /primaryLines: renderPowerlinePrimaryLines\(width, theme\)/);
+  assert.match(source, /placement: config\.placement/);
+  assert.match(source, /\{ placement: config\.placement === "below" \? "belowEditor" : "aboveEditor" \}/);
+  assert.match(source, /const placementMatch = \/\^placement\(\?:\\s\+\(above\|below\|toggle\)\)\?\$\//);
+  assert.match(source, /config\.placement = requestedPlacement === "above" \|\| requestedPlacement === "below"\n\s+\? requestedPlacement\n\s+: config\.placement === "above" \? "below" : "above"/);
+  assert.match(source, /if \(config\.fixedEditor && tuiRef && currentEditor\) \{\n\s+installFixedEditorCompositor\(ctx, tuiRef\);\n\s+\} else if \(!config\.fixedEditor\) \{\n\s+installPowerlineWidgets\(ctx\);/);
+  assert.match(source, /writePowerlineOptionSetting\(ctx\.cwd, \{ placement: config\.placement \}, config\.preset\)/);
+});
+
 test("shutdown cleanup resets terminal modes even before compositor install", () => {
   assert.match(source, /import \{ DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor \}/);
   assert.match(source, /const hadCompositor = fixedEditorCompositor !== null/);

@@ -54,7 +54,8 @@ test("fixed cluster keeps the editor visible before optional rows", () => {
     width: 80,
     terminalRows: 6,
     statusLines: ["status"],
-    topLines: ["top"],
+    primaryLines: ["top"],
+    placement: "above",
     editorLines: ["edit-a", `edit-b ${CURSOR_MARKER}`, "edit-c"],
     secondaryLines: ["secondary"],
     transcriptLines: ["old-1", "old-2"],
@@ -65,11 +66,46 @@ test("fixed cluster keeps the editor visible before optional rows", () => {
   assert.deepEqual(rendered.cursor, { row: 2, col: 7 });
 });
 
+test("fixed cluster places only the primary powerline below the editor", () => {
+  const rendered = renderFixedEditorCluster({
+    width: 80,
+    terminalRows: 8,
+    statusLines: ["notification", "working"],
+    primaryLines: ["primary"],
+    placement: "below",
+    editorLines: [`edit ${CURSOR_MARKER}`],
+    secondaryLines: ["overflow"],
+    transcriptLines: ["transcript"],
+    lastPromptLines: ["last"],
+  });
+
+  assert.deepEqual(rendered.lines, ["notification", "working", "edit ", "primary", "overflow", "transcript", "last"]);
+  assert.deepEqual(rendered.cursor, { row: 2, col: 5 });
+});
+
+test("fixed cluster keeps primary and overflow priority when placement is below", () => {
+  const rendered = renderFixedEditorCluster({
+    width: 80,
+    terminalRows: 4,
+    statusLines: ["status"],
+    primaryLines: ["primary"],
+    placement: "below",
+    editorLines: [`edit ${CURSOR_MARKER}`],
+    secondaryLines: ["overflow"],
+    transcriptLines: ["transcript"],
+    lastPromptLines: ["last"],
+  });
+
+  assert.deepEqual(rendered.lines, ["edit ", "primary", "overflow"]);
+  assert.deepEqual(rendered.cursor, { row: 0, col: 5 });
+});
+
 test("fixed cluster caps oversized editor around the cursor", () => {
   const rendered = renderFixedEditorCluster({
     width: 80,
     terminalRows: 4,
     statusLines: ["status"],
+    placement: "above",
     editorLines: ["edit-a", "edit-b", `edit-c ${CURSOR_MARKER}`, "edit-d", "edit-e"],
     transcriptLines: ["old"],
   });
@@ -82,6 +118,7 @@ test("fixed cluster caps selector-style editor replacements around the selected 
   const rendered = renderFixedEditorCluster({
     width: 80,
     terminalRows: 4,
+    placement: "above",
     editorLines: [
       "title",
       "  option-a",
@@ -100,6 +137,7 @@ test("fixed cluster keeps tail status lines when compact", () => {
     width: 80,
     terminalRows: 3,
     statusLines: ["above-widget", "powerline-status", "⠏ Shaolin Switchblade Sync..."],
+    placement: "above",
     editorLines: ["edit"],
   });
 

@@ -31,6 +31,8 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.deepEqual(config.invalidLayoutSegments, []);
   assert.equal(config.mouseScroll, true);
   assert.equal(config.fixedEditor, true);
+  assert.equal(config.placement, "above");
+  assert.equal(config.invalidPlacement, null);
   assert.equal(config.welcome, true);
   assert.equal(config.stashSharpSShortcut, false);
 });
@@ -77,6 +79,22 @@ test("parsePowerlineConfig supports partial explicit layout rows", () => {
     secondary: [],
   });
   assert.deepEqual(config.invalidLayoutSegments, ["left:unknown", "left:123", "right:model"]);
+});
+
+test("parsePowerlineConfig validates primary powerline placement", () => {
+  const below = parsePowerlineConfig(
+    { preset: "compact", placement: "below" },
+    ["default", "compact"],
+  );
+  const invalid = parsePowerlineConfig(
+    { preset: "compact", placement: "sideways" },
+    ["default", "compact"],
+  );
+
+  assert.equal(below.placement, "below");
+  assert.equal(below.invalidPlacement, null);
+  assert.equal(invalid.placement, "above");
+  assert.equal(invalid.invalidPlacement, "sideways");
 });
 
 test("parsePowerlineConfig supports disabling mouse scroll", () => {
@@ -236,7 +254,7 @@ test("nextPowerlineSettingWithPreset preserves object settings", () => {
 test("nextPowerlineSettingWithOptions preserves object settings", () => {
   const updated = nextPowerlineSettingWithOptions(
     { preset: "default", customItems: [{ id: "ci" }], mouseScroll: false },
-    { fixedEditor: false },
+    { fixedEditor: false, placement: "below" },
     "compact",
   );
   if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
@@ -246,6 +264,7 @@ test("nextPowerlineSettingWithOptions preserves object settings", () => {
   assert.equal(updated.preset, "default");
   assert.equal(updated.fixedEditor, false);
   assert.equal(updated.mouseScroll, false);
+  assert.equal(updated.placement, "below");
   assert.deepEqual(updated.customItems, [{ id: "ci" }]);
 });
 

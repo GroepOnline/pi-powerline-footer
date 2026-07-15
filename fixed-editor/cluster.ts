@@ -1,4 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { PowerlinePlacement } from "../types.ts";
 
 export const CURSOR_MARKER = "\x1b_pi:c\x07";
 
@@ -6,7 +7,8 @@ export interface FixedEditorClusterInput {
   width: number;
   terminalRows: number;
   statusLines?: string[];
-  topLines?: string[];
+  primaryLines?: string[];
+  placement: PowerlinePlacement;
   editorLines: string[];
   secondaryLines?: string[];
   transcriptLines?: string[];
@@ -79,7 +81,7 @@ export function renderFixedEditorCluster(input: FixedEditorClusterInput): FixedE
   const maxRows = Math.max(1, input.terminalRows - 1);
 
   const statusLines = normalizeLines(input.statusLines, width);
-  const topLines = normalizeLines(input.topLines, width);
+  const primaryLines = normalizeLines(input.primaryLines, width);
   const editorSource = normalizeLines(input.editorLines, width);
   const secondaryLines = normalizeLines(input.secondaryLines, width);
   const transcriptLines = normalizeLines(input.transcriptLines, width);
@@ -88,8 +90,8 @@ export function renderFixedEditorCluster(input: FixedEditorClusterInput): FixedE
   const editorLines = capEditorLines(editorSource, maxRows);
   let remaining = maxRows - editorLines.length;
 
-  const top = takeTail(topLines, remaining);
-  remaining -= top.length;
+  const primary = takeTail(primaryLines, remaining);
+  remaining -= primary.length;
 
   const secondary = takeTail(secondaryLines, remaining);
   remaining -= secondary.length;
@@ -102,12 +104,21 @@ export function renderFixedEditorCluster(input: FixedEditorClusterInput): FixedE
 
   const transcript = takeTail(transcriptLines, remaining);
 
-  return extractCursor([
-    ...status,
-    ...top,
-    ...editorLines,
-    ...secondary,
-    ...transcript,
-    ...lastPrompt,
-  ]);
+  return extractCursor(input.placement === "above"
+    ? [
+      ...status,
+      ...primary,
+      ...editorLines,
+      ...secondary,
+      ...transcript,
+      ...lastPrompt,
+    ]
+    : [
+      ...status,
+      ...editorLines,
+      ...primary,
+      ...secondary,
+      ...transcript,
+      ...lastPrompt,
+    ]);
 }
