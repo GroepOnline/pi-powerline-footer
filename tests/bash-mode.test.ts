@@ -941,6 +941,32 @@ test("bash editor recalls prompt history from single-line end without losing the
     firstLineEditor.handleInput("\x1b[A");
 
     assert.equal(firstLineEditor.getText(), "previous prompt");
+
+    const customKeybindings = new KeybindingsManager({
+      "tui.editor.cursorUp": ["up", "alt+k"],
+    });
+    const customBindingEditor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      {},
+      customKeybindings,
+      {
+        keybindings: customKeybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+    customBindingEditor.addToHistory("previous prompt");
+    customBindingEditor.setText("draft");
+    customBindingEditor.handleInput("\x1bk");
+
+    assert.equal(customBindingEditor.getText(), "draft");
+    assert.equal(Reflect.get(customBindingEditor, "historyIndex"), -1);
   } finally {
     links.cleanup();
   }

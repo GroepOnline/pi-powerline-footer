@@ -229,7 +229,7 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
-      if (!bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorUp") && this.isPromptHistoryRecallPosition()) {
+      if (!bashMode && matchesKey(data, "up") && this.isPromptHistoryRecallPosition()) {
         const navigateHistory = Reflect.get(this, "navigateHistory");
         if (typeof navigateHistory === "function") {
           if (Reflect.get(this, "historyIndex") === -1) {
@@ -240,7 +240,7 @@ export class BashModeEditor extends CustomEditor {
         }
       }
 
-      if (!bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorDown") && Reflect.get(this, "historyIndex") > -1) {
+      if (!bashMode && matchesKey(data, "down") && Reflect.get(this, "historyIndex") > -1) {
         const isOnLastVisualLine = Reflect.get(this, "isOnLastVisualLine");
         if (typeof isOnLastVisualLine !== "function" || isOnLastVisualLine.call(this)) {
           const navigateHistory = Reflect.get(this, "navigateHistory");

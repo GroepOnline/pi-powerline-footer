@@ -16,10 +16,12 @@
 - **Herdr and tmux scroll guidance** — Keeps fixed-editor mouse scrolling enabled by default and documents that host multiplexer scrollback needs `/powerline fixed-editor off`.
 - **Bottom jump shortcut** — Uses `ctrl+alt+g` as the default fixed-editor jump-to-bottom shortcut instead of `ctrl+shift+g`.
 - **Stash shortcut safety** — Literal `ß` is no longer consumed as stash by default; unambiguous Alt/Meta-S escape encodings still work.
-- **Docs for UI and demo settings** — Clarified that the README screenshot is illustrative, documented a current footer setup, noted the old chrome limitation, and documented the URL Ctrl-click mouse-reporting limitation. Thanks to Yosof Badr (@yosofbadr), kaiwah, Jason (@itguy327), Oliver Mannion (@tekumara), and thurstonsand for #75/#63/#45.
+- **Docs for UI and demo settings** — Clarified that the README screenshot is illustrative, documented a current footer setup, noted the old chrome limitation, and documented the URL modifier-click mouse-capture limitation plus Shift bypass. Thanks to Yosof Badr (@yosofbadr), kaiwah, Jason (@itguy327), Oliver Mannion (@tekumara), thurstonsand, jmd1011, and Thomas Dietert (@tdietert) for #75/#63/#45/#93/#95.
 - **Pi 0.80 compatibility** — Widened peer ranges and refreshed dev dependencies against `@earendil-works/*` 0.80.3. Thanks to Alexander Gerdes (@Avg8888) and AlexKucera for #87.
 - **Shortcut disabling** — `powerlineShortcuts` and `bashMode.toggleShortcut` now treat `null` or `""` as explicit disabled values and omit disabled chat jumps from fixed-editor hints. Thanks to Koen De Jaeger (@kdejaeger) for #73.
 - **Editor autocomplete composition** — Powerline now passes Pi's autocomplete provider through a previous editor's `setAutocompleteProvider()` before adding bash-mode wrappers, preserving prior autocomplete-provider wrappers where possible. Thanks to Tifan Dwi Avianto (@tifandotme) for #61.
+- **Context usage display** — The context segment now shows used tokens, maximum tokens, and percentage together. Thanks to Fayi Femi-Balogun (@fayimora) for #92.
+- **Maximum thinking style** — Pi's `max` thinking level now uses the same rainbow treatment as `high` and `xhigh`. Thanks to @AiraNadih for #94.
 
 ### Fixed
 - **Fixed-editor wheel bursts** — Coalesces rapid mouse-wheel packets into throttled viewport repaints and defers the follow-up TUI render until scrolling settles, reducing flicker and slowdowns in terminal multiplexers.
@@ -30,6 +32,7 @@
 - **Context icon glyph** — Switched the Nerd Font context icon to a stable v3-friendly database glyph. Thanks to Michael Leonard (@LeonardMH) for #41.
 - **Recent session names** — Recent-session project names now prefer the session JSONL header `cwd` basename before falling back to encoded directory names. Thanks to Jon Leemon (@nomeelnoj) for #76.
 - **Quit cursor restore** — When fixed-editor mode is off, quitting now moves the terminal cursor below Pi's inline editor area without running on `/reload` or session switches. Thanks to afkdev8 (@mrinfinidy) for #60.
+- **Custom cursor bindings** — Prompt-history recall now intercepts only literal Up/Down arrows, so custom cursor bindings such as `alt+j` and `alt+k` reach normal editor movement. Thanks to Hrand Liu (@IstPlayer) for #96.
 
 ## [0.6.1] - 2026-06-08
 
