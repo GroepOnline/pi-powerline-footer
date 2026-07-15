@@ -140,6 +140,30 @@ Set `powerline.disabledSegments` to hide built-in or configured custom segments 
 
 Built-in names are listed under Segments below. Custom items use `custom:<id>`. Unknown names are ignored with a startup warning.
 
+### Custom layout
+
+Use `powerline.layout` to override segment order and grouping while keeping the selected preset’s separator, colors, and segment options:
+
+```json
+{
+  "powerline": {
+    "preset": "default",
+    "layout": {
+      "left": ["model", "thinking", "path", "git"],
+      "right": ["context_pct", "cost"],
+      "secondary": ["custom:ci"]
+    },
+    "customItems": [
+      { "id": "ci", "statusKey": "ci-status" }
+    ]
+  }
+}
+```
+
+A present `left`, `right`, or `secondary` array replaces that preset group exactly; an empty array clears it. Omitted groups keep the preset entries and automatically append custom items by their configured `position`. Explicitly listing a segment moves it out of omitted preset groups, and explicitly placed custom items are not auto-appended elsewhere. `disabledSegments` is applied after layout.
+
+Responsive behavior is unchanged: these groups control ordering and overflow priority, not permanently pinned terminal rows. On wide terminals secondary entries can fit in the top bar; on narrow terminals primary overflow moves into the secondary line. Unknown entries are ignored with a startup warning. The old fixed `custom` preset has been removed; combine any preset with `layout` instead.
+
 ### Demo settings
 
 For a compact current footer setup:

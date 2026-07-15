@@ -1,12 +1,14 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
+import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
   customItems: CustomStatusItem[];
   disabledSegments: StatusLineSegmentId[];
   invalidDisabledSegments: string[];
+  layout: StatusLineLayout | null;
+  invalidLayoutSegments: string[];
   segmentOptions: StatusLineSegmentOptions;
   mouseScroll: boolean;
   fixedEditor: boolean;
@@ -91,6 +93,20 @@ function normalizeCustomItems(raw: unknown): CustomStatusItem[] {
 
 const BUILTIN_STATUS_LINE_SEGMENT_ID_SET = new Set<string>(BUILTIN_STATUS_LINE_SEGMENT_IDS);
 
+function normalizeStatusLineSegmentId(value: unknown, customItemIds: ReadonlySet<string>): StatusLineSegmentId | null {
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim();
+  if (BUILTIN_STATUS_LINE_SEGMENT_ID_SET.has(normalized)) {
+    return normalized as StatusLineSegmentId;
+  }
+
+  const customId = normalized.startsWith("custom:")
+    ? normalizeCustomItemId(normalized.slice("custom:".length))
+    : null;
+  return customId && customItemIds.has(customId) ? `custom:${customId}` : null;
+}
+
 function normalizeDisabledSegments(
   raw: unknown,
   customItems: readonly CustomStatusItem[],
@@ -100,21 +116,12 @@ function normalizeDisabledSegments(
   const disabledSegments: StatusLineSegmentId[] = [];
   const invalidDisabledSegments: string[] = [];
   const customItemIds = new Set(customItems.map((item) => item.id));
-  const seen = new Set<string>();
+  const seen = new Set<StatusLineSegmentId>();
 
   for (const entry of raw) {
-    const normalized = typeof entry === "string" ? entry.trim() : "";
-    const customId = normalized.startsWith("custom:")
-      ? normalizeCustomItemId(normalized.slice("custom:".length))
-      : null;
-    const segmentId = BUILTIN_STATUS_LINE_SEGMENT_ID_SET.has(normalized)
-      ? normalized as StatusLineSegmentId
-      : customId && customItemIds.has(customId)
-        ? `custom:${customId}` as StatusLineSegmentId
-        : null;
-
+    const segmentId = normalizeStatusLineSegmentId(entry, customItemIds);
     if (!segmentId) {
-      invalidDisabledSegments.push(typeof entry === "string" ? normalized : String(entry));
+      invalidDisabledSegments.push(typeof entry === "string" ? entry.trim() : String(entry));
     } else if (!seen.has(segmentId)) {
       seen.add(segmentId);
       disabledSegments.push(segmentId);
@@ -122,6 +129,45 @@ function normalizeDisabledSegments(
   }
 
   return { disabledSegments, invalidDisabledSegments };
+}
+
+function normalizeLayout(
+  raw: unknown,
+  customItems: readonly CustomStatusItem[],
+): { layout: StatusLineLayout | null; invalidLayoutSegments: string[] } {
+  if (!isRecord(raw)) return { layout: null, invalidLayoutSegments: [] };
+
+  const layout: StatusLineLayout = {};
+  const invalidLayoutSegments: string[] = [];
+  const customItemIds = new Set(customItems.map((item) => item.id));
+  const globallyPlaced = new Set<StatusLineSegmentId>();
+
+  for (const row of ["left", "right", "secondary"] as const) {
+    const entries = raw[row];
+    if (!Array.isArray(entries)) continue;
+
+    const segments: StatusLineSegmentId[] = [];
+    const seen = new Set<StatusLineSegmentId>();
+    for (const entry of entries) {
+      const segmentId = normalizeStatusLineSegmentId(entry, customItemIds);
+      if (!segmentId) {
+        invalidLayoutSegments.push(`${row}:${typeof entry === "string" ? entry.trim() : String(entry)}`);
+      } else if (!seen.has(segmentId)) {
+        seen.add(segmentId);
+        if (globallyPlaced.has(segmentId)) {
+          invalidLayoutSegments.push(`${row}:${segmentId}`);
+        } else {
+          globallyPlaced.add(segmentId);
+          segments.push(segmentId);
+        }
+      }
+    }
+    layout[row] = segments;
+  }
+
+  return Object.keys(layout).length > 0
+    ? { layout, invalidLayoutSegments }
+    : { layout: null, invalidLayoutSegments };
 }
 
 function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmentOptions {
@@ -194,6 +240,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     customItems: [],
     disabledSegments: [],
     invalidDisabledSegments: [],
+    layout: null,
+    invalidLayoutSegments: [],
     segmentOptions: {},
     mouseScroll: true,
     fixedEditor: true,
@@ -208,12 +256,15 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
 
   const customItems = normalizeCustomItems(value.customItems);
   const { disabledSegments, invalidDisabledSegments } = normalizeDisabledSegments(value.disabledSegments, customItems);
+  const { layout, invalidLayoutSegments } = normalizeLayout(value.layout, customItems);
 
   return {
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
     customItems,
     disabledSegments,
     invalidDisabledSegments,
+    layout,
+    invalidLayoutSegments,
     segmentOptions: normalizeSegmentOptions(value),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
@@ -225,28 +276,48 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
 export function mergeSegmentsWithCustomItems(
   presetDef: PresetDef,
   customItems: readonly CustomStatusItem[],
-  disabledSegments: readonly StatusLineSegmentId[] = [],
+  options: {
+    layout?: StatusLineLayout | null;
+    disabledSegments?: readonly StatusLineSegmentId[];
+  } = {},
 ): {
   leftSegments: StatusLineSegmentId[];
   rightSegments: StatusLineSegmentId[];
   secondarySegments: StatusLineSegmentId[];
 } {
-  const left: StatusLineSegmentId[] = [...presetDef.leftSegments];
-  const right: StatusLineSegmentId[] = [...presetDef.rightSegments];
-  const secondary: StatusLineSegmentId[] = [...(presetDef.secondarySegments ?? [])];
+  const layout = options.layout ?? null;
+  const explicitlyPlaced = new Set([
+    ...(layout?.left ?? []),
+    ...(layout?.right ?? []),
+    ...(layout?.secondary ?? []),
+  ]);
+  const disabled = new Set(options.disabledSegments ?? []);
 
-  for (const item of customItems) {
-    const segmentId: StatusLineSegmentId = `custom:${item.id}`;
-    if (item.position === "left") left.push(segmentId);
-    else if (item.position === "secondary") secondary.push(segmentId);
-    else right.push(segmentId);
-  }
+  const buildRow = (
+    position: CustomItemPosition,
+    configured: StatusLineSegmentId[] | undefined,
+    presetSegments: readonly StatusLineSegmentId[],
+  ): StatusLineSegmentId[] => {
+    const segments = configured !== undefined
+      ? [...configured]
+      : presetSegments.filter((id) => !explicitlyPlaced.has(id));
 
-  const disabled = new Set(disabledSegments);
+    if (configured === undefined) {
+      for (const item of customItems) {
+        const segmentId: StatusLineSegmentId = `custom:${item.id}`;
+        if (item.position === position && !explicitlyPlaced.has(segmentId)) {
+          segments.push(segmentId);
+        }
+      }
+    }
+
+    return segments.filter((id) => !disabled.has(id));
+  };
+
   return {
-    leftSegments: left.filter((id) => !disabled.has(id)),
-    rightSegments: right.filter((id) => !disabled.has(id)),
-    secondarySegments: secondary.filter((id) => !disabled.has(id)),
+    leftSegments: buildRow("left", layout?.left, presetDef.leftSegments),
+    rightSegments: buildRow("right", layout?.right, presetDef.rightSegments),
+    secondarySegments: buildRow("secondary", layout?.secondary, presetDef.secondarySegments ?? []),
   };
 }
 

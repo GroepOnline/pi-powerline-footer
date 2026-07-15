@@ -74,8 +74,7 @@ export type StatusLinePreset =
   | "compact"
   | "full"
   | "nerd"
-  | "ascii"
-  | "custom";
+  | "ascii";
 
 // Per-segment options
 export interface StatusLineSegmentOptions {
@@ -96,6 +95,12 @@ export interface StatusLineSegmentOptions {
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";
+
+export interface StatusLineLayout {
+  left?: StatusLineSegmentId[];
+  right?: StatusLineSegmentId[];
+  secondary?: StatusLineSegmentId[];
+}
 
 export interface CustomStatusItem {
   id: string;

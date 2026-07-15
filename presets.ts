@@ -95,13 +95,6 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     },
   },
 
-  custom: {
-    leftSegments: ["model", "shell_mode", "path", "git"],
-    rightSegments: ["token_total", "cost", "context_pct"],
-    separator: "powerline-thin",
-    colors: DEFAULT_COLORS,
-    segmentOptions: {},
-  },
 };
 
 export function getPreset(name: StatusLinePreset): PresetDef {

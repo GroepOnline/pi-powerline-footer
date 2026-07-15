@@ -11,6 +11,7 @@
 - **Agent-dir path support** — Respects `PI_CODING_AGENT_DIR` for global powerline settings, stash history, sessions, vibes, skills, commands, and extension discovery. Thanks to Hrand Liu (@IstPlayer) for #86.
 - **Segment disabling** — Added `powerline.disabledSegments` to hide built-in or configured custom segments from any preset. Thanks to Brian Lange (@bjlange) for #88.
 - **Startup token estimate** — The welcome UI now shows an approximate initial system-prompt token count before the first message. Thanks to Ibrahim Mohammed (@IbrahimMohammed47) for #80.
+- **Configurable segment layout** — Added `powerline.layout` for exact `left`, `right`, and `secondary` group overrides on any preset, including explicit `custom:<id>` placement. This replaces the misleading fixed `custom` preset. Thanks to Bruno Orsolon (@brunoorsolon), Thurston Sandberg (@thurstonsand), and Arthur Bodera (@Thinkscape) for #54/#40/#37.
 
 ### Changed
 - **Herdr and tmux scroll guidance** — Keeps fixed-editor mouse scrolling enabled by default and documents that host multiplexer scrollback needs `/powerline fixed-editor off`.
