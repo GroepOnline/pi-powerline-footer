@@ -125,6 +125,21 @@ You can promote any extension status key into its own dedicated powerline item. 
 
 If you still prefer the older string preset config shape, `"powerline": "default"` continues to work. String preset shorthand keeps `welcome` enabled and uses the default shortcut/cost/model display settings.
 
+### Disabling segments
+
+Set `powerline.disabledSegments` to hide built-in or configured custom segments from the active preset:
+
+```json
+{
+  "powerline": {
+    "preset": "default",
+    "disabledSegments": ["cost", "extension_statuses", "custom:ci"]
+  }
+}
+```
+
+Built-in names are listed under Segments below. Custom items use `custom:<id>`. Unknown names are ignored with a startup warning.
+
 ### Demo settings
 
 For a compact current footer setup:
@@ -370,7 +385,7 @@ Use `"off"` to disable extension-owned git polling entirely and only show the br
 
 ## Segments
 
-`model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
+`model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write` · `extension_statuses`
 
 ## Separators
 

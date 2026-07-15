@@ -71,6 +71,9 @@ import {
 let config: PowerlineConfig = {
   preset: "default",
   customItems: [],
+  disabledSegments: [],
+  invalidDisabledSegments: [],
+  segmentOptions: {},
   mouseScroll: true,
   fixedEditor: true,
   welcome: true,
@@ -970,7 +973,7 @@ function computeResponsiveLayout(
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
   
   // Get all segments: primary first, then secondary
-  const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems);
+  const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems, config.disabledSegments);
   const primaryIds = [...mergedSegments.leftSegments, ...mergedSegments.rightSegments];
   const secondaryIds = mergedSegments.secondarySegments;
   const allSegmentIds = [...primaryIds, ...secondaryIds];
@@ -1032,6 +1035,15 @@ function computeResponsiveLayout(
 // ═══════════════════════════════════════════════════════════════════════════
 // Extension
 // ═══════════════════════════════════════════════════════════════════════════
+
+function warnInvalidDisabledSegments(ctx: any): void {
+  if (config.invalidDisabledSegments.length === 0) return;
+
+  const invalid = config.invalidDisabledSegments.map((id) => JSON.stringify(id)).join(", ");
+  const message = `Ignoring unknown powerline disabled segment${config.invalidDisabledSegments.length === 1 ? "" : "s"}: ${invalid}`;
+  console.warn(`[powerline-footer] ${message}`);
+  if (ctx.hasUI) ctx.ui.notify(message, "warning");
+}
 
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
@@ -1303,6 +1315,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeSettings = parseBashModeSettings(settings, resolvedShortcuts);
     showLastPrompt = settings.showLastPrompt !== false;
     config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
+    warnInvalidDisabledSegments(ctx);
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
     bashTranscript = new BashTranscriptStore(bashModeSettings);

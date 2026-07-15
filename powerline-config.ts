@@ -1,9 +1,12 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
 import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
   customItems: CustomStatusItem[];
+  disabledSegments: StatusLineSegmentId[];
+  invalidDisabledSegments: string[];
   segmentOptions: StatusLineSegmentOptions;
   mouseScroll: boolean;
   fixedEditor: boolean;
@@ -86,6 +89,41 @@ function normalizeCustomItems(raw: unknown): CustomStatusItem[] {
   return [...deduped.values()];
 }
 
+const BUILTIN_STATUS_LINE_SEGMENT_ID_SET = new Set<string>(BUILTIN_STATUS_LINE_SEGMENT_IDS);
+
+function normalizeDisabledSegments(
+  raw: unknown,
+  customItems: readonly CustomStatusItem[],
+): { disabledSegments: StatusLineSegmentId[]; invalidDisabledSegments: string[] } {
+  if (!Array.isArray(raw)) return { disabledSegments: [], invalidDisabledSegments: [] };
+
+  const disabledSegments: StatusLineSegmentId[] = [];
+  const invalidDisabledSegments: string[] = [];
+  const customItemIds = new Set(customItems.map((item) => item.id));
+  const seen = new Set<string>();
+
+  for (const entry of raw) {
+    const normalized = typeof entry === "string" ? entry.trim() : "";
+    const customId = normalized.startsWith("custom:")
+      ? normalizeCustomItemId(normalized.slice("custom:".length))
+      : null;
+    const segmentId = BUILTIN_STATUS_LINE_SEGMENT_ID_SET.has(normalized)
+      ? normalized as StatusLineSegmentId
+      : customId && customItemIds.has(customId)
+        ? `custom:${customId}` as StatusLineSegmentId
+        : null;
+
+    if (!segmentId) {
+      invalidDisabledSegments.push(typeof entry === "string" ? normalized : String(entry));
+    } else if (!seen.has(segmentId)) {
+      seen.add(segmentId);
+      disabledSegments.push(segmentId);
+    }
+  }
+
+  return { disabledSegments, invalidDisabledSegments };
+}
+
 function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmentOptions {
   const options: StatusLineSegmentOptions = {};
 
@@ -154,6 +192,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   const defaultConfig: PowerlineConfig = {
     preset: "default",
     customItems: [],
+    disabledSegments: [],
+    invalidDisabledSegments: [],
     segmentOptions: {},
     mouseScroll: true,
     fixedEditor: true,
@@ -166,9 +206,14 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
 
   if (!isRecord(value)) return defaultConfig;
 
+  const customItems = normalizeCustomItems(value.customItems);
+  const { disabledSegments, invalidDisabledSegments } = normalizeDisabledSegments(value.disabledSegments, customItems);
+
   return {
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
-    customItems: normalizeCustomItems(value.customItems),
+    customItems,
+    disabledSegments,
+    invalidDisabledSegments,
     segmentOptions: normalizeSegmentOptions(value),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
@@ -177,7 +222,11 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   };
 }
 
-export function mergeSegmentsWithCustomItems(presetDef: PresetDef, customItems: readonly CustomStatusItem[]): {
+export function mergeSegmentsWithCustomItems(
+  presetDef: PresetDef,
+  customItems: readonly CustomStatusItem[],
+  disabledSegments: readonly StatusLineSegmentId[] = [],
+): {
   leftSegments: StatusLineSegmentId[];
   rightSegments: StatusLineSegmentId[];
   secondarySegments: StatusLineSegmentId[];
@@ -193,7 +242,12 @@ export function mergeSegmentsWithCustomItems(presetDef: PresetDef, customItems: 
     else right.push(segmentId);
   }
 
-  return { leftSegments: left, rightSegments: right, secondarySegments: secondary };
+  const disabled = new Set(disabledSegments);
+  return {
+    leftSegments: left.filter((id) => !disabled.has(id)),
+    rightSegments: right.filter((id) => !disabled.has(id)),
+    secondarySegments: secondary.filter((id) => !disabled.has(id)),
+  };
 }
 
 export function nextPowerlineSettingWithPreset(existingPowerlineSetting: unknown, preset: StatusLinePreset): unknown {
