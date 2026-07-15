@@ -34,7 +34,7 @@ import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSession
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { getEditorAutocompleteProvider, passAutocompleteProviderThroughPreviousEditor } from "./editor-composition.ts";
-import { readCoreContextUsage } from "./context-usage.ts";
+import { estimateInitialContextTokens, readCoreContextUsage } from "./context-usage.ts";
 import { isStaleExtensionContextError, shouldResetExtendedKeyboardModesOnShutdown, shouldRestoreInlineEditorCursorOnShutdown, shouldShowStartupWelcome } from "./lifecycle.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
@@ -2838,8 +2838,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const providerName = ctx.model?.provider || "Unknown";
     const loadedCounts = discoverLoadedCounts();
     const recentSessions = getRecentSessions(3);
+    const initialContextTokens = estimateInitialContextTokens(ctx);
     
-    const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts);
+    const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts, initialContextTokens);
     welcomeHeaderActive = true;
     
     ctx.ui.setHeader(() => {
@@ -2878,6 +2879,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       if (hasActivity) {
         return;
       }
+
+      const initialContextTokens = estimateInitialContextTokens(ctx);
       
       ctx.ui.custom(
         (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
@@ -2886,6 +2889,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             providerName,
             recentSessions,
             loadedCounts,
+            initialContextTokens,
           );
           
           let countdown = 30;

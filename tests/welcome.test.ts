@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverLoadedCounts, getRecentSessions } from "../welcome.ts";
+import { discoverLoadedCounts, getRecentSessions, WelcomeHeader } from "../welcome.ts";
+
+const indexSource = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
 
 test("discoverLoadedCounts ignores dangling skill symlinks", () => {
   const root = mkdtempSync(join(tmpdir(), "powerline-welcome-"));
@@ -72,6 +74,38 @@ function withTemporaryHome(run: (home: string) => void): void {
     rmSync(home, { recursive: true, force: true });
   }
 }
+
+test("welcome renders the initial system prompt token estimate", () => {
+  const counts = { contextFiles: 1, extensions: 1, skills: 1, promptTemplates: 1 };
+  const rendered = new WelcomeHeader("Model", "Provider", [], counts, 1900)
+    .render(96)
+    .join("\n")
+    .replace(/\x1b\[[0-9;]*m/g, "");
+  const withoutEstimate = [undefined, 0, Number.NaN].map((tokens) => new WelcomeHeader(
+    "Model",
+    "Provider",
+    [],
+    counts,
+    tokens,
+  ).render(96).join("\n").replace(/\x1b\[[0-9;]*m/g, ""));
+
+  assert.match(rendered, /≈ 1\.9k initial prompt tokens/);
+  for (const output of withoutEstimate) {
+    assert.doesNotMatch(output, /initial prompt tokens/);
+  }
+  assert.match(indexSource, /new WelcomeHeader\(modelName, providerName, recentSessions, loadedCounts, initialContextTokens\)/);
+
+  const overlayStart = indexSource.indexOf("function setupWelcomeOverlay");
+  const delayStart = indexSource.indexOf("setTimeout(() => {", overlayStart);
+  const activityGuardStart = indexSource.indexOf("if (hasActivity) {", delayStart);
+  const estimateStart = indexSource.indexOf("const initialContextTokens = estimateInitialContextTokens(ctx);", overlayStart);
+  const componentStart = indexSource.indexOf("new WelcomeComponent(", overlayStart);
+  assert.ok(overlayStart >= 0);
+  assert.ok(delayStart > overlayStart);
+  assert.ok(activityGuardStart > delayStart);
+  assert.ok(estimateStart > activityGuardStart);
+  assert.ok(componentStart > estimateStart);
+});
 
 test("getRecentSessions prefers cwd basename from session header", () => {
   withTemporaryHome((home) => {

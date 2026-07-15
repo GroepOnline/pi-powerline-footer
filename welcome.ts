@@ -17,6 +17,13 @@ export interface LoadedCounts {
   promptTemplates: number;
 }
 
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return tokens.toString();
+  if (tokens < 10000) return `${(tokens / 1000).toFixed(1)}k`;
+  if (tokens < 1000000) return `${Math.round(tokens / 1000)}k`;
+  return `${(tokens / 1000000).toFixed(tokens < 10000000 ? 1 : 0)}M`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Shared rendering utilities
 // ═══════════════════════════════════════════════════════════════════════════
@@ -86,6 +93,7 @@ interface WelcomeData {
   providerName: string;
   recentSessions: RecentSession[];
   loadedCounts: LoadedCounts;
+  initialContextTokens: number | null;
 }
 
 function buildLeftColumn(data: WelcomeData, colWidth: number): string[] {
@@ -138,6 +146,14 @@ function buildRightColumn(data: WelcomeData, colWidth: number): string[] {
     }
   } else {
     countLines.push(` ${dim("No extensions loaded")}`);
+  }
+
+  if (
+    data.initialContextTokens !== null
+    && Number.isFinite(data.initialContextTokens)
+    && data.initialContextTokens > 0
+  ) {
+    countLines.push(` ${itemPrefix}${fgOnly("gitClean", `≈ ${formatTokens(data.initialContextTokens)}`)} initial prompt tokens`);
   }
   
   return [
@@ -227,8 +243,9 @@ export class WelcomeComponent implements Component {
     providerName: string,
     recentSessions: RecentSession[] = [],
     loadedCounts: LoadedCounts = { contextFiles: 0, extensions: 0, skills: 0, promptTemplates: 0 },
+    initialContextTokens: number | null = null,
   ) {
-    this.data = { modelName, providerName, recentSessions, loadedCounts };
+    this.data = { modelName, providerName, recentSessions, loadedCounts, initialContextTokens };
   }
 
   setCountdown(seconds: number): void {
@@ -277,8 +294,9 @@ export class WelcomeHeader implements Component {
     providerName: string,
     recentSessions: RecentSession[] = [],
     loadedCounts: LoadedCounts = { contextFiles: 0, extensions: 0, skills: 0, promptTemplates: 0 },
+    initialContextTokens: number | null = null,
   ) {
-    this.data = { modelName, providerName, recentSessions, loadedCounts };
+    this.data = { modelName, providerName, recentSessions, loadedCounts, initialContextTokens };
   }
 
   invalidate(): void {}
