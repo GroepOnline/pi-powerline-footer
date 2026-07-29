@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-29
+
 ### Added
 - **Session directory switching** — Added `/cd <path>` to continue the current conversation from another working directory while keeping Pi tools and the footer path segment in sync. Thanks to chengxiang (@chengxiang1997) for #114.
 - **Separator override** — Added `powerline.separator` so separator style can be chosen independently of the active preset. Thanks to Andy8647 and mj-meyer for #106/#116.
