@@ -173,12 +173,14 @@ For a compact current footer setup:
     "preset": "default",
     "path": { "mode": "basename" },
     "model": { "display": "name" },
-    "cost": { "subscriptionDisplay": "subscription" }
+    "cost": { "subscriptionDisplay": "subscription", "currency": "USD" }
   }
 }
 ```
 
 Use `"model": { "display": "qualified" }` when two providers expose models with the same display name.
+
+`cost.currency` accepts `USD`, `CNY`, `EUR`, `GBP`, `JPY`, `CAD`, `AUD`, `CHF`, `INR`, or `KRW`. Pi reports costs in USD; non-USD display uses a keyless USD FX rate fetched in the background and cached for 24 hours under the Pi agent directory. If no cached rate is available yet, the cost segment renders `-- CODE` until a later footer refresh can use the fetched rate.
 
 Subscription cost display accepts:
 
