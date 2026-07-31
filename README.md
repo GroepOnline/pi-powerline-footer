@@ -8,7 +8,6 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 <img width="1261" height="817" alt="Example powerline UI" src="https://github.com/user-attachments/assets/4cc43320-3fb8-4503-b857-69dffa7028f2" />
 
-The screenshot is illustrative and may differ from current Pi versions. The supported surface is the fixed-editor powerline cluster; the older oh-my-pi-style editor chrome is not configurable today.
 
 ## Features
 
@@ -20,7 +19,7 @@ The screenshot is illustrative and may differ from current Pi versions. The supp
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed Pi working/status line, powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Scroll chat with the mouse wheel, PageUp/PageDown, Command+PageUp/PageDown, Ctrl+Shift+Up/Down, or message-jump shortcuts; the editor stays put. When you are scrolled away from the bottom, a stacked shortcut hint card appears over the bottom of the chat viewport with the configured bottom, user-message, and assistant-response jump shortcuts. When mouse scrolling is enabled, click anywhere in that card to jump back to the bottom. Drag text to copy it, drag selection to the viewport edge to scroll, double-click a line to select it, and right-click to open the terminal menu. Mouse capture blocks native modifier-click link handling; hold Shift while using your terminal’s normal modifier-click to open OSC 8 links. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native link handling and selection.
+**Native Pi layout** — Pi owns fixed input, feed scrolling, selection, and terminal behavior; this extension supplies powerline widgets and the custom bash/stash/editor integrations.
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High, xhigh, and max levels use a rainbow effect inspired by Claude Code's ultrathink.
 
@@ -46,18 +45,10 @@ Restart pi to activate.
 
 ## Usage
 
-Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, the scroll-away card with `/powerline scroll-away-card on|off|toggle`, primary-row placement with `/powerline placement above|below|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
+Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, and move the primary row with `/powerline placement above|below|toggle`.
 
 Use `/cd <path>` to continue the current conversation from another working directory. It supports relative paths, absolute paths, `~`, `~/...`, and directory completions. With no argument, `/cd` prints the current Pi session directory. The command switches into a cwd-updated session file so Pi tools and the footer path segment agree after the change.
 
-Fixed editor is on by default.
-
-- `/powerline fixed-editor off` — return to Pi’s regular scrolling layout
-- `/powerline fixed-editor on` — re-enable the fixed editor
-- `/powerline fixed-editor toggle` — switch between the two
-- `/powerline scroll-away-card off` — hide the navigation hint card while keeping the fixed editor and its shortcuts
-- `/powerline scroll-away-card on` — show the navigation hint card when scrolled away from the bottom
-- `/powerline scroll-away-card toggle` — switch the hint card between shown and hidden
 - `/powerline placement below` — move the primary powerline row below the editor
 - `/powerline placement above` — restore the default placement
 - `/powerline placement toggle` — switch between above and below
@@ -69,16 +60,12 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
   "showLastPrompt": true,
   "powerline": {
     "preset": "default",
-    "fixedEditor": false,
-    "scrollAwayCard": true,
     "placement": "below",
-    "welcome": true,
-    "mouseScroll": true
+    "welcome": true
   }
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. Set `"scrollAwayCard": false` to keep the fixed editor and navigation shortcuts while hiding the scroll-away hint card. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"showLastPrompt": false` at the top level of `settings.json` (not inside `powerline`) to hide that reminder. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. Set `"copyOnSelect": false` to prevent selected text from being automatically copied to the system clipboard; the selection stays highlighted with a character-count hint, and you copy explicitly with `ctrl+c` or right-click instead. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal's normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
 
 | Preset | Description |
 |--------|-------------|
@@ -184,8 +171,6 @@ For a compact current footer setup:
 {
   "powerline": {
     "preset": "default",
-    "fixedEditor": true,
-    "mouseScroll": true,
     "path": { "mode": "basename" },
     "model": { "display": "name" },
     "cost": { "subscriptionDisplay": "subscription" }
@@ -284,21 +269,14 @@ Prompt history now has two sources:
 
 Selecting an entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
 
-### Editor clipboard and chat shortcuts
+### Editor clipboard and navigation shortcuts
 
 - `ctrl+alt+c` — copy full editor content
 - `ctrl+alt+x` — cut full editor content (copy, then clear)
-- `cmd+up` — scroll the fixed-editor chat viewport up
-- `cmd+down` — scroll the fixed-editor chat viewport down
 - `cmd+shift+up` — move the editor cursor to the start of the first line
 - `cmd+shift+down` — move the editor cursor to the end of the last line
-- `ctrl+shift+u` — jump the fixed-editor chat viewport to the previous user message
-- `ctrl+shift+i` — jump the fixed-editor chat viewport to the next user message
-- `ctrl+alt+,` — jump the fixed-editor chat viewport to the previous LLM message
-- `ctrl+alt+.` — jump the fixed-editor chat viewport to the next LLM message
-- `ctrl+alt+g` — jump the fixed-editor chat viewport to the bottom
 
-Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. When fixed-editor chat is scrolled away from the bottom, the viewport shows a shortcut hint card with these configured shortcut labels unless `powerline.scrollAwayCard` is `false`; with mouse scrolling enabled, clicking anywhere in the card jumps to the bottom. Submitting editor text also returns that viewport to the bottom so new output stays in view.
+Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Pi owns chat scrolling, selection, and fixed input behavior natively.
 
 ### Shortcut configuration
 
@@ -310,20 +288,13 @@ You can override shortcut keys in the agent settings file:
     "stashHistory": "ctrl+alt+h",
     "copyEditor": "ctrl+alt+c",
     "cutEditor": "ctrl+alt+x",
-    "jumpPreviousUserMessage": "ctrl+shift+u",
-    "jumpNextUserMessage": "ctrl+shift+i",
-    "jumpPreviousLlmMessage": "ctrl+alt+,",
-    "jumpNextLlmMessage": "ctrl+alt+.",
-    "jumpChatBottom": "ctrl+alt+g",
-    "scrollChatUp": "cmd+up",
-    "scrollChatDown": "cmd+down",
     "editorStart": "cmd+shift+up",
     "editorEnd": "cmd+shift+down"
   }
 }
 ```
 
-After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts (like `Alt+S`), or duplicate conflicts automatically fall back to safe defaults. Set a binding to `null` or `""` to disable that action; disabled actions are not registered, do not match raw terminal fallbacks, and are omitted from the fixed-editor scroll-away hint card. `bashMode.toggleShortcut` also accepts `null` or `""` to disable the keyboard toggle while keeping `/bash-mode` available. `cmd` and `command` are accepted aliases for Pi's `super` modifier for the documented Command navigation keys; unsupported Command-letter bindings such as `cmd+c` are ignored instead of matching plain text input. Some terminals, including Ghostty, bind Command+Arrow themselves; remap those terminal keys to send `\x1b[1;9A` / `\x1b[1;9B` for chat scrolling and `\x1b[1;10A` / `\x1b[1;10B` for editor-boundary navigation if you want Pi to receive them.
+After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts like `Alt+S`, or duplicate conflicts fall back to safe defaults. Set a binding to `null` or `""` to disable that action. `cmd` and `command` are accepted aliases for Pi's `super` modifier for the documented Command navigation keys.
 
 ### Editor autocomplete composition
 
