@@ -32,7 +32,7 @@ function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentC
     thinkingLevel: "off",
     sessionId: undefined,
     cwd: "/tmp/project",
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
     contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,
@@ -74,16 +74,16 @@ test("model segment can show provider-qualified ids", () => {
 test("cost segment supports subscription display modes", () => {
   const subscription = renderSegment("cost", createSegmentContext({
     usingSubscription: true,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42 },
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0 },
   }));
   const reportedCost = renderSegment("cost", createSegmentContext({
     usingSubscription: true,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42 },
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0 },
     options: { cost: { subscriptionDisplay: "reported-cost" } },
   }));
   const both = renderSegment("cost", createSegmentContext({
     usingSubscription: true,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42 },
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0 },
     options: { cost: { subscriptionDisplay: "both" } },
   }));
   const zeroReported = renderSegment("cost", createSegmentContext({
@@ -94,12 +94,16 @@ test("cost segment supports subscription display modes", () => {
     usingSubscription: true,
     options: { cost: { subscriptionDisplay: "both" } },
   }));
+  const withSubagentCost = renderSegment("cost", createSegmentContext({
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0.58 },
+  }));
 
   assert.deepEqual(subscription, { content: "(sub)", visible: true });
   assert.deepEqual(reportedCost, { content: "$0.42", visible: true });
   assert.deepEqual(both, { content: "$0.42 (sub)", visible: true });
   assert.deepEqual(zeroReported, { content: "(sub)", visible: true });
   assert.deepEqual(zeroBoth, { content: "(sub)", visible: true });
+  assert.deepEqual(withSubagentCost, { content: "$1.00", visible: true });
 });
 
 test("context segment shows used tokens, maximum, and percentage", () => {
