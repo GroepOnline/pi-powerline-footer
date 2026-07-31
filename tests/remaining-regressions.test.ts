@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { NERD_ICONS } from "../icons.ts";
 import { isStaleExtensionContextError, shouldShowStartupWelcome } from "../lifecycle.ts";
+import { __resetCurrencyRatesForTest, __setCurrencyRatesForTest } from "../currency-rates.ts";
 import { renderSegment } from "../segments.ts";
 import type { SegmentContext } from "../types.ts";
 
@@ -71,7 +72,9 @@ test("model segment can show provider-qualified ids", () => {
   assert.equal(stripAnsi(alreadyQualified.content), "openai/gpt-4.1");
 });
 
-test("cost segment supports subscription display modes", () => {
+test("cost segment supports subscription display modes and converted currencies", () => {
+  __setCurrencyRatesForTest({ CNY: 7.2 });
+
   const subscription = renderSegment("cost", createSegmentContext({
     usingSubscription: true,
     usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0 },
@@ -97,6 +100,12 @@ test("cost segment supports subscription display modes", () => {
   const withSubagentCost = renderSegment("cost", createSegmentContext({
     usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0.58 },
   }));
+  const convertedCurrency = renderSegment("cost", createSegmentContext({
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 1, subagentCost: 0.25 },
+    options: { cost: { currency: "CNY" } },
+  }));
+
+  __resetCurrencyRatesForTest();
 
   assert.deepEqual(subscription, { content: "(sub)", visible: true });
   assert.deepEqual(reportedCost, { content: "$0.42", visible: true });
@@ -104,6 +113,7 @@ test("cost segment supports subscription display modes", () => {
   assert.deepEqual(zeroReported, { content: "(sub)", visible: true });
   assert.deepEqual(zeroBoth, { content: "(sub)", visible: true });
   assert.deepEqual(withSubagentCost, { content: "$1.00", visible: true });
+  assert.deepEqual(convertedCurrency, { content: "¥9.00", visible: true });
 });
 
 test("context segment shows used tokens, maximum, and percentage", () => {
