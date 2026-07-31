@@ -4,6 +4,8 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { parseVibeGenerateArgs } from "../working-vibes.ts";
+
 const FAUX_PROVIDER_PATH = new URL("../node_modules/@earendil-works/pi-ai/dist/providers/faux.js", import.meta.url).href;
 
 async function importFauxProviderTools() {
@@ -50,6 +52,15 @@ function ensurePiModuleLinks(): { cleanup: () => void } {
     },
   };
 }
+
+test("parseVibeGenerateArgs supports multi-word themes", () => {
+  assert.deepEqual(parseVibeGenerateArgs(["pirate", "200"]), { theme: "pirate", count: 200 });
+  assert.deepEqual(parseVibeGenerateArgs(["star", "trek", "200"]), { theme: "star trek", count: 200 });
+  assert.deepEqual(parseVibeGenerateArgs(["star", "trek"]), { theme: "star trek", count: 100 });
+  assert.deepEqual(parseVibeGenerateArgs(["star", "trek", "abc"]), { theme: "star trek abc", count: 100 });
+  assert.deepEqual(parseVibeGenerateArgs(["lord", "of", "rings", "999"]), { theme: "lord of rings", count: 500 });
+  assert.equal(parseVibeGenerateArgs([]), null);
+});
 
 test("generateVibesBatch includes a system prompt so faux providers can return text", async () => {
   const links = ensurePiModuleLinks();

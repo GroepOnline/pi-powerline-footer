@@ -61,6 +61,7 @@ import {
   hasVibeFile,
   getVibeFileCount,
   generateVibesBatch,
+  parseVibeGenerateArgs,
 } from "./working-vibes.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1936,17 +1937,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
       // /vibe generate <theme> [count] - generate vibes and save to file
       if (subcommand === "generate") {
-        const theme = parts[1];
-        const parsedCount = Number.parseInt(parts[2] ?? "", 10);
-        const count = Number.isFinite(parsedCount)
-          ? Math.min(Math.max(Math.floor(parsedCount), 1), 500)
-          : 100;
-
-        if (!theme) {
+        const parsed = parseVibeGenerateArgs(parts.slice(1));
+        if (!parsed) {
           ctx.ui.notify("Usage: /vibe generate <theme> [count]", "error");
           return;
         }
 
+        const { theme, count } = parsed;
         ctx.ui.notify(`Generating ${count} vibes for "${theme}"...`, "info");
 
         const result = await generateVibesBatch(theme, count);
