@@ -30,9 +30,6 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.deepEqual(config.invalidDisabledSegments, []);
   assert.equal(config.layout, null);
   assert.deepEqual(config.invalidLayoutSegments, []);
-  assert.equal(config.mouseScroll, true);
-  assert.equal(config.fixedEditor, true);
-  assert.equal(config.scrollAwayCard, true);
   assert.equal(config.separator, null);
   assert.equal(config.placement, "above");
   assert.equal(config.invalidPlacement, null);
@@ -154,35 +151,8 @@ test("parsePowerlineConfig validates primary powerline placement", () => {
   assert.equal(invalid.invalidPlacement, "sideways");
 });
 
-test("parsePowerlineConfig supports disabling mouse scroll", () => {
-  const config = parsePowerlineConfig(
-    { preset: "compact", mouseScroll: false },
-    ["default", "compact"],
-  );
 
-  assert.equal(config.preset, "compact");
-  assert.equal(config.mouseScroll, false);
-});
 
-test("parsePowerlineConfig supports disabling fixed editor", () => {
-  const config = parsePowerlineConfig(
-    { preset: "compact", fixedEditor: false },
-    ["default", "compact"],
-  );
-
-  assert.equal(config.preset, "compact");
-  assert.equal(config.fixedEditor, false);
-});
-
-test("parsePowerlineConfig supports hiding the scroll-away card while keeping fixed editor", () => {
-  const config = parsePowerlineConfig(
-    { preset: "compact", fixedEditor: true, scrollAwayCard: false },
-    ["default", "compact"],
-  );
-
-  assert.equal(config.fixedEditor, true);
-  assert.equal(config.scrollAwayCard, false);
-});
 
 test("parsePowerlineConfig supports welcome and legacy sharp-S toggles", () => {
   const disabled = parsePowerlineConfig(
@@ -322,26 +292,18 @@ test("nextPowerlineSettingWithPreset preserves object settings", () => {
 
 test("nextPowerlineSettingWithOptions preserves object settings", () => {
   const updated = nextPowerlineSettingWithOptions(
-    { preset: "default", customItems: [{ id: "ci" }], mouseScroll: false },
-    { fixedEditor: false, scrollAwayCard: false, placement: "below" },
+    { preset: "default", customItems: [{ id: "ci" }] },
+    { placement: "below" },
     "compact",
   );
-  if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
-    assert.fail("expected an object powerline setting");
-  }
 
-  assert.equal(updated.preset, "default");
-  assert.equal(updated.fixedEditor, false);
-  assert.equal(updated.scrollAwayCard, false);
-  assert.equal(updated.mouseScroll, false);
-  assert.equal(updated.placement, "below");
-  assert.deepEqual(updated.customItems, [{ id: "ci" }]);
+  assert.deepEqual(updated, { preset: "default", customItems: [{ id: "ci" }], placement: "below" });
 });
 
 test("nextPowerlineSettingWithOptions converts string presets to object settings", () => {
-  assert.deepEqual(nextPowerlineSettingWithOptions("compact", { mouseScroll: true }, "compact"), {
+  assert.deepEqual(nextPowerlineSettingWithOptions("compact", { placement: "below" }, "compact"), {
     preset: "compact",
-    mouseScroll: true,
+    placement: "below",
   });
 });
 

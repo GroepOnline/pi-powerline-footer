@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { NERD_ICONS } from "../icons.ts";
-import { isStaleExtensionContextError, shouldResetExtendedKeyboardModesOnShutdown, shouldShowStartupWelcome } from "../lifecycle.ts";
+import { isStaleExtensionContextError, shouldShowStartupWelcome } from "../lifecycle.ts";
 import { renderSegment } from "../segments.ts";
 import type { SegmentContext } from "../types.ts";
 
@@ -122,17 +122,6 @@ test("startup welcome predicate respects powerline.welcome false", () => {
   assert.equal(shouldShowStartupWelcome("startup", false), false);
   assert.equal(shouldShowStartupWelcome("resume", true), false);
   assert.match(source, /setupCustomEditor\(ctx\);\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome\)\)/);
-});
-
-test("only UI quit resets extended keyboard modes", () => {
-  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(true, "quit"), true);
-  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(true, "reload"), false);
-  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(true, "resume"), false);
-  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(false, "quit"), false);
-  assert.doesNotMatch(source, /event\?\.reason === "quit" \|\| event\?\.reason === "reload"/);
-  assert.match(source, /const hasUI = Boolean\(ctx\.hasUI\);/);
-  assert.match(source, /shouldResetExtendedKeyboardModesOnShutdown\(hasUI, event\?\.reason\)/);
-  assert.match(source, /teardownFixedEditorCompositor\(isTerminalExit \? \{ resetExtendedKeyboardModes: true \} : undefined\)/);
 });
 
 test("stale ctx guard handles old and new Pi messages on agent_end", () => {
