@@ -625,6 +625,21 @@ export type GenerateVibesResult =
   | { success: true; count: number; filePath: string }
   | { success: false; count: 0; filePath: string; error: string };
 
+export function parseVibeGenerateArgs(args: readonly string[]): { theme: string; count: number } | null {
+  if (args.length === 0) return null;
+
+  const last = args.at(-1);
+  const parsedCount = last && /^\d+$/.test(last) ? Number.parseInt(last, 10) : Number.NaN;
+  const hasCount = Number.isFinite(parsedCount) && args.length > 1;
+  const theme = hasCount ? args.slice(0, -1).join(" ") : args.join(" ");
+  if (!theme) return null;
+
+  return {
+    theme,
+    count: hasCount ? Math.min(Math.max(Math.floor(parsedCount), 1), 500) : 100,
+  };
+}
+
 export async function generateVibesBatch(
   theme: string,
   count: number = 100,

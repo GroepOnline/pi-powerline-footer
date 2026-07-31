@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Fixed `/vibe generate` so multi-word theme names parse correctly when an optional count is provided. Thanks to Hacxy (@hacxy) for #127.
 - Removed the extension-owned fixed editor and chat scrolling; Pi now owns native input and feed scrolling.
 
 ## [0.8.1] - 2026-07-30
