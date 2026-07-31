@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Added optional non-USD display for the `cost` segment via `powerline.cost.currency`, with background FX-rate caching. Thanks to @tanuki-cat for #130.
 - Added subagent child-run cost to the `cost` segment total so parallel/worker runs are reflected in session spend. Thanks to Ričardas Čubukinas (@xadips) for #128.
 - Fixed `/vibe generate` so multi-word theme names parse correctly when an optional count is provided. Thanks to Hacxy (@hacxy) for #127.
 - Removed the extension-owned fixed editor and chat scrolling; Pi now owns native input and feed scrolling.
