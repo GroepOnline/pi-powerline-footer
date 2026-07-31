@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Removed the extension-owned fixed editor and chat scrolling; Pi now owns native input and feed scrolling.
+
 ## [0.8.1] - 2026-07-30
 
 ### Changed
