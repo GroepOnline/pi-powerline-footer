@@ -11,11 +11,6 @@ export interface PowerlineConfig {
   invalidLayoutSegments: string[];
   separator: StatusLineSeparatorStyle | null;
   segmentOptions: StatusLineSegmentOptions;
-  mouseScroll: boolean;
-  fixedEditor: boolean;
-  scrollAwayCard: boolean;
-  /** Whether mouse text selection copies to clipboard. Default true. */
-  copyOnSelect: boolean;
   placement: PowerlinePlacement;
   invalidPlacement: string | null;
   welcome: boolean;
@@ -300,10 +295,6 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidLayoutSegments: [],
     separator: null,
     segmentOptions: {},
-    mouseScroll: true,
-    fixedEditor: true,
-    scrollAwayCard: true,
-    copyOnSelect: true,
     placement: "above",
     invalidPlacement: null,
     welcome: true,
@@ -329,10 +320,6 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidLayoutSegments,
     separator: normalizeSeparator(value.separator),
     segmentOptions: normalizeSegmentOptions(value),
-    mouseScroll: value.mouseScroll !== false,
-    fixedEditor: value.fixedEditor !== false,
-    scrollAwayCard: value.scrollAwayCard !== false,
-    copyOnSelect: value.copyOnSelect !== false,
     placement,
     invalidPlacement,
     welcome: value.welcome !== false,
@@ -397,7 +384,7 @@ export function nextPowerlineSettingWithPreset(existingPowerlineSetting: unknown
 
 export function nextPowerlineSettingWithOptions(
   existingPowerlineSetting: unknown,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "scrollAwayCard" | "copyOnSelect" | "welcome" | "stashSharpSShortcut" | "placement">>,
+  updates: Partial<Pick<PowerlineConfig, "welcome" | "stashSharpSShortcut" | "placement">>,
   currentPreset: StatusLinePreset,
 ): unknown {
   if (!isRecord(existingPowerlineSetting)) {
