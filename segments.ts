@@ -5,6 +5,7 @@ import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, Seman
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
 import { fg, rainbow, applyColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
+import { formatUsdCost } from "./currency-rates.ts";
 import { getGitRemoteHost } from "./git-status.ts";
 import type { IconSet } from "./icons.ts";
 import type { GitHost } from "./git-status.ts";
@@ -291,7 +292,7 @@ const costSegment: StatusLineSegment = {
       return { content: "", visible: false };
     }
 
-    const reportedCost = cost > 0 ? `$${cost.toFixed(2)}` : null;
+    const reportedCost = cost > 0 ? formatUsdCost(cost, ctx.options.cost?.currency) : null;
     if (!usingSubscription) {
       return reportedCost
         ? { content: color(ctx, "cost", reportedCost), visible: true }

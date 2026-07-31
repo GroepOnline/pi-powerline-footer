@@ -1,4 +1,5 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { CostCurrencyCode } from "./currency-rates.ts";
 
 // Theme color - either a pi theme color name or a custom hex color
 export type ColorValue = ThemeColor | `#${string}`;
@@ -96,7 +97,7 @@ export interface StatusLineSegmentOptions {
     hostIcon?: boolean;
   };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
-  cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both" };
+  cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both"; currency?: CostCurrencyCode };
   context?: { format?: "full" | "percent" };
   cache_read?: { format?: "tokens" | "percent" };
 }

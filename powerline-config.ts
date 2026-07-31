@@ -1,4 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { normalizeCostCurrency } from "./currency-rates.ts";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
 import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
 
@@ -244,12 +245,14 @@ function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmen
   }
 
   if (isRecord(raw.cost)) {
+    const currency = normalizeCostCurrency(raw.cost.currency);
     options.cost = {
       ...(raw.cost.subscriptionDisplay === "subscription"
         || raw.cost.subscriptionDisplay === "reported-cost"
         || raw.cost.subscriptionDisplay === "both"
         ? { subscriptionDisplay: raw.cost.subscriptionDisplay }
         : {}),
+      ...(currency ? { currency } : {}),
     };
   }
 

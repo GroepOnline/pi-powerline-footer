@@ -175,8 +175,12 @@ test("parsePowerlineConfig extracts supported segment options", () => {
       path: { mode: "full", maxLength: 120 },
       git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch", hostIcon: true },
       time: { format: "12h", showSeconds: true },
-      cost: { subscriptionDisplay: "both" },
+      cost: { subscriptionDisplay: "both", currency: "cny" },
     },
+    ["default", "compact"],
+  );
+  const invalidCurrency = parsePowerlineConfig(
+    { cost: { currency: "BTC" } },
     ["default", "compact"],
   );
 
@@ -185,8 +189,9 @@ test("parsePowerlineConfig extracts supported segment options", () => {
     path: { mode: "full", maxLength: 120 },
     git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch", hostIcon: true },
     time: { format: "12h", showSeconds: true },
-    cost: { subscriptionDisplay: "both" },
+    cost: { subscriptionDisplay: "both", currency: "CNY" },
   });
+  assert.deepEqual(invalidCurrency.segmentOptions, { cost: {} });
 });
 
 test("mergeSegmentOptions lets user config override preset segment defaults", () => {
