@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-04
+
 ### Fixed
 - **Queue preview labels** — Saved ideas now show an `idea:` preview label instead of looking like normal queued prompts, while deliverable, sending, and blocked queue items keep distinct labels.
 
