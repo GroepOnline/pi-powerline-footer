@@ -5,7 +5,7 @@ import {
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
+import { isKeyRelease, type AutocompleteProvider, type KeyId, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { execSync } from "node:child_process";
@@ -87,6 +87,7 @@ let config: PowerlineConfig = {
   queue: { captureSigil: "#" },
   segments: {},
   presets: {},
+  segmentLabels: {},
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -102,6 +103,10 @@ export interface PowerlineShortcuts {
   queueOpen: ShortcutBinding;
   editorStart: ShortcutBinding;
   editorEnd: ShortcutBinding;
+  /** Open the powerline main menu (navigate segments / configure / info). */
+  menu: ShortcutBinding;
+  /** Open the powerline info view (full open-ports list, TPS detail). */
+  info: ShortcutBinding;
 }
 
 type PowerlineShortcutKey = keyof PowerlineShortcuts;
@@ -111,7 +116,9 @@ type PowerlineShortcutAction =
   | { kind: "cutEditor" }
   | { kind: "ideaCapture" }
   | { kind: "queueOpen" }
-  | { kind: "bashMode" };
+  | { kind: "bashMode" }
+  | { kind: "powerlineMenu" }
+  | { kind: "powerlineInfo" };
 const STASH_HISTORY_LIMIT = 12;
 const PROJECT_PROMPT_HISTORY_LIMIT = 50;
 const STASH_PREVIEW_WIDTH = 72;
@@ -123,13 +130,15 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   queueOpen: "ctrl+alt+q",
   editorStart: "super+shift+up",
   editorEnd: "super+shift+down",
+  menu: "alt+p",
+  info: "alt+i",
 };
 const DEFAULT_BASH_MODE_SETTINGS = {
   toggleShortcut: "ctrl+shift+b",
   transcriptMaxLines: 2000,
   transcriptMaxBytes: 512 * 1024,
 } as const satisfies BashModeSettings;
-const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "ideaCapture", "queueOpen", "editorStart", "editorEnd"];
+const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "ideaCapture", "queueOpen", "editorStart", "editorEnd", "menu", "info"];
 const APP_RESERVED_SHORTCUTS = [
   "escape",
   "ctrl+c",
@@ -1235,6 +1244,160 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }),
       },
     );
+  }
+
+  /** Full open-ports list as a scrollable overlay (the Info view). */
+  async function showOpenPortsList(ctx: any): Promise<void> {
+    try {
+      const includeUdp = config.segmentOptions?.openPorts?.includeUdp === true;
+      const proto = includeUdp ? "-tuln" : "-tln";
+      const stdout = execSync(`ss ${proto} 2>/dev/null`, { encoding: "utf8" });
+      const lines = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+      const start = /^(Proto|Netid|State|Local)/.test(lines[0] ?? "") ? 1 : 0;
+      const rows = lines.slice(start);
+      if (rows.length === 0) {
+        ctx.ui.notify("No listening sockets", "info");
+        return;
+      }
+      const items: SelectItem[] = rows.map((line) => ({ label: line, value: line }));
+      const picked = await showSelectOverlay(ctx, "Open ports", "↑↓ navigate · enter copy · esc close", items, Math.min(items.length, 24));
+      if (picked) ctx.ui.notify(`Port: ${picked.value}`, "info");
+    } catch (error) {
+      ctx.ui.notify(`Failed to list ports: ${error instanceof Error ? error.message : String(error)}`, "error");
+    }
+  }
+
+  /** Configure sub-menu: preset, TPS value/label, ports UDP, segment labels. */
+  async function configurePowerline(ctx: any): Promise<void> {
+    const choice = await ctx.ui.select("Powerline · configure", [
+      "Change preset",
+      "Set TPS value (POWERLINE_TPS)",
+      "Clear TPS override (use live)",
+      "Toggle UDP in open-ports",
+      "Set segment label…",
+      "Show current config",
+    ]);
+    if (!choice) return;
+    if (choice === "Change preset") {
+      const names = Object.keys(PRESETS) as StatusLinePreset[];
+      const picked = await ctx.ui.select("Preset", names);
+      if (picked) {
+        config = { ...config, preset: picked as StatusLinePreset };
+        writePowerlinePresetSetting(picked as StatusLinePreset, ctx.cwd ?? process.cwd());
+        ctx.ui.notify(`Preset: ${picked} (saved)`, "info");
+        requestImmediateStatusRender({ deferDuringTyping: false });
+      }
+      return;
+    }
+    if (choice === "Set TPS value (POWERLINE_TPS)") {
+      const val = await ctx.ui.input("TPS value", process.env.POWERLINE_TPS || "");
+      if (val && val.trim()) {
+        process.env.POWERLINE_TPS = val.trim();
+        ctx.ui.notify(`TPS override set: ${val.trim()}`, "info");
+        requestImmediateStatusRender({ deferDuringTyping: false });
+      }
+      return;
+    }
+    if (choice === "Clear TPS override (use live)") {
+      delete process.env.POWERLINE_TPS;
+      ctx.ui.notify("TPS override cleared (live rate)", "info");
+      requestImmediateStatusRender({ deferDuringTyping: false });
+      return;
+    }
+    if (choice === "Toggle UDP in open-ports") {
+      const now = config.segmentOptions?.openPorts?.includeUdp === true;
+      config = {
+        ...config,
+        segmentOptions: { ...config.segmentOptions, openPorts: { includeUdp: !now } },
+      };
+      ctx.ui.notify(`Open-ports UDP: ${!now ? "on" : "off"}`, "info");
+      requestImmediateStatusRender({ deferDuringTyping: false });
+      return;
+    }
+    if (choice === "Set segment label…") {
+      const id = await ctx.ui.input("Segment id", "tps");
+      if (!id) return;
+      const label = await ctx.ui.input("Label text", config.segmentLabels[id] ?? "");
+      if (label === undefined) return;
+      const labels = { ...config.segmentLabels };
+      if (label.trim()) labels[id] = label.trim();
+      else delete labels[id];
+      config = { ...config, segmentLabels: labels };
+      ctx.ui.notify(`Label ${id}: ${label.trim() || "(cleared)"}`, "info");
+      requestImmediateStatusRender({ deferDuringTyping: false });
+      return;
+    }
+    if (choice === "Show current config") {
+      const summary = [
+        `preset: ${config.preset}`,
+        `separator: ${config.separator ?? "(preset default)"}`,
+        `tps: ${process.env.POWERLINE_TPS || "(live)"}`,
+        `open_ports UDP: ${config.segmentOptions?.openPorts?.includeUdp ? "on" : "off"}`,
+        `disabled: ${config.disabledSegments.join(",") || "(none)"}`,
+        `labels: ${Object.keys(config.segmentLabels).join(",") || "(none)"}`,
+      ].join("  ·  ");
+      ctx.ui.notify(summary, "info");
+      return;
+    }
+  }
+
+  /** Activate a segment picked from the navigator (Enter). */
+  async function activateSegment(ctx: any, picked: { id: string; label: string }): Promise<void> {
+    const id = picked.id;
+    if (id === "__none__") return;
+    if (id === "tps") {
+      const current = process.env.POWERLINE_TPS || "(live, auto)";
+      ctx.ui.notify(`TPS: ${current} — set via Configure or /tps <value>`, "info");
+      return;
+    }
+    if (id === "open_ports") {
+      await showOpenPortsList(ctx);
+      return;
+    }
+    if (id === "git") {
+      ctx.ui.notify(`git branch: ${footerDataRef?.getGitBranch() ?? "(no repo)"}`, "info");
+      return;
+    }
+    if (id === "cost") { ctx.ui.notify("Use /cost for the cost breakdown", "info"); return; }
+    if (id === "context_pct" || id === "context_total") { ctx.ui.notify("Context window shown in the bar", "info"); return; }
+    if (id === "queue") { ctx.ui.notify("Use /ideas to work the queue", "info"); return; }
+    const value = picked.label.replace(/^\S+\s+/, "");
+    ctx.ui.notify(`${id}: ${value}`, "info");
+  }
+
+  /** Main powerline menu: navigate / configure / info / toggle. */
+  async function showPowerlineMainMenu(ctx: any): Promise<void> {
+    currentCtx = ctx;
+    const choice = await ctx.ui.select("Powerline", [
+      "Navigate segments",
+      "Configure…",
+      "Open ports (full list)",
+      "TPS detail",
+      "Toggle powerline",
+    ]);
+    if (!choice) return;
+    if (choice === "Navigate segments") {
+      const picked = await showSegmentNavigator(ctx);
+      if (picked) await activateSegment(ctx, picked);
+      return;
+    }
+    if (choice === "Configure…") {
+      await configurePowerline(ctx);
+      return;
+    }
+    if (choice === "Open ports (full list)") {
+      await showOpenPortsList(ctx);
+      return;
+    }
+    if (choice === "TPS detail") {
+      const live = process.env.POWERLINE_TPS ? `(override ${process.env.POWERLINE_TPS})` : "(live 1s window)";
+      ctx.ui.notify(`TPS ${live}`, "info");
+      return;
+    }
+    if (choice === "Toggle powerline") {
+      ctx.ui.notify("Use /powerline to toggle", "info");
+      return;
+    }
   }
 
   /** Navigable overlay that mirrors the live powerline segments; arrow keys move, Enter activates. */
@@ -2651,59 +2814,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerShortcut("alt+p", {
-    description: "Navigate powerline segments (arrow keys + enter)",
-    handler: async (ctx) => {
-      currentCtx = ctx;
-      const picked = await showSegmentNavigator(ctx);
-      if (!picked) return;
-      const id = picked.id;
-      if (id === "__none__") return;
-
-      // Per-segment activation
-      if (id === "tps") {
-        const current = process.env.POWERLINE_TPS || "(live, auto)";
-        ctx.ui.notify(`TPS: ${current} — set with /tps <value>`, "info");
-        return;
-      }
-      if (id === "open_ports") {
-        try {
-          const stdout = execSync("ss -tuln", { encoding: "utf8" });
-          const lines = stdout.split("\n").map((l) => l.trim()).filter(Boolean).slice(1);
-          if (lines.length === 0) {
-            ctx.ui.notify("No listening sockets", "info");
-            return;
-          }
-          const items: SelectItem[] = lines.map((line) => ({ label: line, value: line }));
-          const selected = await showSelectOverlay(ctx, "Open Ports", "Select a port line", items, Math.min(items.length, 20));
-          if (selected) ctx.ui.notify(selected.value, "info");
-        } catch (error) {
-          ctx.ui.notify(`Failed to list ports: ${error instanceof Error ? error.message : String(error)}`, "error");
-        }
-        return;
-      }
-      if (id === "git") {
-        const branch = footerDataRef?.getGitBranch() ?? "(no repo)";
-        ctx.ui.notify(`git branch: ${branch}`, "info");
-        return;
-      }
-      if (id === "cost") {
-        ctx.ui.notify("Use /cost for the cost breakdown", "info");
-        return;
-      }
-      if (id === "context_pct" || id === "context_total") {
-        ctx.ui.notify("Context window shown in the bar", "info");
-        return;
-      }
-      if (id === "queue") {
-        ctx.ui.notify("Use /ideas to work the queue", "info");
-        return;
-      }
-      // Default: show the segment's live value
-      const value = picked.label.replace(/^\S+\s+/, "");
-      ctx.ui.notify(`${id}: ${value}`, "info");
-    },
-  });
+  // Configurable powerline shortcuts (re-bound on /reload via settings.powerlineShortcuts).
+  if (resolvedShortcuts.menu) {
+    pi.registerShortcut(resolvedShortcuts.menu as KeyId, {
+      description: "Powerline menu (navigate / configure / info)",
+      handler: async (ctx) => { await showPowerlineMainMenu(ctx); },
+    });
+  }
+  if (resolvedShortcuts.info) {
+    pi.registerShortcut(resolvedShortcuts.info as KeyId, {
+      description: "Powerline info (full open-ports list)",
+      handler: async (ctx) => { currentCtx = ctx; await showOpenPortsList(ctx); },
+    });
+  }
 
   function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
     const presetDef = getPreset(config.preset);
@@ -2765,6 +2888,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       hiddenExtensionStatusKeys,
       customItemsById,
       options: segmentOptions,
+      segmentLabels: new Map(Object.entries(config.segmentLabels)),
       theme,
       colors,
     };

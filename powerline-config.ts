@@ -21,6 +21,8 @@ export interface PowerlineConfig {
   segments: Record<string, CustomSegmentConfig>;
   /** User-defined presets, keyed by name */
   presets: Record<string, import("./types.ts").CustomPresetConfig>;
+  /** Per-segment custom text label shown before the value (e.g. tps -> "speed"). */
+  segmentLabels: Record<string, string>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -102,6 +104,17 @@ function normalizeCaptureSigil(value: unknown): string | false {
 function normalizeCustomSegmentType(value: unknown): "command" | "env" | "static" | null {
   if (value === "command" || value === "env" || value === "static") return value;
   return null;
+}
+
+function normalizeSegmentLabels(raw: unknown): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!isRecord(raw)) return result;
+  for (const [id, label] of Object.entries(raw)) {
+    if (typeof label === "string" && label.trim()) {
+      result[id] = label.trim();
+    }
+  }
+  return result;
 }
 
 function normalizeCustomSegments(raw: unknown): Record<string, CustomSegmentConfig> {
@@ -421,6 +434,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     queue: { captureSigil: "#" },
     segments: {},
     presets: {},
+    segmentLabels: {},
   };
 
   const directPreset = normalizePreset(value, presets);
@@ -459,6 +473,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     queue,
     segments: customSegments,
     presets: customPresetDefs,
+    segmentLabels: normalizeSegmentLabels(value.segmentLabels),
   };
 }
 

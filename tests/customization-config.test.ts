@@ -95,3 +95,28 @@ test("countListeningPorts returns unique ports (dedupes IPv4/IPv6)", () => {
   assert.equal(typeof n, "number");
   assert.ok(n >= 0 && Number.isInteger(n), `expected integer >= 0, got ${n}`);
 });
+
+test("segmentLabels override tps/open_ports text", () => {
+  const theme: any = { fg: (_c: string, t: string) => t };
+  const base: any = {
+    theme, colors: {}, options: {}, segmentLabels: new Map(),
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
+    customItemsById: new Map(), extensionStatuses: new Map(),
+  };
+  // no label -> just the icon + value
+  const noLabel = renderSegment("open_ports" as any, base);
+  const stripped = noLabel.content.replace(/\x1b\[[0-9;]*m/g, "").trim();
+  assert.ok(/\d+$/.test(stripped), `expected a bare count, got ${stripped}`);
+  // with label -> icon + "ports <count>"
+  const labeled = renderSegment("open_ports" as any, { ...base, segmentLabels: new Map([["open_ports", "ports"]]) });
+  const s2 = labeled.content.replace(/\x1b\[[0-9;]*m/g, "").trim();
+  assert.match(s2, /ports \d+$/);
+});
+
+test("parsePowerlineConfig parses segmentLabels", () => {
+  const cfg = parsePowerlineConfig(
+    { preset: "chef", segmentLabels: { tps: "speed", open_ports: "ports", bad: "  " } },
+    ["default", "chef"] as unknown as readonly string[],
+  );
+  assert.deepEqual(cfg.segmentLabels, { tps: "speed", open_ports: "ports" });
+});

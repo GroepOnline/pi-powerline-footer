@@ -598,7 +598,9 @@ const tpsSegment: StatusLineSegment = {
       const dOut = out - ref.output;
       if (dt > 0 && dOut >= 0) tps = dOut / dt;
     }
-    const text = tps >= 100 ? Math.round(tps).toString() : tps.toFixed(1);
+    const valueText = tps >= 100 ? Math.round(tps).toString() : tps.toFixed(1);
+    const label = ctx.segmentLabels?.get("tps");
+    const text = label ? `${label} ${valueText}` : valueText;
     // levendig: light up in the tokens color while generating, dim while idle
     return {
       content: withIcon(getIcons().tps, color(ctx, tps > 0 ? "tokens" : "queue", text)),
@@ -612,7 +614,9 @@ const openPortsSegment: StatusLineSegment = {
   render(ctx) {
     const includeUdp = ctx.options?.openPorts?.includeUdp === true;
     const count = countListeningPorts(includeUdp);
-    return { content: withIcon(getIcons().ports, color(ctx, "queue", String(count))), visible: true };
+    const label = ctx.segmentLabels?.get("open_ports");
+    const text = label ? `${label} ${count}` : String(count);
+    return { content: withIcon(getIcons().ports, color(ctx, "queue", text)), visible: true };
   },
 };
 
