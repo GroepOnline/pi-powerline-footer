@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- README documents custom segments, custom presets, and the `chef` preset (TPS + open-ports + interactive commands).
+
 ## [0.14.0] - 2026-08-05
 
 ### Added

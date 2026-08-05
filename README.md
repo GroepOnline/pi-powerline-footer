@@ -112,6 +112,7 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
 | `full` | Everything including hostname, time, abbreviated path |
 | `nerd` | Maximum detail for Nerd Font users |
 | `ascii` | Safe for any terminal |
+| `chef` | Fork default: muted colors, slash separators, TPS + open-ports segments |
 
 **Environment:** `POWERLINE_NERD_FONTS=1` to force Nerd Fonts, `=0` for ASCII.
 
@@ -159,6 +160,73 @@ You can promote any extension status key into its own dedicated powerline item. 
 - `excludeFromExtensionStatuses` (optional): omit this key from the aggregate `extension_statuses` segment (default `true`)
 
 If you still prefer the older string preset config shape, `"powerline": "default"` continues to work. String preset shorthand keeps `welcome` enabled and uses the default shortcut/cost/model display settings.
+
+### Custom segments (computed, no code)
+
+Define your own segments directly in settings — run a command, read an env var, or show static text. No TypeScript needed.
+
+```json
+{
+  "powerline": {
+    "preset": "chef",
+    "segments": {
+      "battery": { "type": "command", "command": "cat /sys/class/power_supply/BAT0/capacity", "prefix": "batt", "cacheMs": 30000 },
+      "who":     { "type": "env", "env": "USER", "prefix": "u", "color": "#888888" },
+      "chef":    { "type": "static", "text": "CHEF", "color": "accent" }
+    }
+  }
+}
+```
+
+Each segment becomes usable in a preset as `custom:<id>` (e.g. `custom:battery`).
+
+Segment fields:
+
+- `type` (required): `command` | `env` | `static`
+- `command` (command type): shell command to run; output is trimmed
+- `cacheMs` (command type, optional): cache output for N ms to avoid re-spawning a shell every paint
+- `env` (env type): environment variable to read
+- `fallback` (env type, optional): text shown when the variable is unset (omit to hide the segment)
+- `text` (static type): fixed text
+- `prefix` (optional): text shown before the value
+- `color` (optional): Pi theme color (`warning`, `accent`, ...) or hex (`#RRGGBB`)
+
+If a command fails or an env var is unset without a fallback, the segment renders nothing.
+
+### Custom presets
+
+Define your own preset in settings; it merges over built-ins and is selectable via `powerline.preset` (or `/powerline <name>`).
+
+```json
+{
+  "powerline": {
+    "preset": "mine",
+    "segments": { "battery": { "type": "command", "command": "cat /sys/class/power_supply/BAT0/capacity", "prefix": "batt" } },
+    "presets": {
+      "mine": {
+        "left": ["hostname", "model", "custom:battery", "git"],
+        "right": ["tps", "open_ports", "cost", "time"],
+        "separator": "slash",
+        "colors": { "model": "text" },
+        "segmentOptions": { "path": { "mode": "basename" } }
+      }
+    }
+  }
+}
+```
+
+### The `chef` preset and interactive commands
+
+`preset: "chef"` is the GroepOnline fork's default look: muted colors (no rainbow), slash separators, and two extra right-side segments:
+
+- `tps` — tokens/sec, derived live from session output and elapsed time (override with env `POWERLINE_TPS`)
+- `open_ports` — count of listening sockets (`ss` → `netstat` → `/proc/net` fallback)
+
+Interactivity (status bar segments render as plain text, so actions live in commands):
+
+- `/tps [value]` — show or set `POWERLINE_TPS`
+- `/open-ports` — list listening ports and pick one
+- `alt+p` — powerline quick-actions menu (preset, TPS, ports, toggle)
 
 ### Disabling segments
 
