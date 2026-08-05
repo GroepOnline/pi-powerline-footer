@@ -8,6 +8,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { execSync } from "node:child_process";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle } from "./types.ts";
 import type { PowerlineConfig } from "./powerline-config.ts";
@@ -23,11 +24,11 @@ import { BashModeEditor } from "./bash-mode/editor.ts";
 import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
-import { getPreset, PRESETS } from "./presets.ts";
+import { getPreset, PRESETS, registerCustomPresets } from "./presets.ts";
 import { getAgentPath } from "./paths.ts";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
 import { getSeparator } from "./separators.ts";
-import { renderSegment } from "./segments.ts";
+import { renderSegment, registerCustomSegments } from "./segments.ts";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch, subscribeGitUpdates } from "./git-status.ts";
 import { SessionBranchCache, SessionTokenStatsCache } from "./token-stats.ts";
 import { ansi, getFgAnsiCode } from "./colors.ts";
@@ -84,6 +85,8 @@ let config: PowerlineConfig = {
   welcome: true,
   stashSharpSShortcut: false,
   queue: { captureSigil: "#" },
+  segments: {},
+  presets: {},
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -974,6 +977,8 @@ function warnInvalidSegmentSettings(ctx: any): void {
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
   config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
+  registerCustomSegments(config.segments);
+  registerCustomPresets(config.presets);
   let resolvedShortcuts = resolveShortcutConfig(startupSettings);
   let bashModeSettings = parseBashModeSettings(startupSettings, resolvedShortcuts);
 
@@ -1517,6 +1522,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeSettings = parseBashModeSettings(settings, resolvedShortcuts);
     showLastPrompt = settings.showLastPrompt !== false;
     config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
+    registerCustomSegments(config.segments);
+    registerCustomPresets(config.presets);
     warnInvalidSegmentSettings(ctx);
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
@@ -2553,7 +2560,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
       process.env.POWERLINE_TPS = value;
       ctx.ui.notify(`TPS set to: ${value}`, "info");
-      requestRender();
+      tuiRef?.requestRender();
     },
   });
 
