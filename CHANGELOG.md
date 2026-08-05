@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.17.0] - 2026-08-05
 
 ### Added
 - **Full powerline menu** (`alt+p`): Navigate segments / Configure… / Open ports (full list) / TPS detail / Toggle. Configure sub-menu changes preset, sets/clears the TPS override, toggles UDP in open-ports, sets segment labels, and shows current config.
