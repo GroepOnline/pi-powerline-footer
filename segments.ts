@@ -508,8 +508,9 @@ const extensionStatusesSegment: StatusLineSegment = {
   },
 };
 
-export function countListeningPorts(): number {
-  // ponytail: count UNIQUE listening ports (dedupes IPv4/IPv6 dual-stack listeners)
+export function countListeningPorts(includeUdp = false): number {
+  // ponytail: count UNIQUE TCP listening ports (dedupes IPv4/IPv6 dual-stack and
+  // repeated multicast binds). UDP is noisy (mDNS/DHCP/ephemeral) so it's opt-in.
   const run = (cmd: string): string | null => {
     try {
       return execSync(cmd, { encoding: "utf8" });
@@ -517,33 +518,33 @@ export function countListeningPorts(): number {
       return null;
     }
   };
-  let out = run("ss -tulnH 2>/dev/null");
-  if (out === null) out = run("ss -tuln 2>/dev/null");
-  if (out === null) out = run("netstat -tuln 2>/dev/null");
-  if (out === null) return readProcListeningPorts();
+  const proto = includeUdp ? "-tulnH" : "-tlnH";
+  let out = run(`ss ${proto} 2>/dev/null`);
+  if (out === null) out = run(`ss ${proto.replace("H", "")} 2>/dev/null`);
+  if (out === null) out = run(includeUdp ? "netstat -tuln 2>/dev/null" : "netstat -tln 2>/dev/null");
+  if (out === null) return readProcListeningPorts(includeUdp);
 
   const lines = out.split("\n").map((l) => l.trim()).filter(Boolean);
-  // ss and netstat put the local address at different column indices; scan all columns
-  // for an addr:port token instead of guessing the index.
   const start = /^(Proto|Netid|State|Local)/.test(lines[0] ?? "") ? 1 : 0;
   const ports = new Set<number>();
   for (const line of lines.slice(start)) {
-    const cols = line.split(/\s+/);
-    for (const col of cols) {
+    // ss/netstat put the local address at different columns; take the first addr:port token
+    for (const col of line.split(/\s+/)) {
       const m = /:(\d+)$/.exec(col);
       if (m) {
         ports.add(Number(m[1]));
-        break; // first addr:port on the line is the local one
+        break;
       }
     }
   }
   return ports.size;
 }
 
-function readProcListeningPorts(): number {
+function readProcListeningPorts(includeUdp: boolean): number {
   // ponytail: last-resort /proc parse when ss/netstat are unavailable; dedupe by port
+  const files = includeUdp ? ["tcp", "tcp6", "udp", "udp6"] : ["tcp", "tcp6"];
   const ports = new Set<number>();
-  for (const f of ["tcp", "tcp6", "udp", "udp6"]) {
+  for (const f of files) {
     try {
       const data = readFileSync(`/proc/net/${f}`, "utf8");
       for (const line of data.split("\n")) {
@@ -560,8 +561,10 @@ function readProcListeningPorts(): number {
   return ports.size;
 }
 
-let tpsSample: { at: number; output: number } | null = null;
-let tpsEma = 0;
+// Rolling 1-second sliding window of (timestamp, cumulative output) samples.
+// Renders fire every ~33ms during streaming, so a per-render delta spikes (tiny dt);
+// a fixed ~1s lookback gives a stable, honest tokens/sec over the last second.
+const tpsSamples: { at: number; output: number }[] = [];
 
 const tpsSegment: StatusLineSegment = {
   id: "tps",
@@ -570,26 +573,31 @@ const tpsSegment: StatusLineSegment = {
     if (override) {
       return { content: withIcon(getIcons().tps, color(ctx, "tokens", override)), visible: true };
     }
-    // ponytail: rolling token-rate between renders, EMA-smoothed, reset after idle gaps.
-    // sessionStartTime is unreliable (reset on extension reload) while output is cumulative
-    // for the whole session, so a session-average gave absurd values (e.g. tps:12775).
     const out = ctx.usageStats?.output ?? 0;
     const now = Date.now();
-    const prev = tpsSample;
-    tpsSample = { at: now, output: out };
-    if (prev) {
-      const dt = (now - prev.at) / 1000;
-      const dOut = out - prev.output;
-      if (dt > 0 && dt <= 10 && dOut >= 0) {
-        const inst = dOut / dt;
-        tpsEma = tpsEma <= 0 ? inst : tpsEma * 0.6 + inst * 0.4;
-      } else {
-        tpsEma = 0; // idle gap or clock jump -> restart the baseline
+    tpsSamples.push({ at: now, output: out });
+    // keep the last 5s of samples; drop everything older (idle gaps get forgotten)
+    while (tpsSamples.length > 0 && now - tpsSamples[0].at > 5000) tpsSamples.shift();
+    if (tpsSamples.length > 240) tpsSamples.splice(0, tpsSamples.length - 240);
+
+    // pick the sample closest to 1s old (window [0.5s, 2s]) for a stable rate
+    let ref: { at: number; output: number } | null = null;
+    let bestDelta = Infinity;
+    for (const s of tpsSamples) {
+      const age = now - s.at;
+      if (age < 500) continue;
+      const d = Math.abs(age - 1000);
+      if (d < bestDelta) {
+        bestDelta = d;
+        ref = s;
       }
-    } else {
-      tpsEma = 0;
     }
-    const tps = tpsEma;
+    let tps = 0;
+    if (ref) {
+      const dt = (now - ref.at) / 1000;
+      const dOut = out - ref.output;
+      if (dt > 0 && dOut >= 0) tps = dOut / dt;
+    }
     const text = tps >= 100 ? Math.round(tps).toString() : tps.toFixed(1);
     // levendig: light up in the tokens color while generating, dim while idle
     return {
@@ -602,7 +610,8 @@ const tpsSegment: StatusLineSegment = {
 const openPortsSegment: StatusLineSegment = {
   id: "open_ports",
   render(ctx) {
-    const count = countListeningPorts();
+    const includeUdp = ctx.options?.openPorts?.includeUdp === true;
+    const count = countListeningPorts(includeUdp);
     return { content: withIcon(getIcons().ports, color(ctx, "queue", String(count))), visible: true };
   },
 };

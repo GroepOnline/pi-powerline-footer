@@ -105,6 +105,7 @@ export interface StatusLineSegmentOptions {
   cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both"; currency?: CostCurrencyCode };
   context?: { format?: "full" | "percent" };
   cache_read?: { format?: "tokens" | "percent" | "both" };
+  openPorts?: { /** Include UDP listeners (mDNS/DHCP/ephemeral) in the count. Default false. */ includeUdp?: boolean };
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";

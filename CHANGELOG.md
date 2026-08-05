@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **TPS rewritten with a 1-second sliding window.** The previous rolling EMA spiked (e.g. `tps:1118`) because renders fire every ~33ms during streaming, making per-render `dOut/dt` explode on tiny `dt`. TPS is now `tokens in the last ~1s` over a 5s sample ring — stable, honest, decays to 0 when idle. No more absurd values.
+- **Open-ports now counts unique TCP listening ports** by default (was unique TCP+UDP, which included noisy UDP multicast/ephemeral like mDNS 5353, DHCP, SSDP). New `segmentOptions.openPorts.includeUdp` opts back into UDP. 23 TCP unique on the dev machine (was 33).
+
 ## [0.15.0] - 2026-08-05
 
 ### Added
