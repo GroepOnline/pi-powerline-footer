@@ -49,6 +49,8 @@ export const BUILTIN_STATUS_LINE_SEGMENT_IDS = [
   "cache_read",
   "cache_write",
   "thinking",
+  "tps",
+  "open_ports",
   "extension_statuses",
 ] as const;
 
@@ -79,7 +81,8 @@ export type StatusLinePreset =
   | "compact"
   | "full"
   | "nerd"
-  | "ascii";
+  | "ascii"
+  | "chef";
 
 // Per-segment options
 export interface StatusLineSegmentOptions {
