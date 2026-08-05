@@ -1,6 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [0.13.0] - 2026-08-05
+
+Forked to GroepOnline. Adds ChefGroep-specific status segments and interactivity.
+
+### Added
+- **`chef` preset** — Muted, slash-separated status bar preset (hostname, model, thinking, shell mode, path, git, queue left; tps, open ports, cost, context %, time right).
+- **`tps` segment** — Reads `POWERLINE_TPS` env var and shows tokens/sec in the status bar.
+- **`open_ports` segment** — Counts listening sockets via `ss -tuln` and shows the open-port total.
+- **`/tps` command** — Show or set `POWERLINE_TPS` at runtime.
+- **`/open-ports` command** — Lists listening sockets in a select overlay.
+- **`alt+p` shortcut** — Powerline quick-actions menu (preset, TPS, ports, toggle).
+
+### Changed
+- Removed rainbow gradient from high thinking levels; uses the preset's `thinking` color instead.
 
 ## [0.12.1] - 2026-08-04
 
