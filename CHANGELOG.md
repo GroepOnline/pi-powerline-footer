@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.16.0] - 2026-08-05
 
 ### Fixed
 - **TPS rewritten with a 1-second sliding window.** The previous rolling EMA spiked (e.g. `tps:1118`) because renders fire every ~33ms during streaming, making per-render `dOut/dt` explode on tiny `dt`. TPS is now `tokens in the last ~1s` over a 5s sample ring — stable, honest, decays to 0 when idle. No more absurd values.
