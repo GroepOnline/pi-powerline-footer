@@ -345,6 +345,9 @@ const contextPctSegment: StatusLineSegment = {
 
     const icons = getIcons();
     const { contextTokens, contextPercent, contextWindow } = ctx;
+    if (!contextWindow || !Number.isFinite(contextPercent)) {
+      return { content: "", visible: false };
+    }
 
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
     const percentOnly = ctx.options.context?.format === "percent";
@@ -505,8 +508,8 @@ const extensionStatusesSegment: StatusLineSegment = {
   },
 };
 
-function countListeningPorts(): number {
-  // ponytail: ss first, netstat fallback, /proc last; returns -1 on total failure
+export function countListeningPorts(): number {
+  // ponytail: count UNIQUE listening ports (dedupes IPv4/IPv6 dual-stack listeners)
   const run = (cmd: string): string | null => {
     try {
       return execSync(cmd, { encoding: "utf8" });
@@ -518,51 +521,81 @@ function countListeningPorts(): number {
   if (out === null) out = run("ss -tuln 2>/dev/null");
   if (out === null) out = run("netstat -tuln 2>/dev/null");
   if (out === null) return readProcListeningPorts();
+
   const lines = out.split("\n").map((l) => l.trim()).filter(Boolean);
-  // ss -H has no header; plain ss/netstat do — drop a leading header line if present
-  const start = /^(Proto|State|Local)/.test(lines[0] ?? "") ? 1 : 0;
-  return Math.max(0, lines.length - start);
+  // ss and netstat put the local address at different column indices; scan all columns
+  // for an addr:port token instead of guessing the index.
+  const start = /^(Proto|Netid|State|Local)/.test(lines[0] ?? "") ? 1 : 0;
+  const ports = new Set<number>();
+  for (const line of lines.slice(start)) {
+    const cols = line.split(/\s+/);
+    for (const col of cols) {
+      const m = /:(\d+)$/.exec(col);
+      if (m) {
+        ports.add(Number(m[1]));
+        break; // first addr:port on the line is the local one
+      }
+    }
+  }
+  return ports.size;
 }
 
 function readProcListeningPorts(): number {
-  // ponytail: last-resort /proc parse when ss/netstat are unavailable
-  let count = 0;
+  // ponytail: last-resort /proc parse when ss/netstat are unavailable; dedupe by port
+  const ports = new Set<number>();
   for (const f of ["tcp", "tcp6", "udp", "udp6"]) {
     try {
       const data = readFileSync(`/proc/net/${f}`, "utf8");
       for (const line of data.split("\n")) {
         const cols = line.trim().split(/\s+/);
-        // local_address:port state — LISTEN (0A) for tcp, always for udp
         if (cols.length < 4) continue;
-        if (f.startsWith("tcp")) {
-          if (cols[3] === "0A") count++;
-        } else {
-          count++;
-        }
+        if (f.startsWith("tcp") && cols[3] !== "0A") continue; // LISTEN state
+        const m = /:([0-9A-Fa-f]{1,4})$/.exec(cols[1]);
+        if (m) ports.add(parseInt(m[1], 16));
       }
     } catch {
       // file may not exist; skip
     }
   }
-  return count;
+  return ports.size;
 }
+
+let tpsSample: { at: number; output: number } | null = null;
+let tpsEma = 0;
 
 const tpsSegment: StatusLineSegment = {
   id: "tps",
   render(ctx) {
     const override = process.env.POWERLINE_TPS?.trim();
-    let text: string;
     if (override) {
-      text = override;
-    } else {
-      // ponytail: no live token-rate feed in the snapshot context, so derive session-average TPS
-      const out = ctx.usageStats?.output ?? 0;
-      const startedAt = ctx.sessionStartTime ?? Date.now();
-      const elapsed = Math.max(1, (Date.now() - startedAt) / 1000);
-      const tps = out / elapsed;
-      text = tps >= 100 ? Math.round(tps).toString() : tps.toFixed(1);
+      return { content: withIcon(getIcons().tps, color(ctx, "tokens", override)), visible: true };
     }
-    return { content: color(ctx, "tokens", `tps:${text}`), visible: true };
+    // ponytail: rolling token-rate between renders, EMA-smoothed, reset after idle gaps.
+    // sessionStartTime is unreliable (reset on extension reload) while output is cumulative
+    // for the whole session, so a session-average gave absurd values (e.g. tps:12775).
+    const out = ctx.usageStats?.output ?? 0;
+    const now = Date.now();
+    const prev = tpsSample;
+    tpsSample = { at: now, output: out };
+    if (prev) {
+      const dt = (now - prev.at) / 1000;
+      const dOut = out - prev.output;
+      if (dt > 0 && dt <= 10 && dOut >= 0) {
+        const inst = dOut / dt;
+        tpsEma = tpsEma <= 0 ? inst : tpsEma * 0.6 + inst * 0.4;
+      } else {
+        tpsEma = 0; // idle gap or clock jump -> restart the baseline
+      }
+    } else {
+      tpsEma = 0;
+    }
+    const tps = tpsEma;
+    const text = tps >= 100 ? Math.round(tps).toString() : tps.toFixed(1);
+    // levendig: light up in the tokens color while generating, dim while idle
+    return {
+      content: withIcon(getIcons().tps, color(ctx, tps > 0 ? "tokens" : "queue", text)),
+      visible: true,
+    };
   },
 };
 
@@ -570,8 +603,7 @@ const openPortsSegment: StatusLineSegment = {
   id: "open_ports",
   render(ctx) {
     const count = countListeningPorts();
-    const text = count < 0 ? "?" : String(count);
-    return { content: color(ctx, "queue", `ports:${text}`), visible: true };
+    return { content: withIcon(getIcons().ports, color(ctx, "queue", String(count))), visible: true };
   },
 };
 

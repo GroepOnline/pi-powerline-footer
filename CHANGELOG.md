@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Navigable powerline segments** — `alt+p` now opens an overlay mirroring the live status bar segments; `↑`/`↓` move, `enter` activates a per-segment action (TPS set hint, open-ports list, git branch, etc.). Pi core renders the footer as static text, so live click is not possible; this is the closest interactive equivalent.
+- Segment icons: TPS shows a rocket/bolt and lights up in the tokens color while generating; open-ports shows a plug icon.
+
+### Fixed
+- **TPS no longer shows absurd values** (e.g. `tps:12775`). It now uses a rolling token-rate (EMA-smoothed, reset after idle gaps) instead of a session-average, which broke after extension reload because `sessionStartTime` resets while output is cumulative.
+- **Open-ports count is now unique ports** (dedupes IPv4/IPv6 dual-stack listeners) instead of raw `ss` lines (48 raw → 32 unique on the dev machine). Column parsing is column-agnostic (works for both `ss` and `netstat`).
+- **Context segment hidden** instead of showing `NaN`/`??` when no context window is known.
+
 ## [0.14.1] - 2026-08-05
 
 ### Fixed
