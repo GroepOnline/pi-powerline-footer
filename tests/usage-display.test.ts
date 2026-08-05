@@ -52,6 +52,7 @@ function createSegmentContext(options: StatusLineSegmentOptions = {}, overrides:
     hiddenExtensionStatusKeys: new Set(),
     customItemsById: new Map(),
     options,
+    segmentLabels: new Map(),
     theme: plainTheme(),
     colors: {},
     ...overrides,

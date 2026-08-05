@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Full powerline menu** (`alt+p`): Navigate segments / Configure… / Open ports (full list) / TPS detail / Toggle. Configure sub-menu changes preset, sets/clears the TPS override, toggles UDP in open-ports, sets segment labels, and shows current config.
+- **`alt+i` info shortcut** — opens the full open-ports list directly.
+- **Configurable keybinds** — `powerlineShortcuts.menu` and `powerlineShortcuts.info` (defaults `alt+p` / `alt+i`), with the same conflict resolution as the other powerline shortcuts. Set to `null` to disable. Applies after `/reload`.
+- **Segment labels** — `powerline.segmentLabels` renames the text for any segment (e.g. `tps: "speed"`), shown between the icon and the value.
+
 ## [0.16.0] - 2026-08-05
 
 ### Fixed

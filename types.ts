@@ -219,6 +219,8 @@ export interface SegmentContext {
   
   // Options
   options: StatusLineSegmentOptions;
+  /** Per-segment custom text labels (from powerline.segmentLabels). */
+  segmentLabels: ReadonlyMap<string, string>;
   
   // Theming
   theme: ThemeLike;

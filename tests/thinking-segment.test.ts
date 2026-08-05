@@ -33,6 +33,7 @@ function createSegmentContext(thinkingLevel: string, colors: ColorScheme): Segme
     hiddenExtensionStatusKeys: new Set(),
     customItemsById: new Map(),
     options: {},
+    segmentLabels: new Map(),
     theme: {
       fg() {
         throw new Error("unexpected theme color lookup in thinking segment test");

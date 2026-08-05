@@ -50,6 +50,7 @@ function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentC
     hiddenExtensionStatusKeys: new Set(),
     customItemsById: new Map(),
     options: {},
+    segmentLabels: new Map(),
     theme: { fg: plainThemeText },
     colors: {},
     ...overrides,

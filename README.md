@@ -219,14 +219,47 @@ Define your own preset in settings; it merges over built-ins and is selectable v
 
 `preset: "chef"` is the GroepOnline fork's default look: muted colors (no rainbow), slash separators, and two extra right-side segments:
 
-- `tps` — live tokens/sec, rolling rate (EMA-smoothed, reset after idle); a rocket/bolt icon lights up while generating (override with env `POWERLINE_TPS`)
-- `open_ports` — count of unique listening ports (`ss` → `netstat` → `/proc/net` fallback, dedupes IPv4/IPv6)
+- `tps` — live tokens/sec, rolling 1-second window (EMA-free, no spikes); a rocket/bolt icon lights up while generating (override with env `POWERLINE_TPS`)
+- `open_ports` — count of unique **TCP** listening ports (`ss` → `netstat` → `/proc/net` fallback, dedupes IPv4/IPv6). Set `segmentOptions.openPorts.includeUdp: true` to include noisy UDP (mDNS/DHCP/ephemeral).
 
 Interactivity (Pi core renders the footer as static text, so live click is not possible; actions live in commands and a navigable overlay):
 
 - `/tps [value]` — show or set `POWERLINE_TPS`
 - `/open-ports` — list listening ports and pick one
-- `alt+p` — open a navigable mirror of the live status bar segments; `↑`/`↓` move, `enter` activates a per-segment action
+- `alt+p` — **powerline menu**: navigate the live segments (`↑`/`↓` + `enter`), configure (preset / TPS / UDP / labels), or open the full ports list
+- `alt+i` — **powerline info**: full open-ports list
+
+Both `alt+p` and `alt+i` are rebindable (see Keybinds below); changes apply after `/reload`.
+
+### Keybinds
+
+The powerline menu and info shortcuts are configurable via `powerlineShortcuts` (same map as the other powerline shortcuts), with automatic conflict resolution. Set a binding to `null` to disable it.
+
+```json
+{
+  "powerlineShortcuts": {
+    "menu": "alt+p",
+    "info": "alt+i"
+  }
+}
+```
+
+Changes apply after `/reload` (the extension re-registers shortcuts on reload).
+
+### Segment labels (custom text)
+
+Rename the text shown for any segment via `powerline.segmentLabels` (a map of segment id → label). The label appears between the icon and the value.
+
+```json
+{
+  "powerline": {
+    "segmentLabels": {
+      "tps": "speed",
+      "open_ports": "ports"
+    }
+  }
+}
+```
 
 ### Disabling segments
 
