@@ -1928,6 +1928,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("session_compact", async (event, ctx) => {
     powerlineCompacting = false;
     currentCtx = ctx;
+    // Compaction rewrites the conversation, so the cached context-usage (tokens/window/percent)
+    // is stale. Reset it and force a redraw — otherwise the bar keeps showing the pre-compact fill.
+    coreContextUsageCache.reset();
+    requestImmediateStatusRender({ deferDuringTyping: false });
     if (event.willRetry) {
       deliverAfterRetrySettles = true;
     } else {
