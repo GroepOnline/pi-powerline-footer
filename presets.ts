@@ -21,6 +21,14 @@ const NERD_COLORS: ColorScheme = {
   cost: "warning",
 };
 
+const CHEF_COLORS: ColorScheme = {
+  ...DEFAULT_COLORS,
+  model: "text",
+  path: "text",
+  gitClean: "dim",
+  queue: "muted",
+};
+
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   default: {
     leftSegments: ["model", "thinking", "shell_mode", "path", "git", "queue", "context_pct", "cache_read", "cost"],
@@ -92,6 +100,19 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
       model: { showThinkingLevel: true },
       path: { mode: "abbreviated", maxLength: 40 },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+    },
+  },
+
+  chef: {
+    leftSegments: ["hostname", "model", "thinking", "shell_mode", "path", "git", "queue"],
+    rightSegments: ["tps", "open_ports", "cost", "context_pct", "time"],
+    separator: "slash",
+    colors: CHEF_COLORS,
+    segmentOptions: {
+      model: { showThinkingLevel: false },
+      path: { mode: "basename" },
+      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      time: { format: "24h", showSeconds: false },
     },
   },
 

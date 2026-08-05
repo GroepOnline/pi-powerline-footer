@@ -2540,6 +2540,99 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
+
+  pi.registerCommand("tps", {
+    description: "Show or set POWERLINE_TPS value",
+    handler: async (args, ctx) => {
+      currentCtx = ctx;
+      const value = args?.trim();
+      if (!value) {
+        const current = process.env.POWERLINE_TPS || "not set";
+        ctx.ui.notify(`TPS: ${current}`, "info");
+        return;
+      }
+      process.env.POWERLINE_TPS = value;
+      ctx.ui.notify(`TPS set to: ${value}`, "info");
+      requestRender();
+    },
+  });
+
+  pi.registerCommand("open-ports", {
+    description: "Show open ports",
+    handler: async (_args, ctx) => {
+      currentCtx = ctx;
+      try {
+        const stdout = execSync("ss -tuln", { encoding: "utf8" });
+        const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
+        const items: SelectItem[] = lines.slice(1).map((line) => ({
+          label: line.trim(),
+          value: line.trim(),
+        }));
+        if (items.length === 0) {
+          ctx.ui.notify("No open ports found", "info");
+          return;
+        }
+        const selected = await showSelectOverlay(
+          ctx,
+          "Open Ports",
+          "Select a port line for details",
+          items,
+          Math.min(items.length, 20),
+        );
+        if (selected) {
+          ctx.ui.notify(`Port: ${selected.value}`, "info");
+        }
+      } catch (error) {
+        ctx.ui.notify(`Failed to list ports: ${error instanceof Error ? error.message : String(error)}`, "error");
+      }
+    },
+  });
+
+  pi.registerShortcut("alt+p", {
+    description: "Open powerline quick actions",
+    handler: async (ctx) => {
+      currentCtx = ctx;
+      const preset = config.preset;
+      const currentTps = process.env.POWERLINE_TPS || "?";
+      let portCount = 0;
+      try {
+        const stdout = execSync("ss -tuln", { encoding: "utf8" });
+        const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
+        portCount = Math.max(0, lines.length - 2);
+      } catch {
+        // ignore
+      }
+
+      const items: SelectItem[] = [
+        { label: `Preset: ${preset}`, value: `preset:${preset}` },
+        { label: `TPS: ${currentTps}`, value: "tps" },
+        { label: `Open ports: ${portCount}`, value: "ports" },
+        { label: "Toggle powerline", value: "toggle" },
+        { label: "Change preset", value: "presets" },
+      ];
+
+      const selected = await showSelectOverlay(
+        ctx,
+        "Powerline",
+        "Quick actions",
+        items,
+        items.length,
+      );
+
+      if (!selected) return;
+
+      if (selected.value === "toggle") {
+        ctx.ui.notify("Use /powerline to toggle", "info");
+      } else if (selected.value === "presets") {
+        ctx.ui.notify(`Presets: ${Object.keys(PRESETS).join(", ")}`, "info");
+      } else if (selected.value === "tps") {
+        ctx.ui.notify(`TPS is currently: ${currentTps}`, "info");
+      } else if (selected.value === "ports") {
+        ctx.ui.notify(`Open ports: ${portCount}`, "info");
+      }
+    },
+  });
+
   function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
     const presetDef = getPreset(config.preset);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();

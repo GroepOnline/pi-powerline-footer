@@ -1,9 +1,10 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
+import { execSync } from "node:child_process";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
-import { fg, rainbow, applyColor } from "./theme.ts";
+import { fg, applyColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
 import { formatUsdCost } from "./currency-rates.ts";
 import { getGitRemoteHost } from "./git-status.ts";
@@ -218,7 +219,7 @@ const thinkingSegment: StatusLineSegment = {
     const content = `think:${label}`;
 
     if (level === "high" || level === "xhigh" || level === "max") {
-      return { content: rainbow(content), visible: true };
+      return { content: color(ctx, "thinking", content), visible: true };
     }
 
     if (level === "minimal") {
@@ -503,6 +504,31 @@ const extensionStatusesSegment: StatusLineSegment = {
   },
 };
 
+const tpsSegment: StatusLineSegment = {
+  id: "tps",
+  render(ctx) {
+    const raw = process.env.POWERLINE_TPS;
+    const text = raw && raw.trim() ? raw.trim() : "?";
+    return { content: color(ctx, "queue", `tps:${text}`), visible: true };
+  },
+};
+
+const openPortsSegment: StatusLineSegment = {
+  id: "open_ports",
+  render() {
+    let count = 0;
+    try {
+      const stdout = execSync("ss -tuln", { encoding: "utf8" });
+      const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
+      // First line is header, remaining lines are listeners
+      count = Math.max(0, lines.length - 2);
+    } catch {
+      count = 0;
+    }
+    return { content: `ports:${count}`, visible: true };
+  },
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Segment Registry
 // ═══════════════════════════════════════════════════════════════════════════
@@ -527,6 +553,9 @@ export const SEGMENTS: Record<BuiltinStatusLineSegmentId, StatusLineSegment> = {
   hostname: hostnameSegment,
   cache_read: cacheReadSegment,
   cache_write: cacheWriteSegment,
+  thinking: thinkingSegment,
+  tps: tpsSegment,
+  open_ports: openPortsSegment,
   extension_statuses: extensionStatusesSegment,
 };
 
