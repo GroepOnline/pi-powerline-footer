@@ -127,10 +127,10 @@ export interface CustomStatusItem {
 
 // Preset definition
 export interface PresetDef {
-  leftSegments: BuiltinStatusLineSegmentId[];
-  rightSegments: BuiltinStatusLineSegmentId[];
+  leftSegments: StatusLineSegmentId[];
+  rightSegments: StatusLineSegmentId[];
   /** Secondary row segments (shown in footer, above sub bar) */
-  secondarySegments?: BuiltinStatusLineSegmentId[];
+  secondarySegments?: StatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;
   /** Color scheme for this preset */
@@ -232,6 +232,40 @@ export interface RenderedSegment {
 
 // Segment definition
 export interface StatusLineSegment {
-  id: BuiltinStatusLineSegmentId;
+  id: StatusLineSegmentId;
   render(ctx: SegmentContext): RenderedSegment;
+}
+
+// User-defined computed segment (configured via settings, no TS needed)
+export type CustomSegmentConfig =
+  | {
+      type: "command";
+      command: string;
+      prefix?: string;
+      color?: ColorValue;
+      /** Cache command output for this many ms to avoid re-running every paint */
+      cacheMs?: number;
+    }
+  | {
+      type: "env";
+      env: string;
+      prefix?: string;
+      color?: ColorValue;
+      fallback?: string;
+    }
+  | {
+      type: "static";
+      text: string;
+      prefix?: string;
+      color?: ColorValue;
+    };
+
+// User-defined preset (configured via settings, merges with built-ins)
+export interface CustomPresetConfig {
+  left?: StatusLineSegmentId[];
+  right?: StatusLineSegmentId[];
+  secondary?: StatusLineSegmentId[];
+  separator?: StatusLineSeparatorStyle;
+  colors?: ColorScheme;
+  segmentOptions?: StatusLineSegmentOptions;
 }

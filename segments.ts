@@ -1,8 +1,9 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
+import type { BuiltinStatusLineSegmentId, CustomSegmentConfig, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
 import { fg, applyColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
@@ -504,28 +505,73 @@ const extensionStatusesSegment: StatusLineSegment = {
   },
 };
 
+function countListeningPorts(): number {
+  // ponytail: ss first, netstat fallback, /proc last; returns -1 on total failure
+  const run = (cmd: string): string | null => {
+    try {
+      return execSync(cmd, { encoding: "utf8" });
+    } catch {
+      return null;
+    }
+  };
+  let out = run("ss -tulnH 2>/dev/null");
+  if (out === null) out = run("ss -tuln 2>/dev/null");
+  if (out === null) out = run("netstat -tuln 2>/dev/null");
+  if (out === null) return readProcListeningPorts();
+  const lines = out.split("\n").map((l) => l.trim()).filter(Boolean);
+  // ss -H has no header; plain ss/netstat do — drop a leading header line if present
+  const start = /^(Proto|State|Local)/.test(lines[0] ?? "") ? 1 : 0;
+  return Math.max(0, lines.length - start);
+}
+
+function readProcListeningPorts(): number {
+  // ponytail: last-resort /proc parse when ss/netstat are unavailable
+  let count = 0;
+  for (const f of ["tcp", "tcp6", "udp", "udp6"]) {
+    try {
+      const data = readFileSync(`/proc/net/${f}`, "utf8");
+      for (const line of data.split("\n")) {
+        const cols = line.trim().split(/\s+/);
+        // local_address:port state — LISTEN (0A) for tcp, always for udp
+        if (cols.length < 4) continue;
+        if (f.startsWith("tcp")) {
+          if (cols[3] === "0A") count++;
+        } else {
+          count++;
+        }
+      }
+    } catch {
+      // file may not exist; skip
+    }
+  }
+  return count;
+}
+
 const tpsSegment: StatusLineSegment = {
   id: "tps",
   render(ctx) {
-    const raw = process.env.POWERLINE_TPS;
-    const text = raw && raw.trim() ? raw.trim() : "?";
-    return { content: color(ctx, "queue", `tps:${text}`), visible: true };
+    const override = process.env.POWERLINE_TPS?.trim();
+    let text: string;
+    if (override) {
+      text = override;
+    } else {
+      // ponytail: no live token-rate feed in the snapshot context, so derive session-average TPS
+      const out = ctx.usageStats?.output ?? 0;
+      const startedAt = ctx.sessionStartTime ?? Date.now();
+      const elapsed = Math.max(1, (Date.now() - startedAt) / 1000);
+      const tps = out / elapsed;
+      text = tps >= 100 ? Math.round(tps).toString() : tps.toFixed(1);
+    }
+    return { content: color(ctx, "tokens", `tps:${text}`), visible: true };
   },
 };
 
 const openPortsSegment: StatusLineSegment = {
   id: "open_ports",
-  render() {
-    let count = 0;
-    try {
-      const stdout = execSync("ss -tuln", { encoding: "utf8" });
-      const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
-      // First line is header, remaining lines are listeners
-      count = Math.max(0, lines.length - 2);
-    } catch {
-      count = 0;
-    }
-    return { content: `ports:${count}`, visible: true };
+  render(ctx) {
+    const count = countListeningPorts();
+    const text = count < 0 ? "?" : String(count);
+    return { content: color(ctx, "queue", `ports:${text}`), visible: true };
   },
 };
 
@@ -553,11 +599,67 @@ export const SEGMENTS: Record<BuiltinStatusLineSegmentId, StatusLineSegment> = {
   hostname: hostnameSegment,
   cache_read: cacheReadSegment,
   cache_write: cacheWriteSegment,
-  thinking: thinkingSegment,
   tps: tpsSegment,
   open_ports: openPortsSegment,
   extension_statuses: extensionStatusesSegment,
 };
+
+// User-defined computed segments (command/env/static), registered at config time.
+const customComputedSegments = new Map<string, StatusLineSegment>();
+const commandCache = new Map<string, { at: number; value: string }>();
+
+function runCommandCached(command: string, cacheMs: number | undefined): string | null {
+  // ponytail: simple in-memory cache keyed by command; avoids re-spawning shells every paint
+  const now = Date.now();
+  const cached = commandCache.get(command);
+  if (cached && cacheMs !== undefined && now - cached.at < cacheMs) return cached.value;
+  try {
+    const out = execSync(command, { encoding: "utf8" }).trim();
+    if (cacheMs !== undefined) commandCache.set(command, { at: now, value: out });
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function makeComputedSegment(id: string, def: CustomSegmentConfig): StatusLineSegment {
+  return {
+    id: `custom:${id}` as StatusLineSegmentId,
+    render(ctx: SegmentContext): RenderedSegment {
+      let text = "";
+      if (def.type === "command") {
+        const out = runCommandCached(def.command, def.cacheMs);
+        if (out === null) return { content: "", visible: false };
+        text = out;
+      } else if (def.type === "env") {
+        const val = process.env[def.env];
+        if (!val) {
+          if (def.fallback === undefined) return { content: "", visible: false };
+          text = def.fallback;
+        } else {
+          text = val;
+        }
+      } else {
+        text = def.text;
+      }
+
+      if (!text) return { content: "", visible: false };
+
+      let content = text;
+      if (def.prefix) content = `${def.prefix}${SEP_DOT}${content}`;
+      if (def.color) content = applyColor(ctx.theme, def.color, content);
+      return { content, visible: true };
+    },
+  };
+}
+
+/** Register user-defined computed segments from settings. Replaces any previously registered. */
+export function registerCustomSegments(defs: Record<string, CustomSegmentConfig>): void {
+  customComputedSegments.clear();
+  for (const [id, def] of Object.entries(defs)) {
+    customComputedSegments.set(id, makeComputedSegment(id, def));
+  }
+}
 
 function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): RenderedSegment {
   const customItemId = id.slice("custom:".length);
@@ -587,6 +689,9 @@ function isCustomSegmentId(id: StatusLineSegmentId): id is `custom:${string}` {
 
 export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): RenderedSegment {
   if (isCustomSegmentId(id)) {
+    const customId = id.slice("custom:".length);
+    const computed = customComputedSegments.get(customId);
+    if (computed) return computed.render(ctx);
     return renderCustomSegment(id, ctx);
   }
 

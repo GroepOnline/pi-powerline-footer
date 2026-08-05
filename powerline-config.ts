@@ -1,7 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { normalizeCostCurrency } from "./currency-rates.ts";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
+import type { ColorScheme, ColorValue, CustomItemPosition, CustomSegmentConfig, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
@@ -17,6 +17,10 @@ export interface PowerlineConfig {
   welcome: boolean;
   stashSharpSShortcut: boolean;
   queue: { captureSigil: string | false };
+  /** User-defined computed segments (command/env/static), keyed by id */
+  segments: Record<string, CustomSegmentConfig>;
+  /** User-defined presets, keyed by name */
+  presets: Record<string, import("./types.ts").CustomPresetConfig>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,6 +99,99 @@ function normalizeCaptureSigil(value: unknown): string | false {
   return normalized && !/\s/.test(normalized) ? normalized : "#";
 }
 
+function normalizeCustomSegmentType(value: unknown): "command" | "env" | "static" | null {
+  if (value === "command" || value === "env" || value === "static") return value;
+  return null;
+}
+
+function normalizeCustomSegments(raw: unknown): Record<string, CustomSegmentConfig> {
+  const result: Record<string, CustomSegmentConfig> = {};
+  if (!isRecord(raw)) return result;
+
+  for (const [id, entry] of Object.entries(raw)) {
+    if (!normalizeCustomItemId(id)) continue;
+    if (!isRecord(entry)) continue;
+
+    const type = normalizeCustomSegmentType(entry.type);
+    if (!type) continue;
+
+    if (type === "command") {
+      if (typeof entry.command !== "string" || !entry.command.trim()) continue;
+      result[id] = {
+        type,
+        command: entry.command.trim(),
+        prefix: normalizeCustomPrefix(entry.prefix),
+        color: normalizeCustomColor(entry.color),
+        cacheMs: typeof entry.cacheMs === "number" && entry.cacheMs >= 0 ? Math.floor(entry.cacheMs) : undefined,
+      };
+    } else if (type === "env") {
+      if (typeof entry.env !== "string" || !entry.env.trim()) continue;
+      result[id] = {
+        type,
+        env: entry.env.trim(),
+        prefix: normalizeCustomPrefix(entry.prefix),
+        color: normalizeCustomColor(entry.color),
+        fallback: typeof entry.fallback === "string" ? entry.fallback : undefined,
+      };
+    } else {
+      if (typeof entry.text !== "string") continue;
+      result[id] = {
+        type,
+        text: entry.text,
+        color: normalizeCustomColor(entry.color),
+      };
+    }
+  }
+
+  return result;
+}
+
+function normalizeCustomPresetSegmentList(raw: unknown, customItemIds: ReadonlySet<string>, customSegmentIds: ReadonlySet<string>): StatusLineSegmentId[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const result: StatusLineSegmentId[] = [];
+  for (const entry of raw) {
+    const id = normalizeStatusLineSegmentId(entry, customItemIds, customSegmentIds);
+    if (id) result.push(id);
+  }
+  return result;
+}
+
+function normalizeCustomPresets(raw: unknown, customItemIds: ReadonlySet<string>, customSegmentIds: ReadonlySet<string>): Record<string, import("./types.ts").CustomPresetConfig> {
+  const result: Record<string, import("./types.ts").CustomPresetConfig> = {};
+  if (!isRecord(raw)) return result;
+
+  for (const [name, entry] of Object.entries(raw)) {
+    const normalizedName = normalizeCustomItemId(name);
+    if (!normalizedName) continue;
+    const key = normalizedName.toLowerCase();
+    if (!isRecord(entry)) continue;
+
+    const preset: import("./types.ts").CustomPresetConfig = {};
+    const left = normalizeCustomPresetSegmentList(entry.left, customItemIds, customSegmentIds);
+    const right = normalizeCustomPresetSegmentList(entry.right, customItemIds, customSegmentIds);
+    const secondary = normalizeCustomPresetSegmentList(entry.secondary, customItemIds, customSegmentIds);
+    if (left) preset.left = left;
+    if (right) preset.right = right;
+    if (secondary) preset.secondary = secondary;
+    const sep = normalizeSeparator(entry.separator);
+    if (sep) preset.separator = sep;
+    if (isRecord(entry.colors)) {
+      const colors: ColorScheme = {};
+      for (const [key, val] of Object.entries(entry.colors)) {
+        const cv = normalizeCustomColor(val);
+        if (cv) colors[key as keyof ColorScheme] = cv;
+      }
+      if (Object.keys(colors).length > 0) preset.colors = colors;
+    }
+    if (isRecord(entry.segmentOptions)) {
+      preset.segmentOptions = normalizeSegmentOptions(entry.segmentOptions);
+    }
+    result[key] = preset;
+  }
+
+  return result;
+}
+
 function normalizeCustomStatusItem(raw: unknown, idOverride?: string): CustomStatusItem | null {
   if (!isRecord(raw)) return null;
   const id = normalizeCustomItemId(idOverride ?? raw.id);
@@ -138,7 +235,7 @@ function normalizeCustomItems(raw: unknown): CustomStatusItem[] {
 
 const BUILTIN_STATUS_LINE_SEGMENT_ID_SET = new Set<string>(BUILTIN_STATUS_LINE_SEGMENT_IDS);
 
-function normalizeStatusLineSegmentId(value: unknown, customItemIds: ReadonlySet<string>): StatusLineSegmentId | null {
+function normalizeStatusLineSegmentId(value: unknown, customItemIds: ReadonlySet<string>, customSegmentIds: ReadonlySet<string> = new Set()): StatusLineSegmentId | null {
   if (typeof value !== "string") return null;
 
   const normalized = value.trim();
@@ -149,12 +246,14 @@ function normalizeStatusLineSegmentId(value: unknown, customItemIds: ReadonlySet
   const customId = normalized.startsWith("custom:")
     ? normalizeCustomItemId(normalized.slice("custom:".length))
     : null;
-  return customId && customItemIds.has(customId) ? `custom:${customId}` : null;
+  // ponytail: custom: ids resolve to either a user-defined item OR a computed segment
+  return customId && (customItemIds.has(customId) || customSegmentIds.has(customId)) ? `custom:${customId}` : null;
 }
 
 function normalizeDisabledSegments(
   raw: unknown,
   customItems: readonly CustomStatusItem[],
+  customSegmentIds: ReadonlySet<string>,
 ): { disabledSegments: StatusLineSegmentId[]; invalidDisabledSegments: string[] } {
   if (!Array.isArray(raw)) return { disabledSegments: [], invalidDisabledSegments: [] };
 
@@ -164,7 +263,7 @@ function normalizeDisabledSegments(
   const seen = new Set<StatusLineSegmentId>();
 
   for (const entry of raw) {
-    const segmentId = normalizeStatusLineSegmentId(entry, customItemIds);
+    const segmentId = normalizeStatusLineSegmentId(entry, customItemIds, customSegmentIds);
     if (!segmentId) {
       invalidDisabledSegments.push(typeof entry === "string" ? entry.trim() : String(entry));
     } else if (!seen.has(segmentId)) {
@@ -179,6 +278,7 @@ function normalizeDisabledSegments(
 function normalizeLayout(
   raw: unknown,
   customItems: readonly CustomStatusItem[],
+  customSegmentIds: ReadonlySet<string>,
 ): { layout: StatusLineLayout | null; invalidLayoutSegments: string[] } {
   if (!isRecord(raw)) return { layout: null, invalidLayoutSegments: [] };
 
@@ -194,7 +294,7 @@ function normalizeLayout(
     const segments: StatusLineSegmentId[] = [];
     const seen = new Set<StatusLineSegmentId>();
     for (const entry of entries) {
-      const segmentId = normalizeStatusLineSegmentId(entry, customItemIds);
+      const segmentId = normalizeStatusLineSegmentId(entry, customItemIds, customSegmentIds);
       if (!segmentId) {
         invalidLayoutSegments.push(`${row}:${typeof entry === "string" ? entry.trim() : String(entry)}`);
       } else if (!seen.has(segmentId)) {
@@ -313,6 +413,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     welcome: true,
     stashSharpSShortcut: false,
     queue: { captureSigil: "#" },
+    segments: {},
+    presets: {},
   };
 
   const directPreset = normalizePreset(value, presets);
@@ -321,15 +423,22 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   if (!isRecord(value)) return defaultConfig;
 
   const customItems = normalizeCustomItems(value.customItems);
-  const { disabledSegments, invalidDisabledSegments } = normalizeDisabledSegments(value.disabledSegments, customItems);
-  const { layout, invalidLayoutSegments } = normalizeLayout(value.layout, customItems);
+  const customSegments = normalizeCustomSegments(value.segments);
+  const customSegmentIds = new Set(Object.keys(customSegments));
+  const { disabledSegments, invalidDisabledSegments } = normalizeDisabledSegments(value.disabledSegments, customItems, customSegmentIds);
+  const { layout, invalidLayoutSegments } = normalizeLayout(value.layout, customItems, customSegmentIds);
   const { placement, invalidPlacement } = normalizePlacement(value.placement);
   const queue = isRecord(value.queue)
     ? { captureSigil: normalizeCaptureSigil(value.queue.captureSigil) }
     : defaultConfig.queue;
+  const customItemIds = new Set(customItems.map((item) => item.id));
+  const customPresetDefs = normalizeCustomPresets(value.presets, customItemIds, customSegmentIds);
+  const requestedPreset = typeof value.preset === "string" ? value.preset.trim().toLowerCase() : "";
+  const preset = normalizePreset(value.preset, presets)
+    ?? (Object.prototype.hasOwnProperty.call(customPresetDefs, requestedPreset) ? (requestedPreset as StatusLinePreset) : defaultConfig.preset);
 
   return {
-    preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
+    preset,
     customItems,
     disabledSegments,
     invalidDisabledSegments,
@@ -342,6 +451,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     welcome: value.welcome !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
     queue,
+    segments: customSegments,
+    presets: customPresetDefs,
   };
 }
 

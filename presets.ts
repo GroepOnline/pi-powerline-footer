@@ -1,5 +1,6 @@
 import type { ColorScheme, PresetDef, StatusLinePreset } from "./types.ts";
 import { getDefaultColors } from "./theme.ts";
+import type { CustomPresetConfig } from "./types.ts";
 
 // Get base colors from theme.ts (single source of truth)
 const DEFAULT_COLORS: ColorScheme = getDefaultColors();
@@ -26,7 +27,7 @@ const CHEF_COLORS: ColorScheme = {
   model: "text",
   path: "text",
   gitClean: "dim",
-  queue: "muted",
+  queue: "dim",
 };
 
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
@@ -118,6 +119,30 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 };
 
-export function getPreset(name: StatusLinePreset): PresetDef {
-  return PRESETS[name] ?? PRESETS.default;
+export function getPreset(name: string): PresetDef {
+  return resolvePreset(name);
+}
+
+// User-defined presets (settings), merged over built-ins at config time.
+const customPresets = new Map<string, PresetDef>();
+
+/** Register user-defined presets from settings. Replaces any previously registered. */
+export function registerCustomPresets(defs: Record<string, CustomPresetConfig>): void {
+  customPresets.clear();
+  for (const [name, def] of Object.entries(defs)) {
+    const presetDef: PresetDef = {
+      leftSegments: def.left ?? [],
+      rightSegments: def.right ?? [],
+      secondarySegments: def.secondary,
+      separator: def.separator ?? "slash",
+      segmentOptions: def.segmentOptions,
+      colors: def.colors,
+    };
+    customPresets.set(name, presetDef);
+  }
+}
+
+/** Resolve a preset by name, checking user-defined presets first. */
+export function resolvePreset(name: string): PresetDef {
+  return customPresets.get(name) ?? PRESETS[name as StatusLinePreset] ?? PRESETS.default;
 }

@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { renderSegment } from "../segments.ts";
-import { rainbow } from "../theme.ts";
 import type { ColorScheme, SegmentContext, ThemeLike } from "../types.ts";
 
 function hexAnsi(hex: `#${string}`): string {
@@ -62,13 +61,13 @@ test("thinking segment uses per-level colors for off through medium", () => {
   assert.equal(medium.content, `${hexAnsi("#444444")}think:med\x1b[0m`);
 });
 
-test("thinking segment uses rainbow styling for high through max", () => {
+test("thinking segment uses solid thinking color for high through max (no rainbow)", () => {
   const colors: ColorScheme = { thinking: "#111111" };
 
   for (const level of ["high", "xhigh", "max"]) {
     const rendered = renderSegment("thinking", createSegmentContext(level, colors));
     assert.deepEqual(rendered, {
-      content: rainbow(`think:${level}`),
+      content: `${hexAnsi("#111111")}think:${level}\x1b[0m`,
       visible: true,
     });
   }

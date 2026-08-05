@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Fully customizable segments** — Define your own status segments in settings without touching TypeScript: `command` (runs a shell command, optional `cacheMs`), `env` (reads an env var, optional `fallback`), and `static` (fixed text). Each supports `prefix` and `color`.
+- **Custom presets** — Define presets in settings with `left`/`right`/`secondary` segment lists, `separator`, `colors`, and `segmentOptions`; they merge over built-ins and are selectable via `powerline.preset`.
+- **Release automation** — `npm run release <patch|minor|major|1.2.3>` bumps version, rolls CHANGELOG, tags `vX.Y.Z`, and pushes; `.github/workflows/release.yml` runs tests and publishes to npm on tag.
+
+### Fixed
+- **TPS segment** now derives a real session-average tokens/sec from live `usageStats` instead of showing `?` when `POWERLINE_TPS` is unset (env override still honored).
+- **Open ports segment** counts listening sockets robustly: `ss -tulnH` → `ss -tuln` → `netstat -tuln` → `/proc/net` parse, instead of silently showing `0`/`?`.
+- **`chef` preset colors** use valid theme colors (`queue: "dim"` instead of the invalid `"muted"` that triggered a fallback warning).
+- Removed the duplicate `thinking` entry in the built-in segment registry.
+
 ## [0.13.0] - 2026-08-05
 
 Forked to GroepOnline. Adds ChefGroep-specific status segments and interactivity.
