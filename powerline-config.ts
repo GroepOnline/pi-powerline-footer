@@ -378,6 +378,12 @@ function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmen
     };
   }
 
+  if (isRecord(raw.openPorts)) {
+    options.openPorts = {
+      ...(typeof raw.openPorts.includeUdp === "boolean" ? { includeUdp: raw.openPorts.includeUdp } : {}),
+    };
+  }
+
   return options;
 }
 
