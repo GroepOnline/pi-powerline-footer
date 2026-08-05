@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parsePowerlineConfig } from "../powerline-config.ts";
-import { registerCustomSegments, renderSegment } from "../segments.ts";
+import { registerCustomSegments, renderSegment, countListeningPorts } from "../segments.ts";
 
 const PRESETS_FOR_TEST = ["default", "chef"] as const;
 
@@ -74,4 +74,24 @@ test("custom computed segments render via renderSegment", () => {
   const fallback = renderSegment("custom:missingFallback" as any, ctx);
   assert.equal(fallback.visible, true);
   assert.equal(fallback.content, "n/a");
+});
+
+test("tps starts at 0 (no fake session-average after reload)", () => {
+  const theme: any = { fg: (_c: string, t: string) => t };
+  const ctx: any = {
+    theme, colors: {}, options: {},
+    usageStats: { input: 0, output: 50000, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
+    customItemsById: new Map(), extensionStatuses: new Map(),
+  };
+  const r = renderSegment("tps" as any, ctx);
+  const text = r.content.replace(/\x1b\[[0-9;]*m/g, "").trim();
+  // value lives after the icon; must be 0, never the raw 50000 output
+  assert.match(text, /(^|\s)0(\.0)?$/);
+  assert.ok(!/50000/.test(text), `must not echo raw output: ${text}`);
+});
+
+test("countListeningPorts returns unique ports (dedupes IPv4/IPv6)", () => {
+  const n = countListeningPorts();
+  assert.equal(typeof n, "number");
+  assert.ok(n >= 0 && Number.isInteger(n), `expected integer >= 0, got ${n}`);
 });

@@ -1237,6 +1237,62 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     );
   }
 
+  /** Navigable overlay that mirrors the live powerline segments; arrow keys move, Enter activates. */
+  async function showSegmentNavigator(ctx: any): Promise<{ id: string; label: string } | null> {
+    return ctx.ui.custom(
+      (tui: any, theme: Theme, _keybindings: any, done: (result: { id: string; label: string } | null) => void) => {
+        // Build live segment values now that we have a theme
+        const segCtx = buildSegmentContext(ctx, theme);
+        const presetDef = getPreset(config.preset);
+        const merged = mergeSegmentsWithCustomItems(presetDef, config.customItems, {
+          layout: config.layout,
+          disabledSegments: config.disabledSegments,
+        });
+        const ids = [...merged.leftSegments, ...merged.rightSegments, ...merged.secondarySegments];
+        const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+        const items: SelectItem[] = [];
+        for (const id of ids) {
+          const rendered = renderSegmentWithWidth(id, segCtx);
+          if (!rendered.visible) continue;
+          const value = stripAnsi(rendered.content).trim() || "(empty)";
+          items.push({ label: `${id}  ${value}`, value: id });
+        }
+        if (items.length === 0) {
+          items.push({ label: "(no visible segments)", value: "__none__" });
+        }
+        const selectList = new SelectList(items, Math.min(items.length, 20), overlaySelectListTheme(theme));
+        const border = (text: string) => theme.fg("dim", text);
+        const wrapRow = (text: string, innerWidth: number) =>
+          `${border("│")}${truncateToWidth(text, innerWidth, "…", true)}${border("│")}`;
+        selectList.onSelect = (item) => done({ id: item.value, label: item.label });
+        selectList.onCancel = () => done(null);
+        return {
+          render: (width: number) => {
+            const innerWidth = Math.max(1, width - 2);
+            const lines: string[] = [];
+            lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
+            lines.push(wrapRow(theme.fg("accent", theme.bold("Powerline segments")), innerWidth));
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+            for (const line of selectList.render(innerWidth)) lines.push(wrapRow(line, innerWidth));
+            lines.push(border(`├${"─".repeat(innerWidth)}┤`));
+            lines.push(wrapRow(theme.fg("dim", "↑↓ navigate · enter activate · esc cancel"), innerWidth));
+            lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
+            return lines;
+          },
+          invalidate: () => selectList.invalidate(),
+          handleInput: (data: string) => {
+            selectList.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: () => ({ verticalAlign: "center", horizontalAlign: "center" }),
+      },
+    );
+  }
+
   function getQueueSessionId(ctx: any): string | undefined {
     const sessionId = ctx.sessionManager?.getSessionId?.();
     return typeof sessionId === "string" && sessionId.trim() ? sessionId : undefined;
@@ -2596,47 +2652,56 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.registerShortcut("alt+p", {
-    description: "Open powerline quick actions",
+    description: "Navigate powerline segments (arrow keys + enter)",
     handler: async (ctx) => {
       currentCtx = ctx;
-      const preset = config.preset;
-      const currentTps = process.env.POWERLINE_TPS || "?";
-      let portCount = 0;
-      try {
-        const stdout = execSync("ss -tuln", { encoding: "utf8" });
-        const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
-        portCount = Math.max(0, lines.length - 2);
-      } catch {
-        // ignore
+      const picked = await showSegmentNavigator(ctx);
+      if (!picked) return;
+      const id = picked.id;
+      if (id === "__none__") return;
+
+      // Per-segment activation
+      if (id === "tps") {
+        const current = process.env.POWERLINE_TPS || "(live, auto)";
+        ctx.ui.notify(`TPS: ${current} — set with /tps <value>`, "info");
+        return;
       }
-
-      const items: SelectItem[] = [
-        { label: `Preset: ${preset}`, value: `preset:${preset}` },
-        { label: `TPS: ${currentTps}`, value: "tps" },
-        { label: `Open ports: ${portCount}`, value: "ports" },
-        { label: "Toggle powerline", value: "toggle" },
-        { label: "Change preset", value: "presets" },
-      ];
-
-      const selected = await showSelectOverlay(
-        ctx,
-        "Powerline",
-        "Quick actions",
-        items,
-        items.length,
-      );
-
-      if (!selected) return;
-
-      if (selected.value === "toggle") {
-        ctx.ui.notify("Use /powerline to toggle", "info");
-      } else if (selected.value === "presets") {
-        ctx.ui.notify(`Presets: ${Object.keys(PRESETS).join(", ")}`, "info");
-      } else if (selected.value === "tps") {
-        ctx.ui.notify(`TPS is currently: ${currentTps}`, "info");
-      } else if (selected.value === "ports") {
-        ctx.ui.notify(`Open ports: ${portCount}`, "info");
+      if (id === "open_ports") {
+        try {
+          const stdout = execSync("ss -tuln", { encoding: "utf8" });
+          const lines = stdout.split("\n").map((l) => l.trim()).filter(Boolean).slice(1);
+          if (lines.length === 0) {
+            ctx.ui.notify("No listening sockets", "info");
+            return;
+          }
+          const items: SelectItem[] = lines.map((line) => ({ label: line, value: line }));
+          const selected = await showSelectOverlay(ctx, "Open Ports", "Select a port line", items, Math.min(items.length, 20));
+          if (selected) ctx.ui.notify(selected.value, "info");
+        } catch (error) {
+          ctx.ui.notify(`Failed to list ports: ${error instanceof Error ? error.message : String(error)}`, "error");
+        }
+        return;
       }
+      if (id === "git") {
+        const branch = footerDataRef?.getGitBranch() ?? "(no repo)";
+        ctx.ui.notify(`git branch: ${branch}`, "info");
+        return;
+      }
+      if (id === "cost") {
+        ctx.ui.notify("Use /cost for the cost breakdown", "info");
+        return;
+      }
+      if (id === "context_pct" || id === "context_total") {
+        ctx.ui.notify("Context window shown in the bar", "info");
+        return;
+      }
+      if (id === "queue") {
+        ctx.ui.notify("Use /ideas to work the queue", "info");
+        return;
+      }
+      // Default: show the segment's live value
+      const value = picked.label.replace(/^\S+\s+/, "");
+      ctx.ui.notify(`${id}: ${value}`, "info");
     },
   });
 

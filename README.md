@@ -219,14 +219,14 @@ Define your own preset in settings; it merges over built-ins and is selectable v
 
 `preset: "chef"` is the GroepOnline fork's default look: muted colors (no rainbow), slash separators, and two extra right-side segments:
 
-- `tps` — tokens/sec, derived live from session output and elapsed time (override with env `POWERLINE_TPS`)
-- `open_ports` — count of listening sockets (`ss` → `netstat` → `/proc/net` fallback)
+- `tps` — live tokens/sec, rolling rate (EMA-smoothed, reset after idle); a rocket/bolt icon lights up while generating (override with env `POWERLINE_TPS`)
+- `open_ports` — count of unique listening ports (`ss` → `netstat` → `/proc/net` fallback, dedupes IPv4/IPv6)
 
-Interactivity (status bar segments render as plain text, so actions live in commands):
+Interactivity (Pi core renders the footer as static text, so live click is not possible; actions live in commands and a navigable overlay):
 
 - `/tps [value]` — show or set `POWERLINE_TPS`
 - `/open-ports` — list listening ports and pick one
-- `alt+p` — powerline quick-actions menu (preset, TPS, ports, toggle)
+- `alt+p` — open a navigable mirror of the live status bar segments; `↑`/`↓` move, `enter` activates a per-segment action
 
 ### Disabling segments
 
