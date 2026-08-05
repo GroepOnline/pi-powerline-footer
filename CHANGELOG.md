@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.15.0] - 2026-08-05
 
 ### Added
 - **Navigable powerline segments** — `alt+p` now opens an overlay mirroring the live status bar segments; `↑`/`↓` move, `enter` activates a per-segment action (TPS set hint, open-ports list, git branch, etc.). Pi core renders the footer as static text, so live click is not possible; this is the closest interactive equivalent.
