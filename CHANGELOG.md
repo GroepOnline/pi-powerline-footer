@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.14.0] - 2026-08-05
 
 ### Added
 - **Fully customizable segments** — Define your own status segments in settings without touching TypeScript: `command` (runs a shell command, optional `cacheMs`), `env` (reads an env var, optional `fallback`), and `static` (fixed text). Each supports `prefix` and `color`.
