@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.17.2] - 2026-08-05
 
 ### Fixed
 - **Context segment stale after compaction.** The `session_compact` handler didn't reset `coreContextUsageCache` or trigger a status render, so the bar kept showing the pre-compact fill (e.g. `196k/200k (98%)`) after compaction completed. Now resets the cache and forces an immediate redraw on compaction completion.
