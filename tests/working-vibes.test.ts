@@ -1,73 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { parseVibeGenerateArgs } from "../src/working-vibes/index.ts";
 
-const FAUX_PROVIDER_PATH = new URL(
-  "../node_modules/@earendil-works/pi-ai/dist/providers/faux.js",
-  import.meta.url,
-).href;
-
 async function importFauxProviderTools() {
-  try {
-    return await import("@earendil-works/pi-ai/compat");
-  } catch (error) {
-    const code =
-      error && typeof error === "object"
-        ? Reflect.get(error, "code")
-        : undefined;
-    if (
-      code !== "ERR_PACKAGE_PATH_NOT_EXPORTED" &&
-      code !== "ERR_MODULE_NOT_FOUND"
-    ) {
-      throw error;
-    }
-    return import(FAUX_PROVIDER_PATH);
-  }
-}
-
-function ensurePiModuleLinks(): { cleanup: () => void } {
-  const nodeModulesDir = join(process.cwd(), "node_modules", "@earendil-works");
-  mkdirSync(nodeModulesDir, { recursive: true });
-  const links = [
-    {
-      link: join(nodeModulesDir, "pi-coding-agent"),
-      target: "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent",
-    },
-    {
-      link: join(nodeModulesDir, "pi-ai"),
-      target:
-        "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai",
-    },
-  ];
-
-  const createdLinks: string[] = [];
-  for (const { link, target } of links) {
-    if (!existsSync(link)) {
-      symlinkSync(target, link);
-      createdLinks.push(link);
-    }
-  }
-
-  return {
-    cleanup() {
-      for (const link of createdLinks.reverse()) {
-        if (existsSync(link)) {
-          rmSync(link, { recursive: true, force: true });
-        }
-      }
-    },
-  };
+  // The faux provider (fauxAssistantMessage, fauxProvider, etc.) is exported
+  // via the package wildcard "./providers/*": "./dist/providers/*.js"
+  return import("@earendil-works/pi-ai/providers/faux");
 }
 
 test("parseVibeGenerateArgs supports multi-word themes", () => {
@@ -95,7 +37,7 @@ test("parseVibeGenerateArgs supports multi-word themes", () => {
 });
 
 test("generateVibesBatch includes a system prompt so faux providers can return text", async () => {
-  const links = ensurePiModuleLinks();
+  const _links = { cleanup() {} };
   const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -162,12 +104,12 @@ test("generateVibesBatch includes a system prompt so faux providers can return t
       process.env.HOME = previousHome;
     }
     rmSync(home, { recursive: true, force: true });
-    links.cleanup();
+    _links.cleanup();
   }
 });
 
 test("generateVibesBatch forwards resolved provider env and credential base URL", async () => {
-  const links = ensurePiModuleLinks();
+  const _links = { cleanup() {} };
   const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -240,12 +182,12 @@ test("generateVibesBatch forwards resolved provider env and credential base URL"
       process.env.HOME = previousHome;
     }
     rmSync(home, { recursive: true, force: true });
-    links.cleanup();
+    _links.cleanup();
   }
 });
 
 test("on-demand vibe generation includes a system prompt for providers that require instructions", async () => {
-  const links = ensurePiModuleLinks();
+  const _links = { cleanup() {} };
   const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -323,12 +265,12 @@ test("on-demand vibe generation includes a system prompt for providers that requ
       process.env.HOME = previousHome;
     }
     rmSync(home, { recursive: true, force: true });
-    links.cleanup();
+    _links.cleanup();
   }
 });
 
 test("generateVibesBatch preserves provider errors instead of reporting an empty response", async () => {
-  const links = ensurePiModuleLinks();
+  const _links = { cleanup() {} };
   const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -388,6 +330,6 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
       process.env.HOME = previousHome;
     }
     rmSync(home, { recursive: true, force: true });
-    links.cleanup();
+    _links.cleanup();
   }
 });
