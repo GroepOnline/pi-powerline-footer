@@ -4,38 +4,47 @@
 
 # pi-wishcraft
 
-Wishcraft (wensen en idee\u00ebn omzetten in actie) is a powerline-style status bar, welcome overlay, vibes loader, queue/inbox, bash mode, and prompt/stash history extension for the [pi](https://github.com/badlogic/pi-mono) coding agent. Inspired by [Powerlevel10k](https://github.com/romkatv/powerlevel10k) and [oh-my-pi](https://github.com/can1357/oh-my-pi).
+*Originally engineered 2,000 years ago as floating military signals across enemy lines, the Kongming sky lantern provided instant visual telemetry. Over centuries, these lanterns evolved into vessels for wishes: operators release their thoughts into the sky, clearing their minds.*
+
+This extension translates that philosophy to the [pi](https://github.com/badlogic/pi-mono) coding agent:
+1. **Ground Telemetry**: A live status bar at the bottom border tracking git, tokens/sec, context window, and active process ports (Alt+P).
+2. **Cast & Release (`# <idea>`)**: Queue ideas instantly without interrupting the active agent run.
+3. **Autonomous Horizons**: The queue feeds background dreaming SDK routines, mission runners, and autoresearch loops while you work or sleep.
+4. **Stash & Pivot (Alt+S)**: Park a prompt draft, ask a quick question, pop it back automatically.
+5. **Sticky Shell (`!cmd`)**: A persistent bash runtime under your fingertips.
+
+Inspired by [Powerlevel10k](https://github.com/romkatv/powerlevel10k) and [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
 <img width="1261" height="817" alt="Example powerline UI" src="https://github.com/user-attachments/assets/4cc43320-3fb8-4503-b857-69dffa7028f2" />
 
 
 ## Features
 
-**Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
+**Editor stash**: Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
 
-**Powerline Queue + Inbox** — Capture thoughts without interrupting the current agent. Type `# <idea>` and press Enter to save an idea instead of sending it; `# @global <idea>`, `# @current <idea>`, and `# @alias <idea>` route it. Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/idea`, `/ideas`, and `/queue` provide a file-backed inbox for current-session prompts, project ideas, aliases, retries, clears, and manual delivery. Use `/ideas next` to work the oldest active idea in the current session, or `/ideas issue` to hand it to the current agent for safe GitHub issue triage. Active queue, idea, and blocked counts appear in the `queue` segment only when there is something to show.
+**Powerline Queue + Inbox**: Capture thoughts without interrupting the current agent. Type `# <idea>` and press Enter to save an idea instead of sending it; `# @global <idea>`, `# @current <idea>`, and `# @alias <idea>` route it. Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/idea`, `/ideas`, and `/queue` provide a file-backed inbox for current-session prompts, project ideas, aliases, retries, clears, and manual delivery. Use `/ideas next` to work the oldest active idea in the current session, or `/ideas issue` to hand it to the current agent for safe GitHub issue triage. Active queue, idea, and blocked counts appear in the `queue` segment only when there is something to show.
 
-**Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
+**Working Vibes**: AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
 
-**Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, an approximate initial system-prompt token count, and recent sessions. Auto-dismisses after 30 seconds or on any key press. Set `powerline.welcome` to `false` to disable it while keeping the footer enabled.
+**Welcome overlay**: Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, an approximate initial system-prompt token count, and recent sessions. Auto-dismisses after 30 seconds or on any key press. Set `powerline.welcome` to `false` to disable it while keeping the footer enabled.
 
-**Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
+**Rounded box design**: Status renders directly in the editor's top border, not as a separate footer.
 
-**Native Pi layout** — Pi owns fixed input, feed scrolling, selection, and terminal behavior; this extension supplies powerline widgets and the custom bash/stash/editor integrations.
+**Native Pi layout**: Pi owns fixed input, feed scrolling, selection, and terminal behavior; this extension supplies powerline widgets and the custom bash/stash/editor integrations.
 
-**Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High, xhigh, and max levels use a rainbow effect inspired by Claude Code's ultrathink.
+**Live thinking level indicator**: Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High, xhigh, and max levels use a rainbow effect inspired by Claude Code's ultrathink.
 
-**Smart defaults** — Nerd Font auto-detection for iTerm, WezTerm, Kitty, Ghostty, and Alacritty with ASCII fallbacks. Colors matched to oh-my-pi's dark theme.
+**Smart defaults**: Nerd Font auto-detection for iTerm, WezTerm, Kitty, Ghostty, and Alacritty with ASCII fallbacks. Colors matched to oh-my-pi's dark theme.
 
-**Git integration** — Async status fetching with 1s cache TTL. Automatically invalidates on file writes/edits. Shows branch, staged (+), unstaged (*), and untracked (?) counts.
+**Git integration**: Async status fetching with 1s cache TTL. Automatically invalidates on file writes/edits. Shows branch, staged (+), unstaged (*), and untracked (?) counts.
 
-**Context awareness** — Color-coded warnings above 70% (yellow) and above 90% (red) context usage. During streaming, the context segment refreshes from live assistant usage instead of waiting for the next turn. Auto-compact indicator when enabled. If `pi-custom-compaction` is installed and enabled, the powerline automatically hides native context segments so the footer does not show stale post-summary usage.
+**Context awareness**: Color-coded warnings above 70% (yellow) and above 90% (red) context usage. During streaming, the context segment refreshes from live assistant usage instead of waiting for the next turn. Auto-compact indicator when enabled. If `pi-custom-compaction` is installed and enabled, the powerline automatically hides native context segments so the footer does not show stale post-summary usage.
 
-**Token intelligence** — Smart formatting (1.2k, 45M), used/max/percentage context display, subscription detection, and configurable subscription cost display.
+**Token intelligence**: Smart formatting (1.2k, 45M), used/max/percentage context display, subscription detection, and configurable subscription cost display.
 
-**Sticky bash mode** — Toggle bash mode with `ctrl+shift+b` or `/bash-mode`. It keeps a managed shell session alive for the current pi session, shows a dedicated `shell_mode` segment, streams command output into an embedded transcript below the editor, and lets `cd` or exported state persist across commands.
+**Sticky bash mode**: Toggle bash mode with `ctrl+shift+b` or `/bash-mode`. It keeps a managed shell session alive for the current pi session, shows a dedicated `shell_mode` segment, streams command output into an embedded transcript below the editor, and lets `cd` or exported state persist across commands.
 
-**Shell ghost suggestions** — Bash mode is now ghost-first. Successful per-project shell history is the primary source, while deterministic path and git continuations can still extend an existing command. Shell-native completion probes are disabled so `!command` predictions never spawn interactive shell completion subprocesses. At command position, short stems first resolve from the newest successful local command, can use guarded global shell history for high-confidence heads like `git`, and finally fall back to a tiny curated default set when history is absent. Right now that curated set is `g` → `git status` and `c` → `cd ..`. If the bash prompt is empty, bash mode shows the newest successful project-history ghost suggestion when one exists, otherwise it stays empty. The same inline predictions now also kick in for one-off `!command` and `!!command` prompts. Right Arrow or Tab accepts ghost text into the editor, and Enter runs the current shell command.
+**Shell ghost suggestions**: Bash mode is now ghost-first. Successful per-project shell history is the primary source, while deterministic path and git continuations can still extend an existing command. Shell-native completion probes are disabled so `!command` predictions never spawn interactive shell completion subprocesses. At command position, short stems first resolve from the newest successful local command, can use guarded global shell history for high-confidence heads like `git`, and finally fall back to a tiny curated default set when history is absent. Right now that curated set is `g` → `git status` and `c` → `cd ..`. If the bash prompt is empty, bash mode shows the newest successful project-history ghost suggestion when one exists, otherwise it stays empty. The same inline predictions now also kick in for one-off `!command` and `!!command` prompts. Right Arrow or Tab accepts ghost text into the editor, and Enter runs the current shell command.
 
 ## Installation
 
@@ -53,22 +62,22 @@ Use `/cd <path>` to continue the current conversation from another working direc
 
 Powerline Queue + Inbox commands and capture shortcuts:
 
-- `# <text>` — capture an idea for the current project without sending it to the agent
-- `# @global <text>` — capture a global idea
-- `# @current <text>` — capture an idea targeted to the current session
-- `/queue alias <name> [path]` — save a project alias, defaulting to the current cwd when `path` is omitted
-- `# @name <text>` — capture an idea for a saved project alias
-- `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction
-- `/idea [@target] <text>` — command form of idea capture, useful for scripts and users who disable the sigil
-- `/idea issue [id]` — hand the oldest active idea, or a specific idea, to the current agent for safe GitHub issue triage
-- `/ideas` — open the captured-ideas picker
-- `/ideas next` — send the oldest active idea to the current session
-- `/ideas issue [id]` — ask the current agent to dedupe and file a GitHub issue only when the target repo is clear and owned/controlled
-- `/ideas send <id>` — send an idea to the current session
-- `/queue` — open the queued-prompt picker
-- `/queue send [id]` / `/queue retry [id]` — deliver a queued item now
-- `/queue clear <id|all>` — clear queued prompt items
-- `/queue target <id> @name|global|current` — retarget a queued item
+- `# <text>`: capture an idea for the current project without sending it to the agent
+- `# @global <text>`: capture a global idea
+- `# @current <text>`: capture an idea targeted to the current session
+- `/queue alias <name> [path]`: save a project alias, defaulting to the current cwd when `path` is omitted
+- `# @name <text>`: capture an idea for a saved project alias
+- `/compact <text>`: compact now and queue `<text>` as the next prompt after successful compaction
+- `/idea [@target] <text>`: command form of idea capture, useful for scripts and users who disable the sigil
+- `/idea issue [id]`: hand the oldest active idea, or a specific idea, to the current agent for safe GitHub issue triage
+- `/ideas`: open the captured-ideas picker
+- `/ideas next`: send the oldest active idea to the current session
+- `/ideas issue [id]`: ask the current agent to dedupe and file a GitHub issue only when the target repo is clear and owned/controlled
+- `/ideas send <id>`: send an idea to the current session
+- `/queue`: open the queued-prompt picker
+- `/queue send [id]` / `/queue retry [id]`: deliver a queued item now
+- `/queue clear <id|all>`: clear queued prompt items
+- `/queue target <id> @name|global|current`: retarget a queued item
 
 The default capture sigil is `#`. When the editor text starts with `# `, the prompt glyph changes to `#`; pressing Enter saves the idea, clears the editor, and leaves the original sigil text in editor history for quick recovery. Configure or disable this under `powerline.queue.captureSigil`:
 
@@ -86,9 +95,9 @@ Set `captureSigil` to `false` if you often submit markdown headings and prefer `
 
 Captured data is stored under the Pi agent directory in `powerline-footer/inbox.jsonl` and `powerline-footer/projects.json`. `inbox.jsonl` is a stable read surface for orchestrators and helper agents; each line is a queue item with `id`, `text`, `createdAt`, `updatedAt`, `source`, `target`, `intent`, `status`, and optional `error`. Writes should still go through Powerline commands or the store so locking and atomic writes are preserved. Ideas sent with `/ideas next` or `/ideas send <id>` include a small provenance header so the receiving agent can treat them as deferred captured context. `/idea issue` and `/ideas issue` do not file issues directly from the extension; they send a guarded handoff prompt that tells the current agent to dedupe open issues first, create a GitHub issue only for a clear owned/controlled repo, and ask before filing when the target is unclear.
 
-- `/powerline placement below` — move the primary powerline row below the editor
-- `/powerline placement above` — restore the default placement
-- `/powerline placement toggle` — switch between above and below
+- `/powerline placement below`: move the primary powerline row below the editor
+- `/powerline placement above`: restore the default placement
+- `/powerline placement toggle`: switch between above and below
 
 You can also set it in the agent settings file (`~/.pi/agent/settings.json` by default, or under `PI_CODING_AGENT_DIR`) or project-local `.pi/settings.json`:
 
@@ -163,7 +172,7 @@ If you still prefer the older string preset config shape, `"powerline": "default
 
 ### Custom segments (computed, no code)
 
-Define your own segments directly in settings — run a command, read an env var, or show static text. No TypeScript needed.
+Define your own segments directly in settings: run a command, read an env var, or show static text. No TypeScript needed.
 
 ```json
 {
@@ -219,15 +228,15 @@ Define your own preset in settings; it merges over built-ins and is selectable v
 
 `preset: "chef"` is the GroepOnline fork's default look: muted colors (no rainbow), slash separators, and two extra right-side segments:
 
-- `tps` — live tokens/sec, rolling 1-second window (EMA-free, no spikes); a rocket/bolt icon lights up while generating (override with env `POWERLINE_TPS`)
-- `open_ports` — count of unique **TCP** listening ports (`ss` → `netstat` → `/proc/net` fallback, dedupes IPv4/IPv6). Set `segmentOptions.openPorts.includeUdp: true` to include noisy UDP (mDNS/DHCP/ephemeral).
+- `tps`: live tokens/sec, rolling 1-second window (EMA-free, no spikes); a rocket/bolt icon lights up while generating (override with env `POWERLINE_TPS`)
+- `open_ports`: count of unique **TCP** listening ports (`ss` → `netstat` → `/proc/net` fallback, dedupes IPv4/IPv6). Set `segmentOptions.openPorts.includeUdp: true` to include noisy UDP (mDNS/DHCP/ephemeral).
 
 Interactivity (Pi core renders the footer as static text, so live click is not possible; actions live in commands and a navigable overlay):
 
-- `/tps [value]` — show or set `POWERLINE_TPS`
-- `/open-ports` — list listening ports and pick one
-- `alt+p` — **powerline menu**: navigate the live segments (`↑`/`↓` + `enter`), configure (preset / TPS / UDP / labels), or open the full ports list
-- `alt+i` — **powerline info**: full open-ports list
+- `/tps [value]`: show or set `POWERLINE_TPS`
+- `/open-ports`: list listening ports and pick one
+- `alt+p`: **powerline menu**: navigate the live segments (`↑`/`↓` + `enter`), configure (preset / TPS / UDP / labels), or open the full ports list
+- `alt+i`: **powerline info**: full open-ports list
 
 Both `alt+p` and `alt+i` are rebindable (see Keybinds below); changes apply after `/reload`.
 
@@ -404,18 +413,18 @@ Open prompt history with either:
 
 Prompt history now has two sources:
 
-- stashed prompts — up to 12 recent stashed prompts (newest first)
-- recent project prompts — up to 50 recent user-submitted prompts pulled from pi sessions in the current project folder
+- stashed prompts: up to 12 recent stashed prompts (newest first)
+- recent project prompts: up to 50 recent user-submitted prompts pulled from pi sessions in the current project folder
 
 Selecting a stashed entry lets you insert it or promote it to an idea. Project prompt history entries insert into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
 
 ### Editor clipboard and navigation shortcuts
 
-- `ctrl+alt+c` — copy full editor content
-- `ctrl+alt+x` — cut full editor content (copy, then clear)
-- `ctrl+alt+q` — open the queued-prompt picker
-- `cmd+shift+up` — move the editor cursor to the start of the first line
-- `cmd+shift+down` — move the editor cursor to the end of the last line
+- `ctrl+alt+c`: copy full editor content
+- `ctrl+alt+x`: cut full editor content (copy, then clear)
+- `ctrl+alt+q`: open the queued-prompt picker
+- `cmd+shift+up`: move the editor cursor to the start of the first line
+- `cmd+shift+down`: move the editor cursor to the end of the last line
 
 Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Pi owns chat scrolling, selection, and fixed input behavior natively.
 
@@ -494,14 +503,14 @@ In the agent settings file:
 
 **How file mode works:**
 1. Vibes are loaded from `vibes/{theme}.txt` in the agent dir into memory
-2. Uses seeded shuffle (Mulberry32 PRNG) — cycles through all vibes before repeating
-3. New seed each session — different order every time you restart pi
+2. Uses seeded shuffle (Mulberry32 PRNG): cycles through all vibes before repeating
+3. New seed each session: different order every time you restart pi
 4. Zero latency, zero cost, works offline
 
 **Prompt template variables (generate mode only):**
-- `{theme}` — the current vibe theme (e.g., "star trek", "mafia")
-- `{task}` — context hint (user prompt initially, then agent's response text or tool info on refresh)
-- `{exclude}` — recent vibes to avoid (auto-populated, e.g., "Don't use: vibe1, vibe2...")
+- `{theme}`: the current vibe theme (e.g., "star trek", "mafia")
+- `{task}`: context hint (user prompt initially, then agent's response text or tool info on refresh)
+- `{exclude}`: recent vibes to avoid (auto-populated, e.g., "Don't use: vibe1, vibe2...")
 
 **How it works:**
 1. When you send a message, shows "Channeling {theme}..." placeholder
