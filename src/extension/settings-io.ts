@@ -7,7 +7,7 @@ import {
   nextPowerlineSettingWithOptions,
   nextPowerlineSettingWithPreset,
 } from "../config/powerline-config.ts";
-import { getAgentPath } from "../paths/paths.ts";
+import { getAgentPath } from "../paths/agent-dirs.ts";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

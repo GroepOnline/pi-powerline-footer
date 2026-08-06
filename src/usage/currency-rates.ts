@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { getAgentPath } from "../paths/paths.ts";
+import { getAgentPath } from "../paths/agent-dirs.ts";
 
 export const SUPPORTED_COST_CURRENCIES = [
   "USD",

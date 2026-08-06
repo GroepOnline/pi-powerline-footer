@@ -12,23 +12,32 @@ interface WelcomeDismissSchedulerOptions<Context> {
 export function createWelcomeDismissScheduler<Context>(
   options: WelcomeDismissSchedulerOptions<Context>,
 ): WelcomeDismissScheduler<Context> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let activeTimer: ReturnType<typeof setTimeout> | null = null;
 
   return {
     schedule(ctx) {
-      if (timer) return;
+      if (activeTimer !== null) {
+        return;
+      }
 
-      const generation = options.getGeneration();
-      timer = setTimeout(() => {
-        timer = null;
-        if (!options.isEnabled() || generation !== options.getGeneration()) return;
+      const capturedGeneration = options.getGeneration();
+
+      activeTimer = setTimeout(() => {
+        activeTimer = null;
+
+        if (!options.isEnabled() || capturedGeneration !== options.getGeneration()) {
+          return;
+        }
+
         options.dismiss(ctx);
       }, 0);
     },
     cancel() {
-      if (!timer) return;
-      clearTimeout(timer);
-      timer = null;
+      if (activeTimer === null) {
+        return;
+      }
+      clearTimeout(activeTimer);
+      activeTimer = null;
     },
   };
 }

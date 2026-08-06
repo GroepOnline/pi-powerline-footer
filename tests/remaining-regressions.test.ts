@@ -5,7 +5,7 @@ import { NERD_ICONS } from "../src/theme/icons.ts";
 import {
   isStaleExtensionContextError,
   shouldShowStartupWelcome,
-} from "../src/lifecycle/lifecycle.ts";
+} from "../src/extension/session-lifecycle.ts";
 import {
   __resetCurrencyRatesForTest,
   __setCurrencyRatesForTest,

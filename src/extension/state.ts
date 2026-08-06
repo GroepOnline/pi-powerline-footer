@@ -10,8 +10,8 @@ import {
   SessionTokenStatsCache,
 } from "../usage/token-stats.ts";
 import { CoreContextUsageCache } from "../usage/context-usage.ts";
-import { createWelcomeDismissScheduler } from "../welcome/dismiss-scheduler.ts";
-import { createRenderScheduler } from "../render/scheduler.ts";
+import { createWelcomeDismissScheduler } from "../welcome/auto-dismiss.ts";
+import { createRenderScheduler } from "../render/timer.ts";
 import {
   resolveShortcutConfig,
   parseBashModeSettings,

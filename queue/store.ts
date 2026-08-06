@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { getAgentPath } from "../src/paths/paths.ts";
+import { getAgentPath } from "../src/paths/agent-dirs.ts";
 import type {
   CreateQueueItemInput,
   PowerlineQueueItem,

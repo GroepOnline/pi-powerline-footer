@@ -4,7 +4,7 @@ import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import {
   getEditorAutocompleteProvider,
   passAutocompleteProviderThroughPreviousEditor,
-} from "../src/editor/composition.ts";
+} from "../src/editor/autocomplete-chain.ts";
 
 function baseProvider(): AutocompleteProvider {
   return {

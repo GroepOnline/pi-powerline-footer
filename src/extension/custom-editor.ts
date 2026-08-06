@@ -19,7 +19,7 @@ import {
 import {
   getEditorAutocompleteProvider,
   passAutocompleteProviderThroughPreviousEditor,
-} from "../editor/composition.ts";
+} from "../editor/autocomplete-chain.ts";
 import { subscribeGitUpdates } from "../git/status.ts";
 import { ansi, getFgAnsiCode } from "../theme/colors.ts";
 import {

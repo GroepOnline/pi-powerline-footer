@@ -8,7 +8,7 @@ import {
   getNotificationExtensionStatuses,
 } from "../config/powerline-config.ts";
 import { ansi, getFgAnsiCode } from "../theme/colors.ts";
-import { isStaleExtensionContextError } from "../lifecycle/lifecycle.ts";
+
 import { computeResponsiveLayout } from "./layout.ts";
 import { getQueueContext } from "./queue-context.ts";
 import { buildSegmentContext } from "./segment-context.ts";
@@ -56,7 +56,8 @@ export function getResponsiveLayout(
   try {
     segmentCtx = buildSegmentContext(rt, rt.currentCtx, theme);
   } catch (error) {
-    if (!isStaleExtensionContextError(error)) throw error;
+    const isStale = error instanceof Error && (error.message.includes("This extension instance is stale") || error.message.includes("This extension ctx is stale"));
+    if (!isStale) throw error;
     rt.currentCtx = null;
     rt.lastLayoutWidth = width;
     rt.lastLayoutResult = { topContent: "", secondaryContent: "" };

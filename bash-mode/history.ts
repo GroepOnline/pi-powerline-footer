@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { getAgentPath, getHomeDir } from "../src/paths/paths.ts";
+import { getAgentPath, getHomeDir } from "../src/paths/agent-dirs.ts";
 
 interface PersistedHistoryEntry {
   command: string;

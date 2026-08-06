@@ -9,7 +9,7 @@ import {
   getAgentPath,
   getAgentSessionDirs,
   normalizeAgentDirPath,
-} from "../src/paths/paths.ts";
+} from "../src/paths/agent-dirs.ts";
 
 function withTemporaryPathEnv(
   run: (home: string, agentDir: string) => void,

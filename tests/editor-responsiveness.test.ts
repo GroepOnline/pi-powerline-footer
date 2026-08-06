@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWelcomeDismissScheduler } from "../src/welcome/dismiss-scheduler.ts";
-import { createRenderScheduler } from "../src/render/scheduler.ts";
+import { createWelcomeDismissScheduler } from "../src/welcome/auto-dismiss.ts";
+import { createRenderScheduler } from "../src/render/timer.ts";
 
 test("render scheduler coalesces pending status renders", () => {
   const originalSetTimeout = globalThis.setTimeout;

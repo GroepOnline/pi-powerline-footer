@@ -25,10 +25,8 @@ export interface IconSet {
   ports: string;
 }
 
-// Separator characters
-export const SEP_DOT = " · ";
+export const SEP_DOT: string = " · ";
 
-// Thinking level display text (Unicode/ASCII)
 export const THINKING_TEXT_UNICODE: Record<string, string> = {
   minimal: "[min]",
   low: "[low]",
@@ -37,50 +35,44 @@ export const THINKING_TEXT_UNICODE: Record<string, string> = {
   xhigh: "[xhi]",
 };
 
-// Thinking level display text (Nerd Fonts - with icons)
 export const THINKING_TEXT_NERD: Record<string, string> = {
-  minimal: "\u{F0E7} min",   // lightning bolt
-  low: "\u{F10C} low",       // circle outline
-  medium: "\u{F192} med",    // dot circle
-  high: "\u{F111} high",     // circle
-  xhigh: "\u{F06D} xhi",     // fire
+  minimal: "\u{F0E7} min",
+  low: "\u{F10C} low",
+  medium: "\u{F192} med",
+  high: "\u{F111} high",
+  xhigh: "\u{F06D} xhi",
 };
 
-// Get thinking text based on font support
 export function getThinkingText(level: string): string | undefined {
-  if (hasNerdFonts()) {
-    return THINKING_TEXT_NERD[level];
-  }
-  return THINKING_TEXT_UNICODE[level];
+  const map = hasNerdFonts() ? THINKING_TEXT_NERD : THINKING_TEXT_UNICODE;
+  return map[level];
 }
 
-// Nerd Font icons (matching oh-my-pi exactly)
 export const NERD_ICONS: IconSet = {
-  pi: "\uE22C",         // nf-oct-pi (stylized pi icon)
-  model: "\uEC19",      // nf-md-chip (model/AI chip)
-  folder: "\uF115",     // nf-fa-folder_open
-  branch: "\uF126",     // nf-fa-code_fork (git branch)
-  git: "\uF1D3",        // nf-fa-git (git logo)
-  github: "\uF09B",     // nf-fa-github (octocat)
-  gitlab: "\uF296",     // nf-fa-gitlab (tanuki)
-  bitbucket: "\uF171",  // nf-fa-bitbucket
-  tokens: "\uE26B",     // nf-seti-html (tokens symbol)
-  context: "\uF1C0",    // nf-fa-database (stable Nerd Fonts v3 database)
-  cost: "\uF155",       // nf-fa-dollar
-  time: "\uF017",       // nf-fa-clock_o
-  agents: "\uF0C0",     // nf-fa-users
-  cache: "\uF1C0",      // nf-fa-database (cache)
-  input: "\uF090",      // nf-fa-sign_in (input arrow)
-  output: "\uF08B",     // nf-fa-sign_out (output arrow)
-  host: "\uF109",       // nf-fa-laptop (host)
-  session: "\uF550",    // nf-md-identifier (session id)
-  auto: "\u{F0068}",    // nf-md-lightning_bolt (auto-compact)
-  warning: "\uF071",    // nf-fa-warning
-  tps: "\uF135",        // nf-fa-rocket (speed)
-  ports: "\uF1E6",      // nf-fa-plug (listening sockets)
+  pi: "\uE22C",
+  model: "\uEC19",
+  folder: "\uF115",
+  branch: "\uF126",
+  git: "\uF1D3",
+  github: "\uF09B",
+  gitlab: "\uF296",
+  bitbucket: "\uF171",
+  tokens: "\uE26B",
+  context: "\uF1C0",
+  cost: "\uF155",
+  time: "\uF017",
+  agents: "\uF0C0",
+  cache: "\uF1C0",
+  input: "\uF090",
+  output: "\uF08B",
+  host: "\uF109",
+  session: "\uF550",
+  auto: "\u{F0068}",
+  warning: "\uF071",
+  tps: "\uF135",
+  ports: "\uF1E6",
 };
 
-// ASCII/Unicode fallback icons (matching oh-my-pi)
 export const ASCII_ICONS: IconSet = {
   pi: "π",
   model: "",
@@ -106,26 +98,20 @@ export const ASCII_ICONS: IconSet = {
   ports: "▣",
 };
 
-type PartialIconSet = Partial<IconSet>;
-
-function sanitizeUserIconOverrides(value: unknown): PartialIconSet {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+function sanitizeUserIconOverrides(value: unknown): Partial<IconSet> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
-
-  const sanitized: PartialIconSet = {};
-  const validKeys = Object.keys(NERD_ICONS) as Array<keyof IconSet>;
-  for (const key of validKeys) {
-    const icon = Reflect.get(value, key);
-    if (typeof icon === "string") {
-      sanitized[key] = icon;
+  const result: Partial<IconSet> = {};
+  const validKeys = new Set<string>(Object.keys(NERD_ICONS));
+  for (const [key, val] of Object.entries(value)) {
+    if (validKeys.has(key) && typeof val === "string") {
+      result[key as keyof IconSet] = val;
     }
   }
-
-  return sanitized;
+  return result;
 }
 
-// Separator characters
 export interface SeparatorChars {
   powerlineLeft: string;
   powerlineRight: string;
@@ -141,10 +127,10 @@ export interface SeparatorChars {
 }
 
 export const NERD_SEPARATORS: SeparatorChars = {
-  powerlineLeft: "\uE0B0",    // 
-  powerlineRight: "\uE0B2",   // 
-  powerlineThinLeft: "\uE0B1", // 
-  powerlineThinRight: "\uE0B3", // 
+  powerlineLeft: "\uE0B0",
+  powerlineRight: "\uE0B2",
+  powerlineThinLeft: "\uE0B1",
+  powerlineThinRight: "\uE0B3",
   slash: "/",
   pipe: "|",
   block: "█",
@@ -168,27 +154,20 @@ export const ASCII_SEPARATORS: SeparatorChars = {
   dot: ".",
 };
 
-// Detect Nerd Font support (check TERM or specific env var)
 export function hasNerdFonts(): boolean {
-  // User can set this env var to force Nerd Fonts
   if (process.env.POWERLINE_NERD_FONTS === "1") return true;
   if (process.env.POWERLINE_NERD_FONTS === "0") return false;
-  
-  // Check for Ghostty (survives into tmux via GHOSTTY_RESOURCES_DIR)
   if (process.env.GHOSTTY_RESOURCES_DIR) return true;
   
-  // Check common terminals known to support Nerd Fonts (case-insensitive)
-  const term = (process.env.TERM_PROGRAM || "").toLowerCase();
-  const nerdTerms = ["iterm", "wezterm", "kitty", "ghostty", "alacritty"];
-  return nerdTerms.some(t => term.includes(t));
+  const currentTerm = (process.env.TERM_PROGRAM || "").toLowerCase();
+  const supported = ["iterm", "wezterm", "kitty", "ghostty", "alacritty"];
+  return supported.some((t) => currentTerm.includes(t));
 }
 
 export function getIcons(): IconSet {
-  const baseIcons = hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
-  return {
-    ...baseIcons,
-    ...sanitizeUserIconOverrides(loadThemeConfig().icons),
-  };
+  const defaults = hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
+  const config = loadThemeConfig();
+  return { ...defaults, ...sanitizeUserIconOverrides(config.icons) };
 }
 
 export function getSeparatorChars(): SeparatorChars {

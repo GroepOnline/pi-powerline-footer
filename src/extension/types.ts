@@ -11,8 +11,8 @@ import type {
   SessionTokenStatsCache,
 } from "../usage/token-stats.ts";
 import type { CoreContextUsageCache } from "../usage/context-usage.ts";
-import type { WelcomeDismissScheduler } from "../welcome/dismiss-scheduler.ts";
-import type { RenderScheduler } from "../render/scheduler.ts";
+import type { WelcomeDismissScheduler } from "../welcome/auto-dismiss.ts";
+import type { RenderScheduler } from "../render/timer.ts";
 
 export type ShortcutBinding = string | null;
 

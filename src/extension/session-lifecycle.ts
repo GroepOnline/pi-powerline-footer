@@ -8,10 +8,6 @@ import { registerCustomPresets } from "../config/presets.ts";
 import { invalidateGitStatus } from "../git/status.ts";
 import { invalidateGitForCommand } from "./git-invalidation.ts";
 import {
-  isStaleExtensionContextError,
-  shouldShowStartupWelcome,
-} from "../lifecycle/lifecycle.ts";
-import {
   initVibeManager,
   onVibeAgentEnd,
   onVibeAgentStart,
@@ -86,6 +82,17 @@ function getRecentAgentContext(ctx: any): string | undefined {
     }
   }
   return undefined;
+}
+
+export function shouldShowStartupWelcome(reason: unknown, welcomeEnabled: boolean): boolean {
+  return reason === "startup" && welcomeEnabled;
+}
+
+export function isStaleExtensionContextError(error: unknown): boolean {
+  return error instanceof Error && (
+    error.message.includes("This extension instance is stale")
+    || error.message.includes("This extension ctx is stale")
+  );
 }
 
 export function registerSessionLifecycle(

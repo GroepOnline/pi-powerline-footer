@@ -7,7 +7,7 @@ import {
   statSync,
 } from "node:fs";
 import { join, basename } from "node:path";
-import { getAgentSessionDirs } from "../paths/paths.ts";
+import { getAgentSessionDirs } from "../paths/agent-dirs.ts";
 import { logDiscoveryError } from "./discovery.ts";
 import { formatTimeAgo } from "./format.ts";
 import type { RecentSession } from "./types.ts";

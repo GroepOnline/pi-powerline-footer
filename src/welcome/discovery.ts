@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
-import { getAgentPath, getHomeDir } from "../paths/paths.ts";
+import { getAgentPath, getHomeDir } from "../paths/agent-dirs.ts";
 import type { LoadedCounts } from "./types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
