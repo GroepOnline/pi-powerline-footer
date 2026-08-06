@@ -9,8 +9,8 @@ repo path. This doc records the end-to-end release flow and how to verify it.
 - **GitHub repo:** `GroepOnline/pi-wishcraft` (fork of `nicobailon/pi-powerline-footer`)
 - **npm package:** `@groeponline/pi-wishcraft` (scoped, `--access public`)
 - **Default branch:** `main`
-- **Local checkout:** `/home/joep/pi-powerline-footer`
-- **Pi settings (`~/.pi/agent/settings.json`):** packages entry `/home/joep/pi-powerline-footer` (local path, not the npm name) and `"powerline": "chef"`. Local edits are picked up on `/reload` — no reinstall needed.
+- **Local checkout:** `/home/joep/pi-wishcraft`
+- **Pi settings (`~/.pi/agent/settings.json`):** packages entry `/home/joep/pi-wishcraft` (local path, not the npm name) and `"powerline": "chef"`. Local edits are picked up on `/reload` — no reinstall needed.
 
 ## The release flow
 
