@@ -1,6 +1,13 @@
 # Roadmap — what to improve & how to integrate better
 
-Status after 0.17.0. Concrete, prioritized. Not commitments — pick what Joep wants.
+Status after 0.17.2. Package renamed to `@groeponline/pi-wishcraft` from v0.18.0. Concrete, prioritized. Not commitments — pick what Joep wants.
+
+## Next release (0.18.0 — pi-wishcraft)
+
+- Package renamed from `@groeponline/pi-powerline-footer` to `@groeponline/pi-wishcraft`
+- src/ restructure committed (all root-level monofiles moved to `src/<domain>/`)
+- Flaky `process.env.USER` test fixed
+- `npx madge --circular src index.ts bash-mode queue` added as CI step
 
 ## Correctness (done, keep honest)
 
@@ -35,6 +42,8 @@ Status after 0.17.0. Concrete, prioritized. Not commitments — pick what Joep w
 1. **Dependabot vulns** — GitHub flagged 7 (3 high, 4 moderate) on default branch. Triage; most are devDep transitive. Add `npm audit` to CI as non-blocking info, or pin.
 2. **Test the menu.** The overlay/menu functions aren't unit-tested (hard to test `ctx.ui.custom` headless). Add a thin `SelectList`-based pure function for "build segment items" and test that, leaving the overlay shell untested.
 3. **Typecheck in pre-push.** Add a `prepublishOnly` that runs `tsc` so a bad type never ships even if CI is skipped.
+4. `npm deprecate @groeponline/pi-powerline-footer "Renamed to @groeponline/pi-wishcraft"` after first successful publish under new name
+5. `prepublishOnly` script with `tsc` to prevent bad types from shipping
 
 ## Not doing (YAGNI)
 
