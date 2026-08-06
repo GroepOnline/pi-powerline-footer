@@ -1,13 +1,13 @@
-# Releasing `@groeponline/pi-powerline-footer`
+# Releasing `@groeponline/pi-wishcraft`
 
 This is the GroepOnline fork of `pi-powerline-footer`. It ships to npm as the
-scoped package `@groeponline/pi-powerline-footer` and installs locally from the
+scoped package `@groeponline/pi-wishcraft` and installs locally from the
 repo path. This doc records the end-to-end release flow and how to verify it.
 
 ## Identity
 
 - **GitHub repo:** `GroepOnline/pi-powerline-footer` (fork of `nicobailon/pi-powerline-footer`)
-- **npm package:** `@groeponline/pi-powerline-footer` (scoped, `--access public`)
+- **npm package:** `@groeponline/pi-wishcraft` (scoped, `--access public`)
 - **Default branch:** `main`
 - **Local checkout:** `/home/joep/pi-powerline-footer`
 - **Pi settings (`~/.pi/agent/settings.json`):** packages entry `/home/joep/pi-powerline-footer` (local path, not the npm name) and `"powerline": "chef"`. Local edits are picked up on `/reload` — no reinstall needed.
@@ -83,8 +83,8 @@ gh run view <databaseId> --repo GroepOnline/pi-powerline-footer \
   --json jobs --jq '.jobs[0].steps[] | {name,conclusion}'   # "Publish to npm": success
 
 # 4. npm registry (published + propagated)
-npm view @groeponline/pi-powerline-footer version        # 0.15.0
-npm view @groeponline/pi-powerline-footer dist-tags      # { latest: '0.15.0' }
+npm view @groeponline/pi-wishcraft version        # 0.15.0
+npm view @groeponline/pi-wishcraft dist-tags      # { latest: '0.15.0' }
 ```
 
 A release is "done" when all four hold: local green, tag on origin, CI
@@ -94,8 +94,8 @@ A release is "done" when all four hold: local green, tag on origin, CI
 
 - **npm propagation delay.** Right after `npm publish` the public registry can
   404 on `npm view` for a short window (seconds to ~1 minute) even though the
-  publish succeeded. The CI log line `+ @groeponline/pi-powerline-footer@<v>`
-  and HTTP `200` from `https://registry.npmjs.org/@groeponline%2fpi-powerline-footer`
+  publish succeeded. The CI log line `+ @groeponline/pi-wishcraft@<v>`
+  and HTTP `200` from `https://registry.npmjs.org/@groeponline%2fpi-wishcraft`
   are the real success signals; retry `npm view` if you see an early 404.
 - **Wrong SSH key = `Permission denied (publickey)` / `denied to OnlineChef`.**
   Always push with `GIT_SSH_COMMAND='ssh -F ~/.ssh/config-groeponline -o IdentityFile=~/.ssh/sheesh'`.
