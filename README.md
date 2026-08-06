@@ -48,11 +48,21 @@ Inspired by [Powerlevel10k](https://github.com/romkatv/powerlevel10k) and [oh-my
 
 ## Installation
 
+### Method 1: Via Pi Package Manager (Recommended)
+
 ```bash
 pi install npm:@groeponline/pi-wishcraft
 ```
 
-Restart pi to activate.
+### Method 2: One-Liner / Cloud Agent Startup Script (Cursor Cloud, Freebuff, Devcontainers, CI)
+
+For ephemeral VMs, cloud agents, or dev environments without manual intervention:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GroepOnline/pi-wishcraft/main/scripts/install.sh | bash
+```
+
+Restart or `/reload` pi to activate.
 
 ## Usage
 
