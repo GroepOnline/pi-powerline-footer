@@ -1,13 +1,13 @@
 {
-  "name": "@groeponline/pi-powerline-footer",
+  "name": "@groeponline/pi-wishcraft",
   "version": "0.17.2",
-  "description": "Powerline-style status bar extension for pi coding agent (GroepOnline fork: chef preset, custom segments, full customization)",
+  "description": "Wishcraft status bar & interaction layer for the pi coding agent — powerline segments, vibes, queue, bash mode, and full customization.",
   "type": "module",
   "files": [
     "*.ts",
     "*.md",
     "*.json",
-    "!progress.md",
+    "src/**/*.ts",
     "bash-mode/**/*.ts",
     "queue/**/*.ts"
   ],
@@ -28,7 +28,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/**/*.test.ts",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "prepublishOnly": "tsc --noEmit",
+    "circular": "madge --circular src index.ts bash-mode queue"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=0.81.0 <0.84.0",
@@ -40,6 +42,7 @@
     "@earendil-works/pi-coding-agent": "^0.83.0",
     "@earendil-works/pi-tui": "^0.83.0",
     "@types/node": "24.13.3",
+    "madge": "^8.0.0",
     "typescript": "5.9.3"
   },
   "pi": {

@@ -1,10 +1,10 @@
 <p>
-  <img src="banner.png" alt="pi-powerline-footer" width="1100">
+  <img src="banner.png" alt="pi-wishcraft" width="1100">
 </p>
 
-# pi-powerline-footer
+# pi-wishcraft
 
-Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a powerline-style status bar, welcome overlay, and AI-generated "vibes" for loading messages. Inspired by [Powerlevel10k](https://github.com/romkatv/powerlevel10k) and [oh-my-pi](https://github.com/can1357/oh-my-pi).
+Wishcraft (wensen en idee\u00ebn omzetten in actie) is a powerline-style status bar, welcome overlay, vibes loader, queue/inbox, bash mode, and prompt/stash history extension for the [pi](https://github.com/badlogic/pi-mono) coding agent. Inspired by [Powerlevel10k](https://github.com/romkatv/powerlevel10k) and [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
 <img width="1261" height="817" alt="Example powerline UI" src="https://github.com/user-attachments/assets/4cc43320-3fb8-4503-b857-69dffa7028f2" />
 
@@ -40,7 +40,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 ## Installation
 
 ```bash
-pi install npm:pi-powerline-footer
+pi install npm:@groeponline/pi-wishcraft
 ```
 
 Restart pi to activate.
