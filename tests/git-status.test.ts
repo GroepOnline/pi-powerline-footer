@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { detectGitHost, getCurrentBranch, getGitStatus, invalidateGitBranch, invalidateGitStatus, subscribeGitUpdates } from "../git-status.ts";
+import {
+  detectGitHost,
+  getCurrentBranch,
+  getGitStatus,
+  invalidateGitBranch,
+  invalidateGitStatus,
+  subscribeGitUpdates,
+} from "../src/git/status.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -46,7 +53,9 @@ test("invalidateGitBranch keeps serving the last known branch while refreshing",
 
 test("git cache completion notifies active footer subscribers", async () => {
   let updates = 0;
-  const unsubscribe = subscribeGitUpdates(() => { updates += 1; });
+  const unsubscribe = subscribeGitUpdates(() => {
+    updates += 1;
+  });
   try {
     invalidateGitStatus();
     invalidateGitBranch();
@@ -64,7 +73,10 @@ test("detectGitHost recognizes known hosts over SSH and HTTPS", () => {
   assert.equal(detectGitHost("ssh://git@gitlab.com/owner/repo.git"), "gitlab");
   assert.equal(detectGitHost("https://gitlab.com/owner/repo"), "gitlab");
   assert.equal(detectGitHost("git@bitbucket.org:owner/repo.git"), "bitbucket");
-  assert.equal(detectGitHost("https://user@bitbucket.org/owner/repo.git"), "bitbucket");
+  assert.equal(
+    detectGitHost("https://user@bitbucket.org/owner/repo.git"),
+    "bitbucket",
+  );
 });
 
 test("detectGitHost normalizes www and sub-domains", () => {
@@ -74,7 +86,10 @@ test("detectGitHost normalizes www and sub-domains", () => {
 
 test("detectGitHost treats unknown or self-hosted remotes as a generic host", () => {
   assert.equal(detectGitHost("git@git.example.com:owner/repo.git"), "other");
-  assert.equal(detectGitHost("https://gitea.mycorp.dev/owner/repo.git"), "other");
+  assert.equal(
+    detectGitHost("https://gitea.mycorp.dev/owner/repo.git"),
+    "other",
+  );
   assert.equal(detectGitHost("/srv/git/local.git"), "other");
 });
 

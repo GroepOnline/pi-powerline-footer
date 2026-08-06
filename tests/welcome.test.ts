@@ -1,11 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverLoadedCounts, getRecentSessions, WelcomeHeader } from "../welcome.ts";
+import {
+  discoverLoadedCounts,
+  getRecentSessions,
+  WelcomeHeader,
+} from "../src/welcome/index.ts";
 
-const indexSource = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
+const indexSource = readFileSync(
+  new URL("../src/extension/welcome-integration.ts", import.meta.url),
+  "utf8",
+);
 
 test("discoverLoadedCounts ignores dangling skill symlinks", () => {
   const root = mkdtempSync(join(tmpdir(), "powerline-welcome-"));
@@ -21,7 +35,11 @@ test("discoverLoadedCounts ignores dangling skill symlinks", () => {
   mkdirSync(join(skillsDir, "valid-skill"), { recursive: true });
   mkdirSync(project, { recursive: true });
   writeFileSync(join(skillsDir, "valid-skill", "SKILL.md"), "# Valid skill\n");
-  symlinkSync(join(root, "missing-skill"), join(skillsDir, "pi-intercom"), "dir");
+  symlinkSync(
+    join(root, "missing-skill"),
+    join(skillsDir, "pi-intercom"),
+    "dir",
+  );
 
   console.debug = (...args: unknown[]) => {
     debugCalls.push(args);
@@ -76,30 +94,46 @@ function withTemporaryHome(run: (home: string) => void): void {
 }
 
 test("welcome renders the initial system prompt token estimate", () => {
-  const counts = { contextFiles: 1, extensions: 1, skills: 1, promptTemplates: 1 };
+  const counts = {
+    contextFiles: 1,
+    extensions: 1,
+    skills: 1,
+    promptTemplates: 1,
+  };
   const rendered = new WelcomeHeader("Model", "Provider", [], counts, 1900)
     .render(96)
     .join("\n")
     .replace(/\x1b\[[0-9;]*m/g, "");
-  const withoutEstimate = [undefined, 0, Number.NaN].map((tokens) => new WelcomeHeader(
-    "Model",
-    "Provider",
-    [],
-    counts,
-    tokens,
-  ).render(96).join("\n").replace(/\x1b\[[0-9;]*m/g, ""));
+  const withoutEstimate = [undefined, 0, Number.NaN].map((tokens) =>
+    new WelcomeHeader("Model", "Provider", [], counts, tokens)
+      .render(96)
+      .join("\n")
+      .replace(/\x1b\[[0-9;]*m/g, ""),
+  );
 
   assert.match(rendered, /≈ 1\.9k initial prompt tokens/);
   for (const output of withoutEstimate) {
     assert.doesNotMatch(output, /initial prompt tokens/);
   }
-  assert.match(indexSource, /new WelcomeHeader\(modelName, providerName, recentSessions, loadedCounts, initialContextTokens\)/);
+  assert.match(
+    indexSource,
+    /new WelcomeHeader\(\s*modelName,\s*providerName,\s*recentSessions,\s*loadedCounts,\s*initialContextTokens,\s*\)/,
+  );
 
-  const overlayStart = indexSource.indexOf("function setupWelcomeOverlay");
+  const overlayStart = indexSource.indexOf("export function setupWelcomeOverlay(");
   const delayStart = indexSource.indexOf("setTimeout(() => {", overlayStart);
-  const activityGuardStart = indexSource.indexOf("if (hasActivity) {", delayStart);
-  const estimateStart = indexSource.indexOf("const initialContextTokens = estimateInitialContextTokens(ctx);", overlayStart);
-  const componentStart = indexSource.indexOf("new WelcomeComponent(", overlayStart);
+  const activityGuardStart = indexSource.indexOf(
+    "if (hasActivity) {",
+    delayStart,
+  );
+  const estimateStart = indexSource.indexOf(
+    "const initialContextTokens = estimateInitialContextTokens(ctx);",
+    overlayStart,
+  );
+  const componentStart = indexSource.indexOf(
+    "new WelcomeComponent(",
+    overlayStart,
+  );
   assert.ok(overlayStart >= 0);
   assert.ok(delayStart > overlayStart);
   assert.ok(activityGuardStart > delayStart);
@@ -109,9 +143,18 @@ test("welcome renders the initial system prompt token estimate", () => {
 
 test("getRecentSessions prefers cwd basename from session header", () => {
   withTemporaryHome((home) => {
-    const sessionsDir = join(home, ".pi", "agent", "sessions", "--Users-nico-dev-encoded-name--");
+    const sessionsDir = join(
+      home,
+      ".pi",
+      "agent",
+      "sessions",
+      "--Users-nico-dev-encoded-name--",
+    );
     mkdirSync(sessionsDir, { recursive: true });
-    writeFileSync(join(sessionsDir, "session.jsonl"), JSON.stringify({ cwd: "/Users/nico/dev/my-dashed-project" }) + "\n");
+    writeFileSync(
+      join(sessionsDir, "session.jsonl"),
+      JSON.stringify({ cwd: "/Users/nico/dev/my-dashed-project" }) + "\n",
+    );
 
     assert.equal(getRecentSessions(1)[0]?.name, "my-dashed-project");
   });
@@ -153,11 +196,23 @@ test("welcome discovery respects PI_CODING_AGENT_DIR for agent-global files", ()
       mkdirSync(join(agentDir, "commands"), { recursive: true });
       mkdirSync(join(home, ".pi", "agent"), { recursive: true });
       writeFileSync(join(agentDir, "AGENTS.md"), "# Agent instructions\n");
-      writeFileSync(join(agentDir, "extensions", "local-ext", "index.ts"), "export default {};\n");
-      writeFileSync(join(agentDir, "skills", "skill-a", "SKILL.md"), "# Skill\n");
+      writeFileSync(
+        join(agentDir, "extensions", "local-ext", "index.ts"),
+        "export default {};\n",
+      );
+      writeFileSync(
+        join(agentDir, "skills", "skill-a", "SKILL.md"),
+        "# Skill\n",
+      );
       writeFileSync(join(agentDir, "commands", "hello.md"), "hello\n");
-      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:pkg-one@1.0.0"] }));
-      writeFileSync(join(home, ".pi", "agent", "AGENTS.md"), "# Should not count\n");
+      writeFileSync(
+        join(agentDir, "settings.json"),
+        JSON.stringify({ packages: ["npm:pkg-one@1.0.0"] }),
+      );
+      writeFileSync(
+        join(home, ".pi", "agent", "AGENTS.md"),
+        "# Should not count\n",
+      );
       process.chdir(project);
 
       assert.deepEqual(discoverLoadedCounts(), {
@@ -184,8 +239,14 @@ test("getRecentSessions reads custom agent sessions and existing legacy sessions
       const legacySessionDir = join(home, ".pi", "sessions", "--legacy--");
       mkdirSync(customSessionDir, { recursive: true });
       mkdirSync(legacySessionDir, { recursive: true });
-      writeFileSync(join(customSessionDir, "session.jsonl"), JSON.stringify({ cwd: "/tmp/custom-project" }) + "\n");
-      writeFileSync(join(legacySessionDir, "session.jsonl"), JSON.stringify({ cwd: "/tmp/legacy-project" }) + "\n");
+      writeFileSync(
+        join(customSessionDir, "session.jsonl"),
+        JSON.stringify({ cwd: "/tmp/custom-project" }) + "\n",
+      );
+      writeFileSync(
+        join(legacySessionDir, "session.jsonl"),
+        JSON.stringify({ cwd: "/tmp/legacy-project" }) + "\n",
+      );
 
       const names = getRecentSessions(10).map((session) => session.name);
       assert.ok(names.includes("custom-project"));

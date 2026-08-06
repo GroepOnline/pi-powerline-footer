@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { GitStatus } from "./types.ts";
+import type { GitStatus } from "../config/types.ts";
 
 interface CachedGitStatus {
   staged: number;
@@ -47,14 +47,18 @@ export function subscribeGitUpdates(listener: () => void): () => void {
 
 /**
  * Parse git status --porcelain output
- * 
+ *
  * Format: XY filename
  * X = index status, Y = working tree status
  * ?? = untracked
  * Other X values = staged
  * Other Y values = unstaged
  */
-function parseGitStatusOutput(output: string): { staged: number; unstaged: number; untracked: number } {
+function parseGitStatusOutput(output: string): {
+  staged: number;
+  unstaged: number;
+  untracked: number;
+} {
   let staged = 0;
   let unstaged = 0;
   let untracked = 0;
@@ -157,7 +161,8 @@ export function detectGitHost(remoteUrl: string | null): GitHost | null {
   host = host.toLowerCase().replace(/^www\./, "");
   if (host === "github.com" || host.endsWith(".github.com")) return "github";
   if (host === "gitlab.com" || host.endsWith(".gitlab.com")) return "gitlab";
-  if (host === "bitbucket.org" || host.endsWith(".bitbucket.org")) return "bitbucket";
+  if (host === "bitbucket.org" || host.endsWith(".bitbucket.org"))
+    return "bitbucket";
   return "other";
 }
 
@@ -201,7 +206,11 @@ export function getGitRemoteHost(): GitHost | null {
 /**
  * Fetch git status asynchronously
  */
-async function fetchGitStatus(): Promise<{ staged: number; unstaged: number; untracked: number } | null> {
+async function fetchGitStatus(): Promise<{
+  staged: number;
+  unstaged: number;
+  untracked: number;
+} | null> {
   const output = await runGit(["status", "--porcelain"], 500);
   if (output === null) return null;
   return parseGitStatusOutput(output);
@@ -245,9 +254,13 @@ export function getCurrentBranch(providerBranch: string | null): string | null {
  * This is designed for synchronous render() calls - returns last known value
  * while refreshing in background.
  */
-export function getGitStatus(providerBranch: string | null, pollingMode: GitPollingMode = "full"): GitStatus {
+export function getGitStatus(
+  providerBranch: string | null,
+  pollingMode: GitPollingMode = "full",
+): GitStatus {
   const now = Date.now();
-  const branch = pollingMode === "off" ? providerBranch : getCurrentBranch(providerBranch);
+  const branch =
+    pollingMode === "off" ? providerBranch : getCurrentBranch(providerBranch);
 
   if (pollingMode !== "full") {
     return { branch, staged: 0, unstaged: 0, untracked: 0 };
@@ -255,8 +268,8 @@ export function getGitStatus(providerBranch: string | null, pollingMode: GitPoll
 
   // Return cached if fresh
   if (cachedStatus && now - cachedStatus.timestamp < CACHE_TTL_MS) {
-    return { 
-      branch, 
+    return {
+      branch,
       staged: cachedStatus.staged,
       unstaged: cachedStatus.unstaged,
       untracked: cachedStatus.untracked,
@@ -270,7 +283,12 @@ export function getGitStatus(providerBranch: string | null, pollingMode: GitPoll
       // Cache result if no invalidation happened (including null for non-git dirs)
       if (fetchId === invalidationCounter) {
         cachedStatus = result
-          ? { staged: result.staged, unstaged: result.unstaged, untracked: result.untracked, timestamp: Date.now() }
+          ? {
+              staged: result.staged,
+              unstaged: result.unstaged,
+              untracked: result.untracked,
+              timestamp: Date.now(),
+            }
           : { staged: 0, unstaged: 0, untracked: 0, timestamp: Date.now() };
         notifyGitUpdate();
       }
@@ -280,8 +298,8 @@ export function getGitStatus(providerBranch: string | null, pollingMode: GitPoll
 
   // Return last cached or empty
   if (cachedStatus) {
-    return { 
-      branch, 
+    return {
+      branch,
       staged: cachedStatus.staged,
       unstaged: cachedStatus.unstaged,
       untracked: cachedStatus.untracked,

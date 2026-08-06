@@ -1,6 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
-import { getAgentPath, getHomeDir } from "../paths.ts";
+import { getAgentPath, getHomeDir } from "../src/paths/paths.ts";
 
 interface PersistedHistoryEntry {
   command: string;
@@ -21,14 +27,22 @@ interface CachedHistory<T> extends FileFingerprint {
   entries: T;
 }
 
-function matchesFingerprint(cached: FileFingerprint, stat: FileFingerprint): boolean {
-  return cached.ctimeMs === stat.ctimeMs
-    && cached.mtimeMs === stat.mtimeMs
-    && cached.mode === stat.mode
-    && cached.size === stat.size;
+function matchesFingerprint(
+  cached: FileFingerprint,
+  stat: FileFingerprint,
+): boolean {
+  return (
+    cached.ctimeMs === stat.ctimeMs &&
+    cached.mtimeMs === stat.mtimeMs &&
+    cached.mode === stat.mode &&
+    cached.size === stat.size
+  );
 }
 
-const projectHistoryCache = new Map<string, CachedHistory<PersistedHistoryEntry[]>>();
+const projectHistoryCache = new Map<
+  string,
+  CachedHistory<PersistedHistoryEntry[]>
+>();
 const globalHistoryCache = new Map<string, CachedHistory<string[]>>();
 
 function getHistoryDir(): string {
@@ -48,12 +62,15 @@ function normalizePersistedEntries(value: unknown): PersistedHistoryEntry[] {
 
   const entries: PersistedHistoryEntry[] = [];
   for (const entry of value) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
-    const command = typeof entry.command === "string" ? entry.command.trim() : "";
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry))
+      continue;
+    const command =
+      typeof entry.command === "string" ? entry.command.trim() : "";
     const cwd = typeof entry.cwd === "string" ? entry.cwd.trim() : "";
-    const timestamp = typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
-      ? entry.timestamp
-      : 0;
+    const timestamp =
+      typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
+        ? entry.timestamp
+        : 0;
     if (!command || !cwd || !timestamp) continue;
     entries.push({ command, cwd, timestamp });
   }
@@ -75,9 +92,11 @@ export function readProjectHistory(cwd: string): PersistedHistoryEntry[] {
     }
 
     const parsed = JSON.parse(readFileSync(filePath, "utf8"));
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
-    const entries = normalizePersistedEntries((parsed as { entries?: unknown }).entries)
-      .sort((a, b) => b.timestamp - a.timestamp);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      return [];
+    const entries = normalizePersistedEntries(
+      (parsed as { entries?: unknown }).entries,
+    ).sort((a, b) => b.timestamp - a.timestamp);
     projectHistoryCache.set(filePath, {
       ctimeMs: stat.ctimeMs,
       mtimeMs: stat.mtimeMs,
@@ -89,12 +108,19 @@ export function readProjectHistory(cwd: string): PersistedHistoryEntry[] {
   } catch (error) {
     // Project history is a best-effort cache. If it is unreadable or malformed,
     // bash mode should keep working instead of failing command entry entirely.
-    console.debug(`[powerline-footer] Failed to read bash project history from ${filePath}:`, error);
+    console.debug(
+      `[powerline-footer] Failed to read bash project history from ${filePath}:`,
+      error,
+    );
     return [];
   }
 }
 
-export function appendProjectHistory(cwd: string, command: string, entryCwd: string): void {
+export function appendProjectHistory(
+  cwd: string,
+  command: string,
+  entryCwd: string,
+): void {
   const normalizedCommand = command.trim();
   if (!normalizedCommand) return;
 
@@ -110,7 +136,10 @@ export function appendProjectHistory(cwd: string, command: string, entryCwd: str
   projectHistoryCache.delete(filePath);
   try {
     mkdirSync(dirname(filePath), { recursive: true });
-    writeFileSync(filePath, JSON.stringify({ version: 1, entries: next }, null, 2) + "\n");
+    writeFileSync(
+      filePath,
+      JSON.stringify({ version: 1, entries: next }, null, 2) + "\n",
+    );
     const stat = statSync(filePath);
     projectHistoryCache.set(filePath, {
       ctimeMs: stat.ctimeMs,
@@ -121,7 +150,10 @@ export function appendProjectHistory(cwd: string, command: string, entryCwd: str
     });
   } catch (error) {
     // History persistence should never block a successful shell command from completing.
-    console.debug(`[powerline-footer] Failed to persist bash project history to ${filePath}:`, error);
+    console.debug(
+      `[powerline-footer] Failed to persist bash project history to ${filePath}:`,
+      error,
+    );
   }
 }
 
@@ -153,7 +185,8 @@ export function readGlobalShellHistory(shellPath: string): string[] {
   const home = getHomeDir();
   const filePath = shellName.includes("fish")
     ? join(home, ".local", "share", "fish", "fish_history")
-    : process.env.HISTFILE || join(home, shellName.includes("zsh") ? ".zsh_history" : ".bash_history");
+    : process.env.HISTFILE ||
+      join(home, shellName.includes("zsh") ? ".zsh_history" : ".bash_history");
   const cacheKey = `${shellName}\0${filePath}`;
 
   if (!existsSync(filePath)) {
@@ -170,7 +203,11 @@ export function readGlobalShellHistory(shellPath: string): string[] {
 
     const raw = readFileSync(filePath, "utf8");
     const entries = shellName.includes("zsh")
-      ? raw.split("\n").map(parseZshHistoryLine).filter((entry): entry is string => Boolean(entry)).reverse()
+      ? raw
+          .split("\n")
+          .map(parseZshHistoryLine)
+          .filter((entry): entry is string => Boolean(entry))
+          .reverse()
       : shellName.includes("fish")
         ? parseFishHistory(raw).reverse()
         : parseBashHistory(raw.split("\n")).reverse();
@@ -185,12 +222,19 @@ export function readGlobalShellHistory(shellPath: string): string[] {
   } catch (error) {
     // Global shell history is optional recall data. If it is unavailable, shell predictions
     // should degrade to other sources instead of failing the editor.
-    console.debug(`[powerline-footer] Failed to read global shell history for ${shellName}:`, error);
+    console.debug(
+      `[powerline-footer] Failed to read global shell history for ${shellName}:`,
+      error,
+    );
     return [];
   }
 }
 
-export function matchHistoryEntries(entries: string[], prefix: string, limit: number): string[] {
+export function matchHistoryEntries(
+  entries: string[],
+  prefix: string,
+  limit: number,
+): string[] {
   const trimmedPrefix = prefix.trim();
   const seen = new Set<string>();
   const matches: string[] = [];

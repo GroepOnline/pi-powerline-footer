@@ -1,5 +1,5 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import type { CostCurrencyCode } from "./currency-rates.ts";
+import type { CostCurrencyCode } from "../usage/currency-rates.ts";
 
 // Theme color - either a pi theme color name or a custom hex color
 export type ColorValue = ThemeColor | `#${string}`;
@@ -54,10 +54,12 @@ export const BUILTIN_STATUS_LINE_SEGMENT_IDS = [
   "extension_statuses",
 ] as const;
 
-export type BuiltinStatusLineSegmentId = typeof BUILTIN_STATUS_LINE_SEGMENT_IDS[number];
+export type BuiltinStatusLineSegmentId =
+  (typeof BUILTIN_STATUS_LINE_SEGMENT_IDS)[number];
 
 // Segment identifiers (built-in + dynamically registered custom items)
-export type StatusLineSegmentId = BuiltinStatusLineSegmentId | `custom:${string}`;
+export type StatusLineSegmentId =
+  BuiltinStatusLineSegmentId | `custom:${string}`;
 
 // Separator styles
 export type StatusLineSeparatorStyle =
@@ -76,18 +78,12 @@ export type StatusLineSeparatorStyle =
 export type PowerlinePlacement = "above" | "below";
 
 export type StatusLinePreset =
-  | "default"
-  | "minimal"
-  | "compact"
-  | "full"
-  | "nerd"
-  | "ascii"
-  | "chef";
+  "default" | "minimal" | "compact" | "full" | "nerd" | "ascii" | "chef";
 
 // Per-segment options
 export interface StatusLineSegmentOptions {
   model?: { showThinkingLevel?: boolean; display?: "name" | "qualified" };
-  path?: { 
+  path?: {
     mode?: "basename" | "abbreviated" | "full";
     maxLength?: number;
   };
@@ -102,10 +98,15 @@ export interface StatusLineSegmentOptions {
     hostIcon?: boolean;
   };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
-  cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both"; currency?: CostCurrencyCode };
+  cost?: {
+    subscriptionDisplay?: "subscription" | "reported-cost" | "both";
+    currency?: CostCurrencyCode;
+  };
   context?: { format?: "full" | "percent" };
   cache_read?: { format?: "tokens" | "percent" | "both" };
-  openPorts?: { /** Include UDP listeners (mDNS/DHCP/ephemeral) in the count. Default false. */ includeUdp?: boolean };
+  openPorts?: {
+    /** Include UDP listeners (mDNS/DHCP/ephemeral) in the count. Default false. */ includeUdp?: boolean;
+  };
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";
@@ -181,19 +182,21 @@ export interface UsageStats {
 // Context passed to segment render functions
 export interface SegmentContext {
   // From pi-mono
-  model: {
-    id: string;
-    name?: string;
-    provider?: string;
-    providerId?: string;
-    providerName?: string;
-    reasoning?: boolean;
-    contextWindow?: number;
-  } | undefined;
+  model:
+    | {
+        id: string;
+        name?: string;
+        provider?: string;
+        providerId?: string;
+        providerName?: string;
+        reasoning?: boolean;
+        contextWindow?: number;
+      }
+    | undefined;
   thinkingLevel: string;
   sessionId: string | undefined;
   cwd?: string;
-  
+
   // Computed
   usageStats: UsageStats;
   contextTokens: number;
@@ -208,20 +211,20 @@ export interface SegmentContext {
   shellRunning: boolean;
   shellName: string | null;
   shellCwd: string | null;
-  
+
   // Git
   git: GitStatus;
-  
+
   // Extension statuses
   extensionStatuses: ReadonlyMap<string, string>;
   hiddenExtensionStatusKeys: ReadonlySet<string>;
   customItemsById: ReadonlyMap<string, CustomStatusItem>;
-  
+
   // Options
   options: StatusLineSegmentOptions;
   /** Per-segment custom text labels (from powerline.segmentLabels). */
   segmentLabels: ReadonlyMap<string, string>;
-  
+
   // Theming
   theme: ThemeLike;
   colors: ColorScheme;

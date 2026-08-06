@@ -1,19 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendProjectHistory, matchHistoryEntries, readGlobalShellHistory } from "../bash-mode/history.ts";
+import {
+  appendProjectHistory,
+  matchHistoryEntries,
+  readGlobalShellHistory,
+} from "../bash-mode/history.ts";
 import { BashTranscriptStore } from "../bash-mode/transcript.ts";
 import {
   BashAutocompleteProvider,
-  BashCompletionEngine,
-  getOneOffBashCommandContext,
   ModeAwareAutocompleteProvider,
   OneOffBashAutocompleteProvider,
+} from "../bash-mode/completion-providers.ts";
+import {
+  BashCompletionEngine,
+  getOneOffBashCommandContext,
 } from "../bash-mode/completion.ts";
-import { getIcons } from "../icons.ts";
-import { resolveColor } from "../theme.ts";
+import { getIcons } from "../src/theme/icons.ts";
+import { resolveColor } from "../src/theme/theme.ts";
 import { ManagedShellSession } from "../bash-mode/shell-session.ts";
 
 function getMethod(target: object, name: string): Function {
@@ -41,7 +56,8 @@ function ensureEditorModuleLinks(): { cleanup: () => void } {
     },
     {
       link: join(nodeModulesDir, "pi-tui"),
-      target: "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui",
+      target:
+        "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui",
     },
   ];
 
@@ -73,35 +89,42 @@ test("project history is stored newest-first and global zsh history parses histf
   appendProjectHistory(cwd, "git stash", cwd);
   appendProjectHistory(cwd, "git status", cwd);
 
-  writeFileSync(histfile, [
-    ": 1711111111:0;git fetch",
-    ": 1711111112:0;git pull",
-    "plain-command",
-    "",
-  ].join("\n"));
+  writeFileSync(
+    histfile,
+    [
+      ": 1711111111:0;git fetch",
+      ": 1711111112:0;git pull",
+      "plain-command",
+      "",
+    ].join("\n"),
+  );
 
   const global = readGlobalShellHistory("/bin/zsh");
   assert.deepEqual(global, ["plain-command", "git pull", "git fetch"]);
 });
 
 test("matchHistoryEntries returns newest entries when the prefix is empty", () => {
-  const matches = matchHistoryEntries([
-    "git stash",
-    "git status",
-    "git stash",
-    "git fetch",
-  ], "", 10);
+  const matches = matchHistoryEntries(
+    ["git stash", "git status", "git stash", "git fetch"],
+    "",
+    10,
+  );
 
   assert.deepEqual(matches, ["git stash", "git status", "git fetch"]);
 });
 
 test("theme.json can override icons without touching colors", () => {
   const themePath = join(process.cwd(), "theme.json");
-  const originalTheme = existsSync(themePath) ? readFileSync(themePath, "utf8") : null;
+  const originalTheme = existsSync(themePath)
+    ? readFileSync(themePath, "utf8")
+    : null;
   const originalNerdFonts = process.env.POWERLINE_NERD_FONTS;
 
   try {
-    writeFileSync(themePath, JSON.stringify({ icons: { auto: "↯", warning: "" } }, null, 2) + "\n");
+    writeFileSync(
+      themePath,
+      JSON.stringify({ icons: { auto: "↯", warning: "" } }, null, 2) + "\n",
+    );
     process.env.POWERLINE_NERD_FONTS = "0";
 
     const icons = getIcons();
@@ -130,7 +153,10 @@ test("theme.json loads from the documented agent extension path", () => {
   try {
     const themeDir = join(agentDir, "extensions", "powerline-footer");
     mkdirSync(themeDir, { recursive: true });
-    writeFileSync(join(themeDir, "theme.json"), JSON.stringify({ colors: { model: "#ff5500", path: "#ff5500" } }));
+    writeFileSync(
+      join(themeDir, "theme.json"),
+      JSON.stringify({ colors: { model: "#ff5500", path: "#ff5500" } }),
+    );
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     assert.equal(resolveColor("model"), "#ff5500");
@@ -163,7 +189,10 @@ test("one-off bash command context strips ! and !! prefixes", () => {
 });
 
 test("transcript store truncates oldest commands at command boundaries", () => {
-  const store = new BashTranscriptStore({ transcriptMaxLines: 3, transcriptMaxBytes: 1024 });
+  const store = new BashTranscriptStore({
+    transcriptMaxLines: 3,
+    transcriptMaxBytes: 1024,
+  });
   store.startCommand("a", "echo one", "/tmp");
   store.appendOutput("a", "line-1\nline-2");
   store.finishCommand("a", 0);
@@ -179,7 +208,10 @@ test("transcript store truncates oldest commands at command boundaries", () => {
 });
 
 test("transcript store keeps the active command even when it alone exceeds limits", () => {
-  const store = new BashTranscriptStore({ transcriptMaxLines: 3, transcriptMaxBytes: 1024 });
+  const store = new BashTranscriptStore({
+    transcriptMaxLines: 3,
+    transcriptMaxBytes: 1024,
+  });
   store.startCommand("a", "echo big", "/tmp");
   store.appendOutput("a", "1\n2\n3\n4");
 
@@ -233,10 +265,10 @@ test("ghost suggestion stays empty on an empty prompt when only global history e
   const cwd = mkdtempSync(join(tmpdir(), "powerline-empty-global-ghost-"));
   const histfile = join(cwd, ".zsh_history");
   process.env.HISTFILE = histfile;
-  writeFileSync(histfile, [
-    ": 1711111111:0;git fetch",
-    ": 1711111112:0;git pull",
-  ].join("\n"));
+  writeFileSync(
+    histfile,
+    [": 1711111111:0;git fetch", ": 1711111112:0;git pull"].join("\n"),
+  );
 
   const engine = new BashCompletionEngine();
   const suggestion = await engine.getGhostSuggestion(
@@ -428,7 +460,9 @@ test("ghost suggestion ignores invalid raw global history and keeps a determinis
 });
 
 test("global history boosts already-valid deterministic git candidates", async () => {
-  const cwd = mkdtempSync(join(tmpdir(), "powerline-global-history-tiebreak-ghost-"));
+  const cwd = mkdtempSync(
+    join(tmpdir(), "powerline-global-history-tiebreak-ghost-"),
+  );
   const histfile = join(cwd, ".zsh_history");
   process.env.HISTFILE = histfile;
   writeFileSync(histfile, ": 1711111111:0;git stash\n");
@@ -490,8 +524,17 @@ test("managed shell session preserves cwd changes across commands", async (t) =>
   const cwd = mkdtempSync(join(tmpdir(), "powerline-shell-"));
   const childDir = join(cwd, "child");
   mkdirSync(childDir, { recursive: true });
-  const store = new BashTranscriptStore({ transcriptMaxLines: 100, transcriptMaxBytes: 64 * 1024 });
-  const session = new ManagedShellSession(shellPath, cwd, store, () => {}, () => {});
+  const store = new BashTranscriptStore({
+    transcriptMaxLines: 100,
+    transcriptMaxBytes: 64 * 1024,
+  });
+  const session = new ManagedShellSession(
+    shellPath,
+    cwd,
+    store,
+    () => {},
+    () => {},
+  );
 
   try {
     await session.ensureReady();
@@ -526,8 +569,17 @@ test("managed shell session recovers cleanly after interrupt", async (t) => {
   }
 
   const cwd = mkdtempSync(join(tmpdir(), "powerline-shell-interrupt-"));
-  const store = new BashTranscriptStore({ transcriptMaxLines: 100, transcriptMaxBytes: 64 * 1024 });
-  const session = new ManagedShellSession(shellPath, cwd, store, () => {}, () => {});
+  const store = new BashTranscriptStore({
+    transcriptMaxLines: 100,
+    transcriptMaxBytes: 64 * 1024,
+  });
+  const session = new ManagedShellSession(
+    shellPath,
+    cwd,
+    store,
+    () => {},
+    () => {},
+  );
 
   const waitForCommand = async () => {
     const start = Date.now();
@@ -567,28 +619,31 @@ test("bash editor Tab accepts the current ghost suggestion without opening autoc
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     let accepted = false;
 
-    getMethod(BashModeEditor.prototype, "handleInput").call({
-      optionsRef: {
-        isBashModeActive: () => true,
-        isShellRunning: () => false,
-        onExitBashMode() {},
-        onInterrupt() {},
-        onNotify() {},
-        onSubmitCommand() {},
-      },
-      keybindingsRef: {
-        matches(_data: string, id: string) {
-          return id === "tui.input.tab";
+    getMethod(BashModeEditor.prototype, "handleInput").call(
+      {
+        optionsRef: {
+          isBashModeActive: () => true,
+          isShellRunning: () => false,
+          onExitBashMode() {},
+          onInterrupt() {},
+          onNotify() {},
+          onSubmitCommand() {},
+        },
+        keybindingsRef: {
+          matches(_data: string, id: string) {
+            return id === "tui.input.tab";
+          },
+        },
+        isShowingAutocomplete() {
+          return false;
+        },
+        acceptGhostSuggestion() {
+          accepted = true;
+          return true;
         },
       },
-      isShowingAutocomplete() {
-        return false;
-      },
-      acceptGhostSuggestion() {
-        accepted = true;
-        return true;
-      },
-    }, "tab");
+      "tab",
+    );
 
     assert.equal(accepted, true);
   } finally {
@@ -601,7 +656,12 @@ test("bash editor does not submit pasted multiline input while bracketed paste i
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { CustomEditor } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js", import.meta.url).href);
+    const { CustomEditor } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js",
+        import.meta.url,
+      ).href
+    );
 
     let delegated = 0;
     let submitted = 0;
@@ -611,28 +671,31 @@ test("bash editor does not submit pasted multiline input while bracketed paste i
     };
 
     try {
-      getMethod(BashModeEditor.prototype, "handleInput").call({
-        isInPaste: true,
-        optionsRef: {
-          isBashModeActive: () => true,
-          isShellRunning: () => false,
-          onExitBashMode() {},
-          onInterrupt() {},
-          onNotify() {},
-          onSubmitCommand() {
-            submitted += 1;
+      getMethod(BashModeEditor.prototype, "handleInput").call(
+        {
+          isInPaste: true,
+          optionsRef: {
+            isBashModeActive: () => true,
+            isShellRunning: () => false,
+            onExitBashMode() {},
+            onInterrupt() {},
+            onNotify() {},
+            onSubmitCommand() {
+              submitted += 1;
+            },
+            getHistoryEntries() {
+              return [];
+            },
+            resolveGhostSuggestion: async () => null,
           },
-          getHistoryEntries() {
-            return [];
+          keybindingsRef: {
+            matches(data: string, id: string) {
+              return data === "\r" && id === "tui.input.submit";
+            },
           },
-          resolveGhostSuggestion: async () => null,
         },
-        keybindingsRef: {
-          matches(data: string, id: string) {
-            return data === "\r" && id === "tui.input.submit";
-          },
-        },
-      }, "\r");
+        "\r",
+      );
     } finally {
       CustomEditor.prototype.handleInput = superHandleInput;
     }
@@ -649,7 +712,12 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { CustomEditor } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js", import.meta.url).href);
+    const { CustomEditor } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js",
+        import.meta.url,
+      ).href
+    );
 
     let delegated = 0;
     let scheduled = 0;
@@ -660,38 +728,41 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
     };
 
     try {
-      getMethod(BashModeEditor.prototype, "handleInput").call({
-        isInPaste: true,
-        optionsRef: {
-          isBashModeActive: () => true,
-          isShellRunning: () => false,
-          onExitBashMode() {},
-          onInterrupt() {},
-          onNotify() {},
-          onSubmitCommand() {},
-          getHistoryEntries() {
-            return [];
+      getMethod(BashModeEditor.prototype, "handleInput").call(
+        {
+          isInPaste: true,
+          optionsRef: {
+            isBashModeActive: () => true,
+            isShellRunning: () => false,
+            onExitBashMode() {},
+            onInterrupt() {},
+            onNotify() {},
+            onSubmitCommand() {},
+            getHistoryEntries() {
+              return [];
+            },
+            resolveGhostSuggestion: async () => null,
           },
-          resolveGhostSuggestion: async () => null,
-        },
-        keybindingsRef: {
-          matches() {
-            return false;
+          keybindingsRef: {
+            matches() {
+              return false;
+            },
+          },
+          getExpandedText() {
+            return "git status";
+          },
+          isShellCompletionContext() {
+            return true;
+          },
+          shellHistoryIndex: 3,
+          shellHistoryItems: ["git status"],
+          shellHistoryDraft: "git",
+          scheduleGhostUpdate() {
+            scheduled += 1;
           },
         },
-        getExpandedText() {
-          return "git status";
-        },
-        isShellCompletionContext() {
-          return true;
-        },
-        shellHistoryIndex: 3,
-        shellHistoryItems: ["git status"],
-        shellHistoryDraft: "git",
-        scheduleGhostUpdate() {
-          scheduled += 1;
-        },
-      }, "\r");
+        "\r",
+      );
     } finally {
       CustomEditor.prototype.handleInput = superHandleInput;
     }
@@ -713,7 +784,12 @@ test("bash editor inserts Finder file drops as path strings", async (t) => {
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const { KeybindingsManager } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js",
+        import.meta.url,
+      ).href
+    );
     const keybindings = KeybindingsManager.create();
     let scheduled = 0;
     const editor = new BashModeEditor(
@@ -733,12 +809,22 @@ test("bash editor inserts Finder file drops as path strings", async (t) => {
       },
     );
 
-    editor.handleInput("\x1b[200~file:///Users/nico/Desktop/Screen%20Shot%202026-05-08.png\x1b[201~");
-    assert.equal(editor.getText(), "/Users/nico/Desktop/Screen Shot 2026-05-08.png");
+    editor.handleInput(
+      "\x1b[200~file:///Users/nico/Desktop/Screen%20Shot%202026-05-08.png\x1b[201~",
+    );
+    assert.equal(
+      editor.getText(),
+      "/Users/nico/Desktop/Screen Shot 2026-05-08.png",
+    );
 
     editor.handleInput(" ");
-    editor.handleInput("\x1b[200~/Users/nico/Documents/Project\\ Folder\x1b[201~");
-    assert.equal(editor.getText(), "/Users/nico/Desktop/Screen Shot 2026-05-08.png /Users/nico/Documents/Project\\ Folder");
+    editor.handleInput(
+      "\x1b[200~/Users/nico/Documents/Project\\ Folder\x1b[201~",
+    );
+    assert.equal(
+      editor.getText(),
+      "/Users/nico/Desktop/Screen Shot 2026-05-08.png /Users/nico/Documents/Project\\ Folder",
+    );
 
     const shellEditor = new BashModeEditor(
       { requestRender() {}, terminal: { columns: 80, rows: 24 } },
@@ -760,8 +846,13 @@ test("bash editor inserts Finder file drops as path strings", async (t) => {
       scheduled += 1;
     });
 
-    shellEditor.handleInput("\x1b[200~file:///Users/nico/Pictures/Finder%20Image.png\nfile:///Users/nico/Desktop/Capture.png\x1b[201~");
-    assert.equal(shellEditor.getText(), "/Users/nico/Pictures/Finder Image.png /Users/nico/Desktop/Capture.png");
+    shellEditor.handleInput(
+      "\x1b[200~file:///Users/nico/Pictures/Finder%20Image.png\nfile:///Users/nico/Desktop/Capture.png\x1b[201~",
+    );
+    assert.equal(
+      shellEditor.getText(),
+      "/Users/nico/Pictures/Finder Image.png /Users/nico/Desktop/Capture.png",
+    );
     assert.equal(scheduled, 1);
   } finally {
     links.cleanup();
@@ -770,12 +861,9 @@ test("bash editor inserts Finder file drops as path strings", async (t) => {
 
 test("one-off bash autocomplete provider stays inactive even inside bang commands", async () => {
   const provider = new OneOffBashAutocompleteProvider();
-  const suggestions = await provider.getSuggestions(
-    ["!!gi"],
-    0,
-    4,
-    { signal: new AbortController().signal },
-  );
+  const suggestions = await provider.getSuggestions(["!!gi"], 0, 4, {
+    signal: new AbortController().signal,
+  });
 
   assert.equal(suggestions, null);
 });
@@ -783,8 +871,19 @@ test("one-off bash autocomplete provider stays inactive even inside bang command
 test("bash autocomplete providers return null in shell contexts", async () => {
   const signal = new AbortController().signal;
 
-  const bashSuggestions = await new BashAutocompleteProvider().getSuggestions(["git st"], 0, 6, { signal });
-  const oneOffSuggestions = await new OneOffBashAutocompleteProvider().getSuggestions(["!git st"], 0, 7, { signal });
+  const bashSuggestions = await new BashAutocompleteProvider().getSuggestions(
+    ["git st"],
+    0,
+    6,
+    { signal },
+  );
+  const oneOffSuggestions =
+    await new OneOffBashAutocompleteProvider().getSuggestions(
+      ["!git st"],
+      0,
+      7,
+      { signal },
+    );
 
   assert.equal(bashSuggestions, null);
   assert.equal(oneOffSuggestions, null);
@@ -818,9 +917,14 @@ test("mode-aware autocomplete provider preserves default results", async () => {
 test("one-off bash autocomplete provider stays inactive before the bang command starts", async () => {
   const provider = new OneOffBashAutocompleteProvider();
 
-  assert.equal(provider.shouldTriggerFileCompletion(["!git status"], 0, 0), false);
   assert.equal(
-    await provider.getSuggestions(["!git status"], 0, 0, { signal: new AbortController().signal }),
+    provider.shouldTriggerFileCompletion(["!git status"], 0, 0),
+    false,
+  );
+  assert.equal(
+    await provider.getSuggestions(["!git status"], 0, 0, {
+      signal: new AbortController().signal,
+    }),
     null,
   );
 });
@@ -852,7 +956,11 @@ test("bash editor dismiss clears autocomplete when mode turns off", async () => 
     let aborted = false;
     let cancelled = false;
     let rendered = false;
-    const fakeAbort = { abort() { aborted = true; } };
+    const fakeAbort = {
+      abort() {
+        aborted = true;
+      },
+    };
     const fakeEditor = {
       historyIndex: 7,
       shellHistoryIndex: 2,
@@ -911,7 +1019,10 @@ test("bash editor shell history state does not clobber the base prompt history i
       scheduleGhostUpdate() {},
     };
 
-    getMethod(BashModeEditor.prototype, "navigateShellHistory").call(fakeEditor, -1);
+    getMethod(BashModeEditor.prototype, "navigateShellHistory").call(
+      fakeEditor,
+      -1,
+    );
 
     assert.equal(fakeEditor.historyIndex, 5);
     assert.equal(fakeEditor.shellHistoryIndex, 0);
@@ -925,24 +1036,30 @@ test("bash editor recalls prompt history from single-line end without losing the
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
-    const keybindings = KeybindingsManager.create();
-    const createEditor = () => new BashModeEditor(
-      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
-      {},
-      keybindings,
-      {
-        keybindings,
-        isBashModeActive: () => false,
-        isShellRunning: () => false,
-        onExitBashMode() {},
-        onSubmitCommand() {},
-        onInterrupt() {},
-        onNotify() {},
-        getHistoryEntries: () => [],
-        resolveGhostSuggestion: async () => null,
-      },
+    const { KeybindingsManager } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js",
+        import.meta.url,
+      ).href
     );
+    const keybindings = KeybindingsManager.create();
+    const createEditor = () =>
+      new BashModeEditor(
+        { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+        {},
+        keybindings,
+        {
+          keybindings,
+          isBashModeActive: () => false,
+          isShellRunning: () => false,
+          onExitBashMode() {},
+          onSubmitCommand() {},
+          onInterrupt() {},
+          onNotify() {},
+          getHistoryEntries: () => [],
+          resolveGhostSuggestion: async () => null,
+        },
+      );
 
     const editor = createEditor();
     editor.addToHistory("older prompt");
@@ -1024,23 +1141,26 @@ test("bash editor escape exits bash mode", async () => {
     let exited = false;
     let interrupted = false;
 
-    getMethod(BashModeEditor.prototype, "handleInput").call({
-      optionsRef: {
-        isBashModeActive: () => true,
-        onExitBashMode: () => {
-          exited = true;
+    getMethod(BashModeEditor.prototype, "handleInput").call(
+      {
+        optionsRef: {
+          isBashModeActive: () => true,
+          onExitBashMode: () => {
+            exited = true;
+          },
+          isShellRunning: () => false,
+          onInterrupt: () => {
+            interrupted = true;
+          },
         },
-        isShellRunning: () => false,
-        onInterrupt: () => {
-          interrupted = true;
+        keybindingsRef: {
+          matches(data: string, id: string) {
+            return data === "escape" && id === "app.interrupt";
+          },
         },
       },
-      keybindingsRef: {
-        matches(data: string, id: string) {
-          return data === "escape" && id === "app.interrupt";
-        },
-      },
-    }, "escape");
+      "escape",
+    );
 
     assert.equal(exited, true);
     assert.equal(interrupted, false);
@@ -1057,30 +1177,33 @@ test("bash editor right arrow accepts an empty-prompt ghost suggestion without s
     let accepted = false;
     let submitted = false;
 
-    getMethod(BashModeEditor.prototype, "handleInput").call({
-      optionsRef: {
-        isBashModeActive: () => true,
-        isShellRunning: () => false,
-        onExitBashMode: () => {},
-        onSubmitCommand: () => {
-          submitted = true;
+    getMethod(BashModeEditor.prototype, "handleInput").call(
+      {
+        optionsRef: {
+          isBashModeActive: () => true,
+          isShellRunning: () => false,
+          onExitBashMode: () => {},
+          onSubmitCommand: () => {
+            submitted = true;
+          },
+          onInterrupt: () => {},
+          onNotify: () => {},
         },
-        onInterrupt: () => {},
-        onNotify: () => {},
-      },
-      keybindingsRef: {
-        matches(data: string, id: string) {
-          return data === "right" && id === "tui.editor.cursorRight";
+        keybindingsRef: {
+          matches(data: string, id: string) {
+            return data === "right" && id === "tui.editor.cursorRight";
+          },
+        },
+        isShowingAutocomplete() {
+          return false;
+        },
+        acceptGhostSuggestion() {
+          accepted = true;
+          return true;
         },
       },
-      isShowingAutocomplete() {
-        return false;
-      },
-      acceptGhostSuggestion() {
-        accepted = true;
-        return true;
-      },
-    }, "right");
+      "right",
+    );
 
     assert.equal(accepted, true);
     assert.equal(submitted, false);
@@ -1096,26 +1219,29 @@ test("bash editor right arrow accepts ghost text for one-off bang commands", asy
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     let accepted = false;
 
-    getMethod(BashModeEditor.prototype, "handleInput").call({
-      optionsRef: {
-        isBashModeActive: () => false,
-      },
-      keybindingsRef: {
-        matches(data: string, id: string) {
-          return data === "right" && id === "tui.editor.cursorRight";
+    getMethod(BashModeEditor.prototype, "handleInput").call(
+      {
+        optionsRef: {
+          isBashModeActive: () => false,
+        },
+        keybindingsRef: {
+          matches(data: string, id: string) {
+            return data === "right" && id === "tui.editor.cursorRight";
+          },
+        },
+        getExpandedText() {
+          return "!git st";
+        },
+        isOneOffBashCommandContext() {
+          return true;
+        },
+        acceptGhostSuggestion() {
+          accepted = true;
+          return true;
         },
       },
-      getExpandedText() {
-        return "!git st";
-      },
-      isOneOffBashCommandContext() {
-        return true;
-      },
-      acceptGhostSuggestion() {
-        accepted = true;
-        return true;
-      },
-    }, "right");
+      "right",
+    );
 
     assert.equal(accepted, true);
   } finally {
@@ -1128,8 +1254,18 @@ test("bash editor runs copied Pi app action handlers for alt-enter", async () =>
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
-    const { setKittyProtocolActive } = await import(new URL("../node_modules/@earendil-works/pi-tui/dist/keys.js", import.meta.url).href);
+    const { KeybindingsManager } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js",
+        import.meta.url,
+      ).href
+    );
+    const { setKittyProtocolActive } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-tui/dist/keys.js",
+        import.meta.url,
+      ).href
+    );
     const keybindings = KeybindingsManager.create();
     const editor = new BashModeEditor(
       { requestRender() {}, terminal: { columns: 80, rows: 24 } },
@@ -1174,33 +1310,47 @@ test("bash editor command-z undoes deleted text for supported encodings only", a
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
-    const keybindings = KeybindingsManager.create();
-    const createEditor = (options: {
-      keybindings?: typeof keybindings;
-      isBashModeActive?: () => boolean;
-      isShellRunning?: () => boolean;
-      onExitBashMode?: () => void;
-      onInterrupt?: () => void;
-      resolveGhostSuggestion?: (text: string) => Promise<null>;
-    } = {}) => new BashModeEditor(
-      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
-      {},
-      options.keybindings ?? keybindings,
-      {
-        keybindings: options.keybindings ?? keybindings,
-        isBashModeActive: options.isBashModeActive ?? (() => false),
-        isShellRunning: options.isShellRunning ?? (() => false),
-        onExitBashMode: options.onExitBashMode ?? (() => {}),
-        onSubmitCommand() {},
-        onInterrupt: options.onInterrupt ?? (() => {}),
-        onNotify() {},
-        getHistoryEntries: () => [],
-        resolveGhostSuggestion: options.resolveGhostSuggestion ?? (async () => null),
-      },
+    const { KeybindingsManager } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js",
+        import.meta.url,
+      ).href
     );
+    const keybindings = KeybindingsManager.create();
+    const createEditor = (
+      options: {
+        keybindings?: typeof keybindings;
+        isBashModeActive?: () => boolean;
+        isShellRunning?: () => boolean;
+        onExitBashMode?: () => void;
+        onInterrupt?: () => void;
+        resolveGhostSuggestion?: (text: string) => Promise<null>;
+      } = {},
+    ) =>
+      new BashModeEditor(
+        { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+        {},
+        options.keybindings ?? keybindings,
+        {
+          keybindings: options.keybindings ?? keybindings,
+          isBashModeActive: options.isBashModeActive ?? (() => false),
+          isShellRunning: options.isShellRunning ?? (() => false),
+          onExitBashMode: options.onExitBashMode ?? (() => {}),
+          onSubmitCommand() {},
+          onInterrupt: options.onInterrupt ?? (() => {}),
+          onNotify() {},
+          getHistoryEntries: () => [],
+          resolveGhostSuggestion:
+            options.resolveGhostSuggestion ?? (async () => null),
+        },
+      );
 
-    for (const data of ["\x1b[122;9u", "\x1b[122;9:1u", "\x1b[122;9:2u", "\x1b[27;9;122~"]) {
+    for (const data of [
+      "\x1b[122;9u",
+      "\x1b[122;9:1u",
+      "\x1b[122;9:2u",
+      "\x1b[27;9;122~",
+    ]) {
       const editor = createEditor();
 
       for (const char of "hello") editor.handleInput(char);
@@ -1232,7 +1382,9 @@ test("bash editor command-z undoes deleted text for supported encodings only", a
     for (const action of ["app.interrupt", "app.clear"]) {
       let exited = false;
       let interrupted = false;
-      const customizedKeybindings = new KeybindingsManager({ [action]: "super+z" });
+      const customizedKeybindings = new KeybindingsManager({
+        [action]: "super+z",
+      });
       assert.equal(customizedKeybindings.matches("\x1b[122;9u", action), true);
       const customizedEditor = createEditor({
         keybindings: customizedKeybindings,
@@ -1264,27 +1416,36 @@ test("bash editor command-z resets shell history and updates ghost state", async
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
-    const keybindings = KeybindingsManager.create();
-    const createEditor = (options: {
-      isBashModeActive?: () => boolean;
-      resolveGhostSuggestion?: (text: string) => Promise<null>;
-    } = {}) => new BashModeEditor(
-      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
-      {},
-      keybindings,
-      {
-        keybindings,
-        isBashModeActive: options.isBashModeActive ?? (() => false),
-        isShellRunning: () => false,
-        onExitBashMode() {},
-        onSubmitCommand() {},
-        onInterrupt() {},
-        onNotify() {},
-        getHistoryEntries: () => [],
-        resolveGhostSuggestion: options.resolveGhostSuggestion ?? (async () => null),
-      },
+    const { KeybindingsManager } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js",
+        import.meta.url,
+      ).href
     );
+    const keybindings = KeybindingsManager.create();
+    const createEditor = (
+      options: {
+        isBashModeActive?: () => boolean;
+        resolveGhostSuggestion?: (text: string) => Promise<null>;
+      } = {},
+    ) =>
+      new BashModeEditor(
+        { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+        {},
+        keybindings,
+        {
+          keybindings,
+          isBashModeActive: options.isBashModeActive ?? (() => false),
+          isShellRunning: () => false,
+          onExitBashMode() {},
+          onSubmitCommand() {},
+          onInterrupt() {},
+          onNotify() {},
+          getHistoryEntries: () => [],
+          resolveGhostSuggestion:
+            options.resolveGhostSuggestion ?? (async () => null),
+        },
+      );
     const ghostRefreshes: string[] = [];
     const shellEditor = createEditor({
       isBashModeActive: () => true,
@@ -1323,11 +1484,21 @@ test("bash editor command arrows jump to editor boundaries", async () => {
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const { KeybindingsManager } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js",
+        import.meta.url,
+      ).href
+    );
     const keybindings = KeybindingsManager.create();
     let renderRequests = 0;
     const editor = new BashModeEditor(
-      { requestRender() { renderRequests += 1; }, terminal: { columns: 80, rows: 24 } },
+      {
+        requestRender() {
+          renderRequests += 1;
+        },
+        terminal: { columns: 80, rows: 24 },
+      },
       {},
       keybindings,
       {
@@ -1408,7 +1579,10 @@ test("bash editor command arrows jump to editor boundaries", async () => {
         isShellRunning: () => false,
         onExitBashMode() {},
         onSubmitCommand() {},
-        editorBoundaryShortcuts: { start: "super+shift+up", end: "super+shift+down" },
+        editorBoundaryShortcuts: {
+          start: "super+shift+up",
+          end: "super+shift+down",
+        },
         onInterrupt() {},
         onNotify() {},
         getHistoryEntries: () => [],
@@ -1435,35 +1609,38 @@ test("bash editor enter does not accept ghost text while a shell command is runn
     let warned = false;
     let submitted = false;
 
-    getMethod(BashModeEditor.prototype, "handleInput").call({
-      ghost: { value: "git status", source: "project-history" },
-      optionsRef: {
-        isBashModeActive: () => true,
-        isShellRunning: () => true,
-        onExitBashMode: () => {},
-        onInterrupt: () => {},
-        onSubmitCommand: () => {
-          submitted = true;
+    getMethod(BashModeEditor.prototype, "handleInput").call(
+      {
+        ghost: { value: "git status", source: "project-history" },
+        optionsRef: {
+          isBashModeActive: () => true,
+          isShellRunning: () => true,
+          onExitBashMode: () => {},
+          onInterrupt: () => {},
+          onSubmitCommand: () => {
+            submitted = true;
+          },
+          onNotify: (message: string) => {
+            warned = message === "Shell command already running";
+          },
         },
-        onNotify: (message: string) => {
-          warned = message === "Shell command already running";
+        keybindingsRef: {
+          matches(_data: string, id: string) {
+            return id === "tui.input.submit";
+          },
+        },
+        getExpandedText() {
+          return "git st";
+        },
+        isShowingAutocomplete() {
+          return false;
+        },
+        acceptGhostSuggestion() {
+          throw new Error("ghost should not be accepted while running");
         },
       },
-      keybindingsRef: {
-        matches(_data: string, id: string) {
-          return id === "tui.input.submit";
-        },
-      },
-      getExpandedText() {
-        return "git st";
-      },
-      isShowingAutocomplete() {
-        return false;
-      },
-      acceptGhostSuggestion() {
-        throw new Error("ghost should not be accepted while running");
-      },
-    }, "enter");
+      "enter",
+    );
 
     assert.equal(warned, true);
     assert.equal(submitted, false);
@@ -1479,36 +1656,39 @@ test("bash editor enter submits the typed command without accepting ghost text",
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     let submittedCommand = "";
 
-    getMethod(BashModeEditor.prototype, "handleInput").call({
-      ghost: { value: "git diff --staged", source: "project-history" },
-      optionsRef: {
-        isBashModeActive: () => true,
-        isShellRunning: () => false,
-        onExitBashMode: () => {},
-        onInterrupt: () => {},
-        onNotify: () => {},
-        onSubmitCommand: (command: string) => {
-          submittedCommand = command;
+    getMethod(BashModeEditor.prototype, "handleInput").call(
+      {
+        ghost: { value: "git diff --staged", source: "project-history" },
+        optionsRef: {
+          isBashModeActive: () => true,
+          isShellRunning: () => false,
+          onExitBashMode: () => {},
+          onInterrupt: () => {},
+          onNotify: () => {},
+          onSubmitCommand: (command: string) => {
+            submittedCommand = command;
+          },
         },
-      },
-      keybindingsRef: {
-        matches(_data: string, id: string) {
-          return id === "tui.input.submit";
+        keybindingsRef: {
+          matches(_data: string, id: string) {
+            return id === "tui.input.submit";
+          },
         },
+        getExpandedText() {
+          return "git diff";
+        },
+        acceptGhostSuggestion() {
+          throw new Error("enter should not accept ghost text");
+        },
+        clearGhostSuggestion() {},
+        setText() {},
+        refreshGhostSuggestion() {},
+        shellHistoryIndex: -1,
+        shellHistoryItems: [],
+        shellHistoryDraft: "",
       },
-      getExpandedText() {
-        return "git diff";
-      },
-      acceptGhostSuggestion() {
-        throw new Error("enter should not accept ghost text");
-      },
-      clearGhostSuggestion() {},
-      setText() {},
-      refreshGhostSuggestion() {},
-      shellHistoryIndex: -1,
-      shellHistoryItems: [],
-      shellHistoryDraft: "",
-    }, "enter");
+      "enter",
+    );
 
     assert.equal(submittedCommand, "git diff");
   } finally {
@@ -1521,7 +1701,12 @@ test("one-off bang submit does not accept ghost text before submitting", async (
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const { CustomEditor } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js", import.meta.url).href);
+    const { CustomEditor } = await import(
+      new URL(
+        "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js",
+        import.meta.url,
+      ).href
+    );
 
     let delegated = 0;
     const superHandleInput = CustomEditor.prototype.handleInput;
@@ -1530,29 +1715,34 @@ test("one-off bang submit does not accept ghost text before submitting", async (
     };
 
     try {
-      getMethod(BashModeEditor.prototype, "handleInput").call({
-        ghost: { value: "!git diff --staged", source: "project-history" },
-        optionsRef: {
-          isBashModeActive: () => false,
-        },
-        keybindingsRef: {
-          matches(_data: string, id: string) {
-            return id === "tui.input.submit";
+      getMethod(BashModeEditor.prototype, "handleInput").call(
+        {
+          ghost: { value: "!git diff --staged", source: "project-history" },
+          optionsRef: {
+            isBashModeActive: () => false,
+          },
+          keybindingsRef: {
+            matches(_data: string, id: string) {
+              return id === "tui.input.submit";
+            },
+          },
+          getExpandedText() {
+            return "!git diff";
+          },
+          isOneOffBashCommandContext() {
+            return true;
+          },
+          isShellCompletionContext() {
+            return true;
+          },
+          acceptGhostSuggestion() {
+            throw new Error(
+              "enter should not accept ghost text for one-off bash commands",
+            );
           },
         },
-        getExpandedText() {
-          return "!git diff";
-        },
-        isOneOffBashCommandContext() {
-          return true;
-        },
-        isShellCompletionContext() {
-          return true;
-        },
-        acceptGhostSuggestion() {
-          throw new Error("enter should not accept ghost text for one-off bash commands");
-        },
-      }, "enter");
+        "enter",
+      );
     } finally {
       CustomEditor.prototype.handleInput = superHandleInput;
     }
@@ -1568,7 +1758,10 @@ test("bash editor does not accept a hidden ghost suggestion when the cursor is n
 
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
-    const accepted = getMethod(BashModeEditor.prototype, "acceptGhostSuggestion").call({
+    const accepted = getMethod(
+      BashModeEditor.prototype,
+      "acceptGhostSuggestion",
+    ).call({
       ghost: { value: "git status", source: "project-history" },
       getExpandedText() {
         return "git st";
@@ -1597,42 +1790,45 @@ test("bash editor submit clears the prompt and refreshes the empty ghost suggest
     let cleared = false;
     let refreshed = false;
 
-    getMethod(BashModeEditor.prototype, "handleInput").call({
-      optionsRef: {
-        isBashModeActive: () => true,
-        isShellRunning: () => false,
-        onExitBashMode: () => {},
-        onInterrupt: () => {},
-        onNotify: () => {},
-        onSubmitCommand: (command: string) => {
-          submitted = command === "git status";
+    getMethod(BashModeEditor.prototype, "handleInput").call(
+      {
+        optionsRef: {
+          isBashModeActive: () => true,
+          isShellRunning: () => false,
+          onExitBashMode: () => {},
+          onInterrupt: () => {},
+          onNotify: () => {},
+          onSubmitCommand: (command: string) => {
+            submitted = command === "git status";
+          },
         },
-      },
-      keybindingsRef: {
-        matches(_data: string, id: string) {
-          return id === "tui.input.submit";
+        keybindingsRef: {
+          matches(_data: string, id: string) {
+            return id === "tui.input.submit";
+          },
         },
+        isShowingAutocomplete() {
+          return false;
+        },
+        acceptGhostSuggestion() {
+          return false;
+        },
+        getExpandedText() {
+          return "git status";
+        },
+        clearGhostSuggestion() {},
+        setText(value: string) {
+          cleared = value === "";
+        },
+        refreshGhostSuggestion() {
+          refreshed = true;
+        },
+        shellHistoryIndex: 3,
+        shellHistoryItems: ["git status"],
+        shellHistoryDraft: "git st",
       },
-      isShowingAutocomplete() {
-        return false;
-      },
-      acceptGhostSuggestion() {
-        return false;
-      },
-      getExpandedText() {
-        return "git status";
-      },
-      clearGhostSuggestion() {},
-      setText(value: string) {
-        cleared = value === "";
-      },
-      refreshGhostSuggestion() {
-        refreshed = true;
-      },
-      shellHistoryIndex: 3,
-      shellHistoryItems: ["git status"],
-      shellHistoryDraft: "git st",
-    }, "enter");
+      "enter",
+    );
 
     assert.equal(submitted, true);
     assert.equal(cleared, true);

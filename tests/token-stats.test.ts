@@ -1,9 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { computeSessionTokenStats, SessionBranchCache, SessionTokenStatsCache } from "../token-stats.ts";
+import {
+  computeSessionTokenStats,
+  SessionBranchCache,
+  SessionTokenStatsCache,
+} from "../src/usage/token-stats.ts";
 
-function makeUsage(input: number, output: number, cacheRead = 0, cacheWrite = 0, costPerToken = 0.001) {
+function makeUsage(
+  input: number,
+  output: number,
+  cacheRead = 0,
+  cacheWrite = 0,
+  costPerToken = 0.001,
+) {
   return {
     input,
     output,
@@ -13,7 +23,10 @@ function makeUsage(input: number, output: number, cacheRead = 0, cacheWrite = 0,
   };
 }
 
-function assistantEvent(usage: ReturnType<typeof makeUsage>, stopReason: string = "stop") {
+function assistantEvent(
+  usage: ReturnType<typeof makeUsage>,
+  stopReason: string = "stop",
+) {
   return {
     type: "message",
     message: {
@@ -47,7 +60,11 @@ function subagentSlashResultEvent(costs: number[]) {
   return {
     type: "custom_message",
     customType: "subagent-slash-result",
-    details: { result: { details: { results: costs.map((cost) => ({ usage: { cost } })) } } },
+    details: {
+      result: {
+        details: { results: costs.map((cost) => ({ usage: { cost } })) },
+      },
+    },
   };
 }
 
@@ -240,10 +257,20 @@ test("reset forces recomputation", () => {
   assert.equal(second.input, first.input);
 });
 
-test("index.ts wires the token stats cache into buildSegmentContext", () => {
-  const source = readFileSync(new URL("../index.ts", import.meta.url), "utf-8");
-  assert.match(source, /import \{ SessionBranchCache, SessionTokenStatsCache \} from "\.\/token-stats\.ts";/);
-  assert.match(source, /sessionBranchCache\.get\(ctx\.sessionManager\)/);
-  assert.match(source, /tokenStatsCache\.get\(sessionEvents\)/);
-  assert.match(source, /tokenStatsCache\.reset\(\)/);
+test("segment-context wires the token stats cache into buildSegmentContext", () => {
+  const stateSource = readFileSync(
+    new URL("../src/extension/state.ts", import.meta.url),
+    "utf-8",
+  );
+  const contextSource = readFileSync(
+    new URL("../src/extension/segment-context.ts", import.meta.url),
+    "utf-8",
+  );
+  assert.match(
+    stateSource,
+    /import \{\s*SessionBranchCache,\s*SessionTokenStatsCache,\s*\} from "\.\.\/usage\/token-stats\.ts";/,
+  );
+  assert.match(contextSource, /sessionBranchCache\.get\(ctx\.sessionManager\)/);
+  assert.match(contextSource, /tokenStatsCache\.get\(sessionEvents\)/);
+  assert.match(contextSource, /tokenStatsCache\.reset\(\)/);
 });

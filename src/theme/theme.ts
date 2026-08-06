@@ -1,6 +1,6 @@
 /**
  * Theme system for powerline-footer
- * 
+ *
  * Colors are resolved in order:
  * 1. User overrides from theme.json (if exists)
  * 2. Preset colors
@@ -11,8 +11,13 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getAgentPath } from "./paths.ts";
-import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "./types.ts";
+import { getAgentPath } from "../paths/paths.ts";
+import type {
+  ColorScheme,
+  ColorValue,
+  SemanticColor,
+  ThemeLike,
+} from "../config/types.ts";
 
 export interface PowerlineThemeConfig {
   colors?: unknown;
@@ -21,9 +26,9 @@ export interface PowerlineThemeConfig {
 
 // Default color scheme (uses pi theme colors)
 const DEFAULT_COLORS: Required<ColorScheme> = {
-  model: "#d787af",  // Pink/mauve (matching original colors.ts)
+  model: "#d787af", // Pink/mauve (matching original colors.ts)
   shellMode: "accent",
-  path: "#00afaf",  // Teal/cyan (matching original colors.ts)
+  path: "#00afaf", // Teal/cyan (matching original colors.ts)
   gitDirty: "warning",
   gitClean: "success",
   thinking: "thinkingOff",
@@ -42,8 +47,14 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
 
 // Rainbow colors for high thinking levels
 const RAINBOW_COLORS = [
-  "#b281d6", "#d787af", "#febc38", "#e4c00f", 
-  "#89d281", "#00afaf", "#178fb9", "#b281d6",
+  "#b281d6",
+  "#d787af",
+  "#febc38",
+  "#e4c00f",
+  "#89d281",
+  "#00afaf",
+  "#178fb9",
+  "#b281d6",
 ];
 
 // Cache for user theme overrides
@@ -86,14 +97,36 @@ function sanitizeUserThemeOverrides(value: unknown): ColorScheme {
 }
 
 /**
+ * Walk up from `startDir` until a `package.json` is found, so theme.json
+ * lookups stay anchored to the package root regardless of which module
+ * inside `src/**` happens to call this.
+ */
+function findPackageRoot(startDir: string): string {
+  let dir = startDir;
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(dir, "package.json"))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  return startDir;
+}
+
+/**
  * Get theme.json lookup paths.
  */
 function getThemePaths(): string[] {
-  const extDir = dirname(fileURLToPath(import.meta.url));
-  return Array.from(new Set([
-    getAgentPath("extensions", "powerline-footer", "theme.json"),
-    join(extDir, "theme.json"),
-  ]));
+  const extDir = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+  return Array.from(
+    new Set([
+      getAgentPath("extensions", "powerline-footer", "theme.json"),
+      join(extDir, "theme.json"),
+    ]),
+  );
 }
 
 /**
@@ -103,7 +136,11 @@ export function loadThemeConfig(): PowerlineThemeConfig {
   const now = Date.now();
   const themePaths = getThemePaths();
   const cacheKey = themePaths.join("\0");
-  if (themeConfigCache && themeConfigCacheKey === cacheKey && now - themeConfigCacheTime < CACHE_TTL) {
+  if (
+    themeConfigCache &&
+    themeConfigCacheKey === cacheKey &&
+    now - themeConfigCacheTime < CACHE_TTL
+  ) {
     return themeConfigCache;
   }
 
@@ -133,7 +170,11 @@ export function loadThemeConfig(): PowerlineThemeConfig {
 function loadUserTheme(): ColorScheme {
   const now = Date.now();
   const cacheKey = getThemePaths().join("\0");
-  if (userThemeCache && userThemeCacheKey === cacheKey && now - userThemeCacheTime < CACHE_TTL) {
+  if (
+    userThemeCache &&
+    userThemeCacheKey === cacheKey &&
+    now - userThemeCacheTime < CACHE_TTL
+  ) {
     return userThemeCache;
   }
 
@@ -148,14 +189,14 @@ function loadUserTheme(): ColorScheme {
  */
 export function resolveColor(
   semantic: SemanticColor,
-  presetColors?: ColorScheme
+  presetColors?: ColorScheme,
 ): ColorValue {
   const userTheme = loadUserTheme();
-  
+
   // Priority: user overrides > preset colors > defaults
-  return userTheme[semantic] 
-    ?? presetColors?.[semantic] 
-    ?? DEFAULT_COLORS[semantic];
+  return (
+    userTheme[semantic] ?? presetColors?.[semantic] ?? DEFAULT_COLORS[semantic]
+  );
 }
 
 /**
@@ -182,7 +223,7 @@ function hexToAnsi(hex: string): string {
 export function applyColor(
   theme: ThemeLike,
   color: ColorValue,
-  text: string
+  text: string,
 ): string {
   if (isHexColor(color)) {
     return `${hexToAnsi(color)}${text}\x1b[0m`;
@@ -197,7 +238,10 @@ export function applyColor(
       if (warnedInvalidThemeColors.size > 200) {
         warnedInvalidThemeColors.clear();
       }
-      console.debug(`[powerline-theme] Invalid theme color "${key}"; falling back to "text".`, error);
+      console.debug(
+        `[powerline-theme] Invalid theme color "${key}"; falling back to "text".`,
+        error,
+      );
     }
     return theme.fg("text", text);
   }
@@ -210,7 +254,7 @@ export function fg(
   theme: ThemeLike,
   semantic: SemanticColor,
   text: string,
-  presetColors?: ColorScheme
+  presetColors?: ColorScheme,
 ): string {
   const color = resolveColor(semantic, presetColors);
   return applyColor(theme, color, text);
@@ -226,7 +270,8 @@ export function rainbow(text: string): string {
     if (char === " " || char === ":") {
       result += char;
     } else {
-      result += hexToAnsi(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]) + char;
+      result +=
+        hexToAnsi(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]) + char;
       colorIndex++;
     }
   }

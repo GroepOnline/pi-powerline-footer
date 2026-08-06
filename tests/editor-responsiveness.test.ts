@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWelcomeDismissScheduler } from "../welcome-dismiss.ts";
-import { createRenderScheduler } from "../render-scheduler.ts";
+import { createWelcomeDismissScheduler } from "../src/welcome/dismiss-scheduler.ts";
+import { createRenderScheduler } from "../src/render/scheduler.ts";
 
 test("render scheduler coalesces pending status renders", () => {
   const originalSetTimeout = globalThis.setTimeout;
@@ -16,7 +16,9 @@ test("render scheduler coalesces pending status renders", () => {
   }) as typeof setTimeout;
 
   try {
-    const scheduler = createRenderScheduler(() => { renderCount += 1; }, 33);
+    const scheduler = createRenderScheduler(() => {
+      renderCount += 1;
+    }, 33);
 
     scheduler.schedule();
     scheduler.schedule(150);
@@ -54,7 +56,9 @@ test("render scheduler pulls pending work forward for an earlier deadline", () =
   }) as typeof clearTimeout;
 
   try {
-    const scheduler = createRenderScheduler(() => { renderCount += 1; }, 33);
+    const scheduler = createRenderScheduler(() => {
+      renderCount += 1;
+    }, 33);
 
     scheduler.schedule(250);
     scheduler.schedule(33);
@@ -123,7 +127,9 @@ test("render scheduler cancels pending status renders", () => {
   }) as typeof clearTimeout;
 
   try {
-    const scheduler = createRenderScheduler(() => { renderCount += 1; }, 33);
+    const scheduler = createRenderScheduler(() => {
+      renderCount += 1;
+    }, 33);
 
     scheduler.schedule();
     scheduler.cancel();
@@ -148,7 +154,9 @@ test("welcome dismissal scheduler coalesces pending work", () => {
 
   try {
     const scheduler = createWelcomeDismissScheduler({
-      dismiss: () => { dismissCount += 1; },
+      dismiss: () => {
+        dismissCount += 1;
+      },
       getGeneration: () => 1,
       isEnabled: () => true,
     });
@@ -187,7 +195,9 @@ test("welcome dismissal scheduler cancels stale pending work", () => {
 
   try {
     const scheduler = createWelcomeDismissScheduler({
-      dismiss: () => { dismissCount += 1; },
+      dismiss: () => {
+        dismissCount += 1;
+      },
       getGeneration: () => generation,
       isEnabled: () => enabled,
     });

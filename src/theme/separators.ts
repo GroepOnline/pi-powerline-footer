@@ -1,4 +1,7 @@
-import type { SeparatorDef, StatusLineSeparatorStyle } from "./types.ts";
+import type {
+  SeparatorDef,
+  StatusLineSeparatorStyle,
+} from "../config/types.ts";
 import { getSeparatorChars } from "./icons.ts";
 
 export function getSeparator(style: StatusLineSeparatorStyle): SeparatorDef {

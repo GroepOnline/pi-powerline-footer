@@ -1,19 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseVibeGenerateArgs } from "../working-vibes.ts";
+import { parseVibeGenerateArgs } from "../src/working-vibes/index.ts";
 
-const FAUX_PROVIDER_PATH = new URL("../node_modules/@earendil-works/pi-ai/dist/providers/faux.js", import.meta.url).href;
+const FAUX_PROVIDER_PATH = new URL(
+  "../node_modules/@earendil-works/pi-ai/dist/providers/faux.js",
+  import.meta.url,
+).href;
 
 async function importFauxProviderTools() {
   try {
     return await import("@earendil-works/pi-ai/compat");
   } catch (error) {
-    const code = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
-    if (code !== "ERR_PACKAGE_PATH_NOT_EXPORTED" && code !== "ERR_MODULE_NOT_FOUND") {
+    const code =
+      error && typeof error === "object"
+        ? Reflect.get(error, "code")
+        : undefined;
+    if (
+      code !== "ERR_PACKAGE_PATH_NOT_EXPORTED" &&
+      code !== "ERR_MODULE_NOT_FOUND"
+    ) {
       throw error;
     }
     return import(FAUX_PROVIDER_PATH);
@@ -30,7 +46,8 @@ function ensurePiModuleLinks(): { cleanup: () => void } {
     },
     {
       link: join(nodeModulesDir, "pi-ai"),
-      target: "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai",
+      target:
+        "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai",
     },
   ];
 
@@ -54,11 +71,26 @@ function ensurePiModuleLinks(): { cleanup: () => void } {
 }
 
 test("parseVibeGenerateArgs supports multi-word themes", () => {
-  assert.deepEqual(parseVibeGenerateArgs(["pirate", "200"]), { theme: "pirate", count: 200 });
-  assert.deepEqual(parseVibeGenerateArgs(["star", "trek", "200"]), { theme: "star trek", count: 200 });
-  assert.deepEqual(parseVibeGenerateArgs(["star", "trek"]), { theme: "star trek", count: 100 });
-  assert.deepEqual(parseVibeGenerateArgs(["star", "trek", "abc"]), { theme: "star trek abc", count: 100 });
-  assert.deepEqual(parseVibeGenerateArgs(["lord", "of", "rings", "999"]), { theme: "lord of rings", count: 500 });
+  assert.deepEqual(parseVibeGenerateArgs(["pirate", "200"]), {
+    theme: "pirate",
+    count: 200,
+  });
+  assert.deepEqual(parseVibeGenerateArgs(["star", "trek", "200"]), {
+    theme: "star trek",
+    count: 200,
+  });
+  assert.deepEqual(parseVibeGenerateArgs(["star", "trek"]), {
+    theme: "star trek",
+    count: 100,
+  });
+  assert.deepEqual(parseVibeGenerateArgs(["star", "trek", "abc"]), {
+    theme: "star trek abc",
+    count: 100,
+  });
+  assert.deepEqual(parseVibeGenerateArgs(["lord", "of", "rings", "999"]), {
+    theme: "lord of rings",
+    count: 500,
+  });
   assert.equal(parseVibeGenerateArgs([]), null);
 });
 
@@ -69,8 +101,10 @@ test("generateVibesBatch includes a system prompt so faux providers can return t
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
-    const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
+    const { fauxAssistantMessage, fauxProvider } =
+      await importFauxProviderTools();
+    const { generateVibesBatch, initVibeManager, setVibeModel } =
+      await import("../src/working-vibes/index.ts");
 
     const registration = fauxProvider({
       provider: "test-provider",
@@ -83,20 +117,26 @@ test("generateVibesBatch includes a system prompt so faux providers can return t
     registration.setResponses([
       (context) => {
         assert.match(context.systemPrompt ?? "", /loading messages/i);
-        return fauxAssistantMessage("Engaging warp drive...\nRunning diagnostics...");
+        return fauxAssistantMessage(
+          "Engaging warp drive...\nRunning diagnostics...",
+        );
       },
     ]);
 
     initVibeManager({
       modelRegistry: {
         find(provider: string, modelId: string) {
-          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
+          return provider === "test-provider" && modelId === "test-model"
+            ? model
+            : undefined;
         },
         async getApiKeyAndHeaders() {
           return { ok: true, apiKey: "test-key", headers: {} };
         },
         getProvider(provider: string) {
-          return provider === "test-provider" ? registration.provider : undefined;
+          return provider === "test-provider"
+            ? registration.provider
+            : undefined;
         },
         async getProviderAuth() {
           return undefined;
@@ -133,8 +173,10 @@ test("generateVibesBatch forwards resolved provider env and credential base URL"
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
-    const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
+    const { fauxAssistantMessage, fauxProvider } =
+      await importFauxProviderTools();
+    const { generateVibesBatch, initVibeManager, setVibeModel } =
+      await import("../src/working-vibes/index.ts");
 
     const registration = fauxProvider({
       provider: "test-provider",
@@ -155,16 +197,30 @@ test("generateVibesBatch forwards resolved provider env and credential base URL"
     initVibeManager({
       modelRegistry: {
         find(provider: string, modelId: string) {
-          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
+          return provider === "test-provider" && modelId === "test-model"
+            ? model
+            : undefined;
         },
         async getApiKeyAndHeaders() {
-          return { ok: true, apiKey: "test-key", headers: {}, env: { AWS_PROFILE: "vibes" } };
+          return {
+            ok: true,
+            apiKey: "test-key",
+            headers: {},
+            env: { AWS_PROFILE: "vibes" },
+          };
         },
         getProvider(provider: string) {
-          return provider === "test-provider" ? registration.provider : undefined;
+          return provider === "test-provider"
+            ? registration.provider
+            : undefined;
         },
         async getProviderAuth() {
-          return { auth: { apiKey: "test-key", baseUrl: "https://credential.example/v1" } };
+          return {
+            auth: {
+              apiKey: "test-key",
+              baseUrl: "https://credential.example/v1",
+            },
+          };
         },
       },
     });
@@ -195,8 +251,15 @@ test("on-demand vibe generation includes a system prompt for providers that requ
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
-    const { initVibeManager, onVibeAgentStart, onVibeBeforeAgentStart, setVibeModel, setVibeTheme } = await import("../working-vibes.ts");
+    const { fauxAssistantMessage, fauxProvider } =
+      await importFauxProviderTools();
+    const {
+      initVibeManager,
+      onVibeAgentStart,
+      onVibeBeforeAgentStart,
+      setVibeModel,
+      setVibeTheme,
+    } = await import("../src/working-vibes/index.ts");
 
     const registration = fauxProvider({
       provider: "test-provider",
@@ -216,13 +279,17 @@ test("on-demand vibe generation includes a system prompt for providers that requ
     initVibeManager({
       modelRegistry: {
         find(provider: string, modelId: string) {
-          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
+          return provider === "test-provider" && modelId === "test-model"
+            ? model
+            : undefined;
         },
         async getApiKeyAndHeaders() {
           return { ok: true, apiKey: "test-key", headers: {} };
         },
         getProvider(provider: string) {
-          return provider === "test-provider" ? registration.provider : undefined;
+          return provider === "test-provider"
+            ? registration.provider
+            : undefined;
         },
         async getProviderAuth() {
           return undefined;
@@ -240,7 +307,10 @@ test("on-demand vibe generation includes a system prompt for providers that requ
     });
 
     const start = Date.now();
-    while (!updates.includes("Engaging warp drive...") && Date.now() - start < 1000) {
+    while (
+      !updates.includes("Engaging warp drive...") &&
+      Date.now() - start < 1000
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
@@ -264,8 +334,10 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
-    const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
+    const { fauxAssistantMessage, fauxProvider } =
+      await importFauxProviderTools();
+    const { generateVibesBatch, initVibeManager, setVibeModel } =
+      await import("../src/working-vibes/index.ts");
 
     const registration = fauxProvider({
       provider: "test-provider",
@@ -285,13 +357,17 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
     initVibeManager({
       modelRegistry: {
         find(provider: string, modelId: string) {
-          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
+          return provider === "test-provider" && modelId === "test-model"
+            ? model
+            : undefined;
         },
         async getApiKeyAndHeaders() {
           return { ok: true, apiKey: "test-key", headers: {} };
         },
         getProvider(provider: string) {
-          return provider === "test-provider" ? registration.provider : undefined;
+          return provider === "test-provider"
+            ? registration.provider
+            : undefined;
         },
         async getProviderAuth() {
           return undefined;
