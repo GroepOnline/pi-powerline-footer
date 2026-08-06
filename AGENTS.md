@@ -4,7 +4,7 @@ Guidance for AI agents (and humans) working on this repository.
 
 ## What this project is
 
-pi-powerline-footer is a powerline-style status bar extension for the `pi`
+pi-wishcraft is a powerline-style status bar and wishcraft interaction layer for the `pi`
 coding agent: status segments, welcome overlay/header, working "vibes" loading
 messages, a queue + idea inbox, bash mode, prompt/stash history, and full
 user customization.
