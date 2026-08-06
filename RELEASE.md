@@ -6,7 +6,7 @@ repo path. This doc records the end-to-end release flow and how to verify it.
 
 ## Identity
 
-- **GitHub repo:** `GroepOnline/pi-powerline-footer` (fork of `nicobailon/pi-powerline-footer`)
+- **GitHub repo:** `GroepOnline/pi-wishcraft` (fork of `nicobailon/pi-powerline-footer`)
 - **npm package:** `@groeponline/pi-wishcraft` (scoped, `--access public`)
 - **Default branch:** `main`
 - **Local checkout:** `/home/joep/pi-powerline-footer`
@@ -77,10 +77,10 @@ npm test                 # "ℹ pass 170", "ℹ fail 0"
 git ls-remote --tags origin | grep v0.15.0   # shows v0.15.0 on origin
 
 # 3. CI Release workflow
-gh run list --repo GroepOnline/pi-powerline-footer --workflow release.yml \
-  --json status,conclusion --jq '.[0]'        # {"status":"completed","conclusion":"success"}
-gh run view <databaseId> --repo GroepOnline/pi-powerline-footer \
-  --json jobs --jq '.jobs[0].steps[] | {name,conclusion}'   # "Publish to npm": success
+gh run list --repo GroepOnline/pi-wishcraft --workflow release.yml \
+  --limit 5 --json databaseId,status,conclusion,headBranch,url
+gh run view <databaseId> --repo GroepOnline/pi-wishcraft \
+  --log-failed   # or --log for full transcript
 
 # 4. npm registry (published + propagated)
 npm view @groeponline/pi-wishcraft version        # 0.15.0
