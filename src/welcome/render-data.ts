@@ -11,12 +11,12 @@ import type { LoadedCounts, RecentSession } from "./types.ts";
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PI_LOGO = [
-  "██████████    ",
-  "████  ████    ",
-  "████  ████    ",
-  "████████  ████",
-  "████      ████",
-  "████      ████",
+  "     . *      ",
+  "   * ╭───╮ .  ",
+  "  .  │   │  * ",
+  "     │   │    ",
+  "   * ╰─┬─╯ .  ",
+  "  .    ┴      ",
 ];
 
 const GRADIENT_COLORS = [
@@ -76,14 +76,14 @@ export interface WelcomeData {
   recentSessions: RecentSession[];
   loadedCounts: LoadedCounts;
   initialContextTokens: number | null;
+  queueCount?: number;
+  hasStash?: boolean;
 }
 
 function buildLeftColumn(data: WelcomeData, colWidth: number): string[] {
   const logoColored = PI_LOGO.map((line) => gradientLine(line));
 
   return [
-    "",
-    centerText(bold("Welcome back!"), colWidth),
     "",
     ...logoColored.map((l) => centerText(l, colWidth)),
     "",
@@ -94,49 +94,28 @@ function buildLeftColumn(data: WelcomeData, colWidth: number): string[] {
 
 function buildRightColumn(data: WelcomeData, colWidth: number): string[] {
   const hChar = "─";
-  const separator = ` ${dim(hChar.repeat(colWidth - 2))}`;
+  const separator = ` ${dim(hChar.repeat(Math.max(1, colWidth - 2)))}`;
+  const lines: string[] = [];
 
-  // Session lines
-  const sessionLines: string[] = [];
-  if (data.recentSessions.length === 0) {
-    sessionLines.push(` ${dim("No recent sessions")}`);
+  // 1. Signals & Wishes
+  lines.push(` ${bold(fgOnly("accent", "Signals & Wishes"))}`);
+  lines.push(` ${dim("Write it down, let it rise, keep your focus clear.")}`);
+  lines.push(separator);
+
+  // 2. Active Horizon
+  lines.push(` ${bold(fgOnly("accent", "Active Horizon"))}`);
+  const itemPrefix = dim("- ");
+  
+  if (data.queueCount && data.queueCount > 0) {
+    lines.push(` ${itemPrefix}${fgOnly("gitClean", `${data.queueCount}`)} queued items ready`);
   } else {
-    for (const session of data.recentSessions.slice(0, 3)) {
-      sessionLines.push(
-        ` ${dim("• ")}${fgOnly("path", session.name)}${dim(` (${session.timeAgo})`)}`,
-      );
-    }
+    lines.push(` ${itemPrefix}type ${fgOnly("model", "# <idea>")} to capture a thought`);
   }
 
-  // Loaded counts lines
-  const countLines: string[] = [];
-  const { contextFiles, extensions, skills, promptTemplates } =
-    data.loadedCounts;
-  const itemPrefix = dim("- ");
-
-  if (contextFiles > 0 || extensions > 0 || skills > 0 || promptTemplates > 0) {
-    if (contextFiles > 0) {
-      countLines.push(
-        ` ${itemPrefix}${fgOnly("gitClean", `${contextFiles}`)} context file${contextFiles !== 1 ? "s" : ""}`,
-      );
-    }
-    if (extensions > 0) {
-      countLines.push(
-        ` ${itemPrefix}${fgOnly("gitClean", `${extensions}`)} extension${extensions !== 1 ? "s" : ""}`,
-      );
-    }
-    if (skills > 0) {
-      countLines.push(
-        ` ${itemPrefix}${fgOnly("gitClean", `${skills}`)} skill${skills !== 1 ? "s" : ""}`,
-      );
-    }
-    if (promptTemplates > 0) {
-      countLines.push(
-        ` ${itemPrefix}${fgOnly("gitClean", `${promptTemplates}`)} prompt template${promptTemplates !== 1 ? "s" : ""}`,
-      );
-    }
+  if (data.hasStash) {
+    lines.push(` ${itemPrefix}${fgOnly("gitClean", "1")} draft stashed (Alt+S to pop)`);
   } else {
-    countLines.push(` ${dim("No extensions loaded")}`);
+    lines.push(` ${itemPrefix}press ${fgOnly("model", "alt+s")} to park a draft`);
   }
 
   if (
@@ -144,24 +123,42 @@ function buildRightColumn(data: WelcomeData, colWidth: number): string[] {
     Number.isFinite(data.initialContextTokens) &&
     data.initialContextTokens > 0
   ) {
-    countLines.push(
+    lines.push(
       ` ${itemPrefix}${fgOnly("gitClean", `≈ ${formatTokens(data.initialContextTokens)}`)} initial prompt tokens`,
     );
   }
 
-  return [
-    ` ${bold(fgOnly("accent", "Tips"))}`,
-    ` ${dim("/")} for commands`,
-    ` ${dim("!")} to run bash`,
-    ` ${dim("Shift+Tab")} cycle thinking`,
-    separator,
-    ` ${bold(fgOnly("accent", "Loaded"))}`,
-    ...countLines,
-    separator,
-    ` ${bold(fgOnly("accent", "Recent sessions"))}`,
-    ...sessionLines,
-    "",
-  ];
+  const { extensions, skills } = data.loadedCounts;
+  const toolsCount = extensions + skills;
+  if (toolsCount > 0) {
+    lines.push(` ${itemPrefix}${fgOnly("gitClean", `${toolsCount}`)} skills/extensions loaded`);
+  }
+
+  lines.push(` ${itemPrefix}${dim("dreaming & mission queue ready")}`);
+  lines.push(separator);
+
+  // 3. Quick Launch / Tactical
+  lines.push(` ${bold(fgOnly("accent", "Quick Launch / Tactical"))}`);
+  lines.push(` ${dim("# <wish>  ")} cast thought to queue`);
+  lines.push(` ${dim("alt+p     ")} tactical powerline overlay`);
+  lines.push(` ${dim("!cmd      ")} sticky bash session`);
+  lines.push(` ${dim("alt+s     ")} stash/pop prompt draft`);
+  lines.push(separator);
+
+  // 4. Recent Crafts
+  lines.push(` ${bold(fgOnly("accent", "Recent Crafts"))}`);
+  if (data.recentSessions.length === 0) {
+    lines.push(` ${dim("No recent sessions")}`);
+  } else {
+    for (const session of data.recentSessions.slice(0, 3)) {
+      lines.push(
+        ` ${dim("• ")}${fgOnly("path", session.name)}${dim(` (${session.timeAgo})`)}`,
+      );
+    }
+  }
+
+  lines.push(""); // Padding at bottom
+  return lines;
 }
 
 export function renderWelcomeBox(
@@ -200,7 +197,7 @@ export function renderWelcomeBox(
   const lines: string[] = [];
 
   // Top border with title
-  const title = " pi agent ";
+  const title = " pi-wishcraft ";
   const titlePrefix = dim(hChar.repeat(3));
   const titleStyled = titlePrefix + fgOnly("model", title);
   const titleVisLen = 3 + visibleWidth(title);

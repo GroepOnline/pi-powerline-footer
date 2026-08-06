@@ -26,6 +26,8 @@ export class WelcomeComponent implements Component {
       promptTemplates: 0,
     },
     initialContextTokens: number | null = null,
+    queueCount?: number,
+    hasStash?: boolean,
   ) {
     this.data = {
       modelName,
@@ -33,6 +35,8 @@ export class WelcomeComponent implements Component {
       recentSessions,
       loadedCounts,
       initialContextTokens,
+      queueCount,
+      hasStash,
     };
   }
 

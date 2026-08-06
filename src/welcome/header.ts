@@ -20,6 +20,8 @@ export class WelcomeHeader implements Component {
       promptTemplates: 0,
     },
     initialContextTokens: number | null = null,
+    queueCount?: number,
+    hasStash?: boolean,
   ) {
     this.data = {
       modelName,
@@ -27,6 +29,8 @@ export class WelcomeHeader implements Component {
       recentSessions,
       loadedCounts,
       initialContextTokens,
+      queueCount,
+      hasStash,
     };
   }
 
