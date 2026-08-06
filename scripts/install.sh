@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # pi-wishcraft bootstrap / install script
-# Compatible with: Linux, macOS, dev containers, Cursor Cloud Agents, Freebuff, CI
+# Compatible with: Linux, macOS, dev containers, Cursor Cloud Agents, CI
 # ==============================================================================
 set -euo pipefail
 
@@ -9,18 +9,18 @@ PACKAGE_NAME="@groeponline/pi-wishcraft"
 PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-${HOME}/.pi/agent}"
 SETTINGS_FILE="${PI_AGENT_DIR}/settings.json"
 
-echo "🏮 Installing ${PACKAGE_NAME} into Pi environment..."
+echo "Installing ${PACKAGE_NAME} into Pi environment..."
 
 # 1. Ensure ~/.pi/agent directory exists
 mkdir -p "${PI_AGENT_DIR}"
 
 # 2. Check if pi CLI is installed
 if command -v pi >/dev/null 2>&1; then
-  echo "✓ pi CLI found: $(command -v pi)"
+  echo "[ok] pi CLI found: $(command -v pi)"
   # Install/update via pi package manager
   pi install "npm:${PACKAGE_NAME}" || true
 else
-  echo "ℹ pi CLI not in PATH (ephemeral or container environment). Configuring settings.json directly..."
+  echo "[info] pi CLI not in PATH. Configuring settings.json directly..."
 fi
 
 # 3. Safely update ~/.pi/agent/settings.json using node
@@ -36,7 +36,7 @@ if (fs.existsSync(settingsPath)) {
   try {
     settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
   } catch (e) {
-    console.warn("⚠ Warning: Existing settings.json was not valid JSON, creating fresh configuration.");
+    console.warn("[warn] Existing settings.json was not valid JSON, creating fresh configuration.");
     settings = {};
   }
 }
@@ -55,7 +55,7 @@ settings.packages = settings.packages.filter(p => {
 });
 
 // If local dev checkout is present, keep it, otherwise add npm package
-const hasLocalCheckout = settings.packages.some(p => typeof p === "string" && p.includes("pi-powerline-footer") || p.includes("pi-wishcraft"));
+const hasLocalCheckout = settings.packages.some(p => typeof p === "string" && (p.includes("pi-powerline-footer") || p.includes("pi-wishcraft")));
 if (!hasLocalCheckout) {
   settings.packages.push(pkgName);
 }
@@ -66,7 +66,7 @@ if (!settings.powerline) {
 }
 
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-console.log("✓ Updated " + settingsPath + " with " + pkgName + " (preset: " + settings.powerline + ")");
+console.log("[ok] Updated " + settingsPath + " with " + pkgName + " (preset: " + settings.powerline + ")");
 ' "${SETTINGS_FILE}"
 
-echo "✨ pi-wishcraft installed successfully! Restart or /reload your agent session."
+echo "[ok] pi-wishcraft installed successfully. Restart or /reload your agent session."

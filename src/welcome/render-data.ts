@@ -139,7 +139,7 @@ function buildRightColumn(data: WelcomeData, colWidth: number): string[] {
 
   // 3. Quick Launch / Tactical
   lines.push(` ${bold(fgOnly("accent", "Quick Launch / Tactical"))}`);
-  lines.push(` ${dim("# <wish>  ")} cast thought to queue`);
+  lines.push(` ${dim("# <idea>  ")} capture idea to queue`);
   lines.push(` ${dim("alt+p     ")} tactical powerline overlay`);
   lines.push(` ${dim("!cmd      ")} sticky bash session`);
   lines.push(` ${dim("alt+s     ")} stash/pop prompt draft`);
