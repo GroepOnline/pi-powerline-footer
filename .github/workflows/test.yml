@@ -26,22 +26,24 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Circular dependency check
+        run: npx madge --circular src index.ts bash-mode queue
 
   notify-linear-on-failure:
     name: Notify Linear on CI failure
     if: failure() && github.event_name != 'merge_group'
-    needs: [push, pull_request, test]
+    needs: [test]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          TITLE: "CI Failure: ${{ github.workflow }} in pi-powerline-footer"
-          RUN_URL: "https://github.com/GroepOnline/pi-powerline-footer/actions/runs/${{ github.run_id }}"
+          TITLE: "CI Failure: ${{ github.workflow }} in pi-wishcraft"
+          RUN_URL: "https://github.com/GroepOnline/pi-wishcraft/actions/runs/${{ github.run_id }}"
         run: |
           curl -s -X POST https://api.linear.app/graphql \
             -H "Content-Type: application/json" \
             -H "Authorization: $LINEAR_API_KEY" \
             --data-raw '{
-              "query": "mutation { issueCreate(input: { title: "'"$TITLE"'", description: "Workflow **'"${{ github.workflow }}"'** failed in ['"pi-powerline-footer'](https://github.com/GroepOnline/pi-powerline-footer)\n\nRun: '""$RUN_URL""'\nBranch: '"${{ github.head_ref || github.ref_name }}"'\nSHA: '"${{ github.sha.substring(0,7) }}"'\n\nCreated automatically by CI failure tracker.", teamId: "bbd2b9e0-e644-4717-9074-8d0eaa3f150a", priority: 2, labelIds: ["713eee90-d169-40a6-98b8-7c71502b9855"] }) { issue { id identifier } } }"
+              "query": "mutation { issueCreate(input: { title: \"'"$TITLE"'\", description: \"Workflow **'"${{ github.workflow }}"'** failed in ['"pi-wishcraft'\"](https://github.com/GroepOnline/pi-wishcraft)\\n\\nRun: '\"\"$RUN_URL\"\"'\\nBranch: '\"${{ github.head_ref || github.ref_name }}\"'\\nSHA: '\"${{ github.sha.substring(0,7) }}\"'\\n\\nCreated automatically by CI failure tracker.\", teamId: \"bbd2b9e0-e644-4717-9074-8d0eaa3f150a\", priority: 2, labelIds: [\"713eee90-d169-40a6-98b8-7c71502b9855\"] }) { issue { id identifier } } }"
             }' | jq -r '.data.issueCreate.issue.identifier // "failed"'
