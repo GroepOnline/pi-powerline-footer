@@ -1,6 +1,7 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { dim, renderWelcomeBox, type WelcomeData } from "./render-data.ts";
+import { dim, renderWelcomeBox } from "./renderer.ts";
+import type { WelcomeData } from "./types.ts";
 import type { LoadedCounts, RecentSession } from "./types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════

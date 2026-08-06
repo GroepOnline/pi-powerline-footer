@@ -1,102 +1,86 @@
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { getAgentSessionDirs } from "../paths/agent-dirs.ts";
-import { logDiscoveryError } from "./discovery.ts";
+import { logDiscoveryError } from "./discover.ts";
 import { formatTimeAgo } from "./format.ts";
 import type { RecentSession } from "./types.ts";
 
-const SESSION_HEADER_READ_BYTES = 8192;
+const MAX_HEADER_SIZE = 8192;
 
-/**
- * Get recent sessions from the sessions directory.
- */
-function readSessionHeaderProjectName(filePath: string): string | null {
-  let fd: number | null = null;
+interface SessionRecord {
+  name: string;
+  mtime: number;
+}
+
+function parseProjectNameFromHeader(filePath: string): string | null {
   try {
-    fd = openSync(filePath, "r");
-    const buffer = Buffer.alloc(SESSION_HEADER_READ_BYTES);
-    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
+    const buffer = readFileSync(filePath);
+    const bytesToRead = Math.min(buffer.length, MAX_HEADER_SIZE);
     const firstLine = buffer
-      .toString("utf8", 0, bytesRead)
+      .toString("utf8", 0, bytesToRead)
       .split(/\r?\n/, 1)[0]
       ?.trim();
+      
     if (!firstLine) return null;
 
     const header: unknown = JSON.parse(firstLine);
-    if (typeof header !== "object" || header === null || Array.isArray(header))
-      return null;
-
-    const cwd = Reflect.get(header, "cwd");
+    
+    if (typeof header !== "object" || header === null) return null;
+    if (!("cwd" in header)) return null;
+    
+    const cwd = (header as { cwd: unknown }).cwd;
     if (typeof cwd !== "string" || cwd.trim().length === 0) return null;
 
     return basename(cwd) || cwd;
   } catch {
     return null;
-  } finally {
-    if (fd !== null) closeSync(fd);
   }
 }
 
-function sessionProjectNameFromDirectory(dir: string): string {
+function extractProjectNameFromDir(dir: string): string {
   const parentName = basename(dir);
   if (!parentName.startsWith("--")) {
     return parentName;
   }
 
-  const parts = parentName.split("-").filter((p) => p);
+  const parts = parentName.split("-").filter(Boolean);
   return parts[parts.length - 1] || parentName;
 }
 
-export function getRecentSessions(maxCount: number = 3): RecentSession[] {
-  const sessionsDirs = getAgentSessionDirs();
-
-  const sessions: { name: string; mtime: number }[] = [];
-
-  function scanDir(dir: string) {
-    if (!existsSync(dir)) return;
-    try {
-      const entries = readdirSync(dir);
-      for (const entry of entries) {
-        const entryPath = join(dir, entry);
-        try {
-          const stats = statSync(entryPath);
-          if (stats.isDirectory()) {
-            scanDir(entryPath);
-          } else if (entry.endsWith(".jsonl")) {
-            const projectName =
-              readSessionHeaderProjectName(entryPath) ??
-              sessionProjectNameFromDirectory(dir);
-            sessions.push({ name: projectName, mtime: stats.mtimeMs });
-          }
-        } catch (error) {
-          logDiscoveryError(
-            `Failed to inspect session entry ${entryPath}`,
-            error,
-          );
+function scanSessionDirectory(dir: string, sessions: SessionRecord[]): void {
+  if (!existsSync(dir)) return;
+  
+  try {
+    const entries = readdirSync(dir);
+    for (const entry of entries) {
+      const entryPath = join(dir, entry);
+      try {
+        const stats = statSync(entryPath);
+        if (stats.isDirectory()) {
+          scanSessionDirectory(entryPath, sessions);
+        } else if (entry.endsWith(".jsonl")) {
+          const projectName =
+            parseProjectNameFromHeader(entryPath) ??
+            extractProjectNameFromDir(dir);
+          sessions.push({ name: projectName, mtime: stats.mtimeMs });
         }
+      } catch (error) {
+        logDiscoveryError(`Failed to inspect session entry ${entryPath}`, error);
       }
-    } catch (error) {
-      logDiscoveryError(`Failed to scan sessions dir ${dir}`, error);
     }
+  } catch (error) {
+    logDiscoveryError(`Failed to scan sessions dir ${dir}`, error);
   }
+}
 
-  for (const sessionsDir of sessionsDirs) {
-    scanDir(sessionsDir);
-  }
-
+function filterAndFormatSessions(sessions: SessionRecord[], maxCount: number): RecentSession[] {
   if (sessions.length === 0) return [];
 
   sessions.sort((a, b) => b.mtime - a.mtime);
 
   const seen = new Set<string>();
-  const uniqueSessions: typeof sessions = [];
+  const uniqueSessions: SessionRecord[] = [];
+  
   for (const s of sessions) {
     if (!seen.has(s.name)) {
       seen.add(s.name);
@@ -109,4 +93,15 @@ export function getRecentSessions(maxCount: number = 3): RecentSession[] {
     name: s.name.length > 20 ? s.name.slice(0, 17) + "…" : s.name,
     timeAgo: formatTimeAgo(now - s.mtime),
   }));
+}
+
+export function getRecentSessions(maxCount: number = 3): RecentSession[] {
+  const sessionsDirs = getAgentSessionDirs();
+  const sessions: SessionRecord[] = [];
+
+  for (const dir of sessionsDirs) {
+    scanSessionDirectory(dir, sessions);
+  }
+
+  return filterAndFormatSessions(sessions, maxCount);
 }

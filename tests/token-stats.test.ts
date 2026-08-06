@@ -5,7 +5,7 @@ import {
   computeSessionTokenStats,
   SessionBranchCache,
   SessionTokenStatsCache,
-} from "../src/usage/token-stats.ts";
+} from "../src/usage/ledger.ts";
 
 function makeUsage(
   input: number,
@@ -268,7 +268,7 @@ test("segment-context wires the token stats cache into buildSegmentContext", () 
   );
   assert.match(
     stateSource,
-    /import \{\s*SessionBranchCache,\s*SessionTokenStatsCache,\s*\} from "\.\.\/usage\/token-stats\.ts";/,
+    /import \{\s*SessionBranchCache,\s*SessionTokenStatsCache,\s*\} from "\.\.\/usage\/ledger\.ts";/,
   );
   assert.match(contextSource, /sessionBranchCache\.get\(ctx\.sessionManager\)/);
   assert.match(contextSource, /tokenStatsCache\.get\(sessionEvents\)/);

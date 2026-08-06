@@ -9,8 +9,8 @@ import type {
   SessionAssistantUsage,
   SessionBranchCache,
   SessionTokenStatsCache,
-} from "../usage/token-stats.ts";
-import type { CoreContextUsageCache } from "../usage/context-usage.ts";
+} from "../usage/ledger.ts";
+import type { CoreContextUsageCache } from "../usage/context.ts";
 import type { WelcomeDismissScheduler } from "../welcome/auto-dismiss.ts";
 import type { RenderScheduler } from "../render/timer.ts";
 

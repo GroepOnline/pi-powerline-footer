@@ -1,5 +1,5 @@
 export type { LoadedCounts, RecentSession } from "./types.ts";
-export { WelcomeComponent } from "./component.ts";
-export { WelcomeHeader } from "./header.ts";
-export { discoverLoadedCounts } from "./discovery.ts";
+export { WelcomeComponent } from "./overlay.ts";
+export { WelcomeHeader } from "./banner.ts";
+export { discoverLoadedCounts } from "./discover.ts";
 export { getRecentSessions } from "./sessions.ts";

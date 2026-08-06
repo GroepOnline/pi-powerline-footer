@@ -18,7 +18,7 @@ import {
   getUsageTokenTotal,
   hasSessionAssistantUsage,
   isSessionAssistantMessage,
-} from "../usage/token-stats.ts";
+} from "../usage/ledger.ts";
 import {
   detectCustomCompactionEnabled,
   readSettings,

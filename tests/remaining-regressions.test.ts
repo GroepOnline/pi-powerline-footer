@@ -9,7 +9,7 @@ import {
 import {
   __resetCurrencyRatesForTest,
   __setCurrencyRatesForTest,
-} from "../src/usage/currency-rates.ts";
+} from "../src/usage/rates.ts";
 import { renderSegment } from "../src/segments/index.ts";
 import type { SegmentContext } from "../src/config/types.ts";
 

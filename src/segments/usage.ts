@@ -1,6 +1,6 @@
 import type { StatusLineSegment } from "../config/types.ts";
 import { getIcons } from "../theme/icons.ts";
-import { formatUsdCost } from "../usage/currency-rates.ts";
+import { formatUsdCost } from "../usage/rates.ts";
 import { color, withIcon, formatTokens } from "./shared.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -8,8 +8,8 @@ import { PowerlineQueueStore } from "../../queue/store.ts";
 import {
   SessionBranchCache,
   SessionTokenStatsCache,
-} from "../usage/token-stats.ts";
-import { CoreContextUsageCache } from "../usage/context-usage.ts";
+} from "../usage/ledger.ts";
+import { CoreContextUsageCache } from "../usage/context.ts";
 import { createWelcomeDismissScheduler } from "../welcome/auto-dismiss.ts";
 import { createRenderScheduler } from "../render/timer.ts";
 import {

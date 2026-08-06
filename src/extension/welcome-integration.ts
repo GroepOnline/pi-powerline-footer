@@ -4,7 +4,7 @@ import {
   discoverLoadedCounts,
   getRecentSessions,
 } from "../welcome/index.ts";
-import { estimateInitialContextTokens } from "../usage/context-usage.ts";
+import { estimateInitialContextTokens } from "../usage/context.ts";
 import { isRecord } from "./settings-io.ts";
 import type { RuntimeState } from "./types.ts";
 import { getQueueContext } from "./queue-context.ts";

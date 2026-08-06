@@ -1,4 +1,4 @@
-import { normalizeCostCurrency } from "../usage/currency-rates.ts";
+import { normalizeCostCurrency } from "../usage/rates.ts";
 import { isRecord } from "./primitives.ts";
 import type { StatusLineSegmentOptions } from "./types.ts";
 

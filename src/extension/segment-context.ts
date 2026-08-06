@@ -12,7 +12,7 @@ import {
 import { getDefaultColors } from "../theme/theme.ts";
 import { getGitStatus } from "../git/status.ts";
 import { getQueueContext } from "./queue-context.ts";
-import { getUsageTokenTotal } from "../usage/token-stats.ts";
+import { getUsageTokenTotal } from "../usage/ledger.ts";
 import {
   CUSTOM_COMPACTION_STATUS_KEY,
   EDITOR_STATUS_DEFER_MS,

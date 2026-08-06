@@ -4,7 +4,7 @@ import {
   CoreContextUsageCache,
   estimateInitialContextTokens,
   readCoreContextUsage,
-} from "../src/usage/context-usage.ts";
+} from "../src/usage/context.ts";
 
 test("readCoreContextUsage returns Pi context estimates for branch summaries", () => {
   const usage = readCoreContextUsage({

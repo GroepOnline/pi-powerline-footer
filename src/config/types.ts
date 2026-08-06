@@ -1,5 +1,5 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import type { CostCurrencyCode } from "../usage/currency-rates.ts";
+import type { CostCurrencyCode } from "../usage/rates.ts";
 
 // Theme color - either a pi theme color name or a custom hex color
 export type ColorValue = ThemeColor | `#${string}`;
