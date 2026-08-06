@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CoreContextUsageCache, estimateInitialContextTokens, readCoreContextUsage } from "../context-usage.ts";
+import {
+  CoreContextUsageCache,
+  estimateInitialContextTokens,
+  readCoreContextUsage,
+} from "../src/usage/context-usage.ts";
 
 test("readCoreContextUsage returns Pi context estimates for branch summaries", () => {
   const usage = readCoreContextUsage({
@@ -32,9 +36,26 @@ test("readCoreContextUsage computes percent when Pi returns only token totals", 
 
 test("readCoreContextUsage ignores unknown or unusable estimates", () => {
   assert.equal(readCoreContextUsage({}), null);
-  assert.equal(readCoreContextUsage({ getContextUsage: () => undefined }), null);
-  assert.equal(readCoreContextUsage({ getContextUsage: () => ({ tokens: null, contextWindow: 5000, percent: null }) }), null);
-  assert.equal(readCoreContextUsage({ getContextUsage: () => ({ tokens: 100, contextWindow: 0, percent: 0 }) }), null);
+  assert.equal(
+    readCoreContextUsage({ getContextUsage: () => undefined }),
+    null,
+  );
+  assert.equal(
+    readCoreContextUsage({
+      getContextUsage: () => ({
+        tokens: null,
+        contextWindow: 5000,
+        percent: null,
+      }),
+    }),
+    null,
+  );
+  assert.equal(
+    readCoreContextUsage({
+      getContextUsage: () => ({ tokens: 100, contextWindow: 0, percent: 0 }),
+    }),
+    null,
+  );
 });
 
 test("core context usage cache reuses a leaf and supports explicit invalidation", () => {
@@ -65,8 +86,20 @@ test("core context usage cache reuses a leaf and supports explicit invalidation"
 
 test("estimateInitialContextTokens uses Pi's conservative character estimate", () => {
   assert.equal(estimateInitialContextTokens({}), null);
-  assert.equal(estimateInitialContextTokens({ getSystemPrompt: () => "" }), null);
-  assert.equal(estimateInitialContextTokens({ getSystemPrompt: () => "   " }), null);
-  assert.equal(estimateInitialContextTokens({ getSystemPrompt: () => "1234" }), 1);
-  assert.equal(estimateInitialContextTokens({ getSystemPrompt: () => "12345" }), 2);
+  assert.equal(
+    estimateInitialContextTokens({ getSystemPrompt: () => "" }),
+    null,
+  );
+  assert.equal(
+    estimateInitialContextTokens({ getSystemPrompt: () => "   " }),
+    null,
+  );
+  assert.equal(
+    estimateInitialContextTokens({ getSystemPrompt: () => "1234" }),
+    1,
+  );
+  assert.equal(
+    estimateInitialContextTokens({ getSystemPrompt: () => "12345" }),
+    2,
+  );
 });

@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePowerlineConfig } from "../powerline-config.ts";
-import { registerCustomSegments, renderSegment, countListeningPorts } from "../segments.ts";
+import { parsePowerlineConfig } from "../src/config/powerline-config.ts";
+import {
+  registerCustomSegments,
+  renderSegment,
+  countListeningPorts,
+} from "../src/segments/index.ts";
 
 const PRESETS_FOR_TEST = ["default", "chef"] as const;
 
@@ -10,7 +14,13 @@ test("parsePowerlineConfig parses custom command/env/static segments", () => {
     {
       preset: "chef",
       segments: {
-        ports: { type: "command", command: "echo 7", prefix: "p:", color: "muted", cacheMs: 1000 },
+        ports: {
+          type: "command",
+          command: "echo 7",
+          prefix: "p:",
+          color: "muted",
+          cacheMs: 1000,
+        },
         who: { type: "env", env: "USER", prefix: "u:" },
         tag: { type: "static", text: "CHEF", color: "accent" },
         bad: { type: "command" }, // missing command -> dropped
@@ -19,7 +29,11 @@ test("parsePowerlineConfig parses custom command/env/static segments", () => {
     PRESETS_FOR_TEST as unknown as readonly string[],
   );
 
-  assert.deepEqual(Object.keys(config.segments).sort(), ["ports", "tag", "who"]);
+  assert.deepEqual(Object.keys(config.segments).sort(), [
+    "ports",
+    "tag",
+    "who",
+  ]);
   assert.equal(config.segments.ports.type, "command");
   assert.equal(config.segments.ports.cacheMs, 1000);
   assert.equal(config.segments.who.type, "env");
@@ -50,38 +64,64 @@ test("parsePowerlineConfig parses custom presets referencing built-in and custom
 });
 
 test("custom computed segments render via renderSegment", () => {
-  const config = parsePowerlineConfig(
-    {
-      preset: "chef",
-      segments: {
-        who: { type: "env", env: "USER", prefix: "u:" },
-        missing: { type: "env", env: "NOPE_XYZ" },
-        missingFallback: { type: "env", env: "NOPE_XYZ", fallback: "n/a" },
+  const originalUser = process.env.USER;
+  process.env.USER = "testuser";
+  try {
+    const config = parsePowerlineConfig(
+      {
+        preset: "chef",
+        segments: {
+          who: { type: "env", env: "USER", prefix: "u:" },
+          missing: { type: "env", env: "NOPE_XYZ" },
+          missingFallback: { type: "env", env: "NOPE_XYZ", fallback: "n/a" },
+        },
       },
-    },
-    PRESETS_FOR_TEST as unknown as readonly string[],
-  );
-  registerCustomSegments(config.segments);
+      PRESETS_FOR_TEST as unknown as readonly string[],
+    );
+    registerCustomSegments(config.segments);
 
-  const ctx: any = { theme: { fg: (_c: string, t: string) => t }, colors: {}, extensionStatuses: new Map(), customItemsById: new Map(), options: {} };
-  const who = renderSegment("custom:who" as any, ctx);
-  assert.equal(who.visible, true);
-  assert.match(who.content, /^u: · /);
+    const ctx: any = {
+      theme: { fg: (_c: string, t: string) => t },
+      colors: {},
+      extensionStatuses: new Map(),
+      customItemsById: new Map(),
+      options: {},
+    };
+    const who = renderSegment("custom:who" as any, ctx);
+    assert.equal(who.visible, true);
+    assert.match(who.content, /^u: · testuser/);
 
-  const missing = renderSegment("custom:missing" as any, ctx);
-  assert.equal(missing.visible, false);
+    const missing = renderSegment("custom:missing" as any, ctx);
+    assert.equal(missing.visible, false);
 
-  const fallback = renderSegment("custom:missingFallback" as any, ctx);
-  assert.equal(fallback.visible, true);
-  assert.equal(fallback.content, "n/a");
+    const fallback = renderSegment("custom:missingFallback" as any, ctx);
+    assert.equal(fallback.visible, true);
+    assert.equal(fallback.content, "n/a");
+  } finally {
+    if (originalUser === undefined) {
+      delete process.env.USER;
+    } else {
+      process.env.USER = originalUser;
+    }
+  }
 });
 
 test("tps starts at 0 (no fake session-average after reload)", () => {
   const theme: any = { fg: (_c: string, t: string) => t };
   const ctx: any = {
-    theme, colors: {}, options: {},
-    usageStats: { input: 0, output: 50000, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
-    customItemsById: new Map(), extensionStatuses: new Map(),
+    theme,
+    colors: {},
+    options: {},
+    usageStats: {
+      input: 0,
+      output: 50000,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+      subagentCost: 0,
+    },
+    customItemsById: new Map(),
+    extensionStatuses: new Map(),
   };
   const r = renderSegment("tps" as any, ctx);
   const text = r.content.replace(/\x1b\[[0-9;]*m/g, "").trim();
@@ -99,23 +139,40 @@ test("countListeningPorts returns unique ports (dedupes IPv4/IPv6)", () => {
 test("segmentLabels override tps/open_ports text", () => {
   const theme: any = { fg: (_c: string, t: string) => t };
   const base: any = {
-    theme, colors: {}, options: {}, segmentLabels: new Map(),
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
-    customItemsById: new Map(), extensionStatuses: new Map(),
+    theme,
+    colors: {},
+    options: {},
+    segmentLabels: new Map(),
+    usageStats: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+      subagentCost: 0,
+    },
+    customItemsById: new Map(),
+    extensionStatuses: new Map(),
   };
   // no label -> just the icon + value
   const noLabel = renderSegment("open_ports" as any, base);
   const stripped = noLabel.content.replace(/\x1b\[[0-9;]*m/g, "").trim();
   assert.ok(/\d+$/.test(stripped), `expected a bare count, got ${stripped}`);
   // with label -> icon + "ports <count>"
-  const labeled = renderSegment("open_ports" as any, { ...base, segmentLabels: new Map([["open_ports", "ports"]]) });
+  const labeled = renderSegment("open_ports" as any, {
+    ...base,
+    segmentLabels: new Map([["open_ports", "ports"]]),
+  });
   const s2 = labeled.content.replace(/\x1b\[[0-9;]*m/g, "").trim();
   assert.match(s2, /ports \d+$/);
 });
 
 test("parsePowerlineConfig parses segmentLabels", () => {
   const cfg = parsePowerlineConfig(
-    { preset: "chef", segmentLabels: { tps: "speed", open_ports: "ports", bad: "  " } },
+    {
+      preset: "chef",
+      segmentLabels: { tps: "speed", open_ports: "ports", bad: "  " },
+    },
     ["default", "chef"] as unknown as readonly string[],
   );
   assert.deepEqual(cfg.segmentLabels, { tps: "speed", open_ports: "ports" });

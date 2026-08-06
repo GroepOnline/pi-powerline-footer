@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderSegment } from "../segments.ts";
-import type { ColorScheme, SegmentContext, ThemeLike } from "../types.ts";
+import { renderSegment } from "../src/segments/index.ts";
+import type {
+  ColorScheme,
+  SegmentContext,
+  ThemeLike,
+} from "../src/config/types.ts";
 
 function hexAnsi(hex: `#${string}`): string {
   const value = hex.slice(1);
@@ -11,12 +15,22 @@ function hexAnsi(hex: `#${string}`): string {
   return `\x1b[38;2;${r};${g};${b}m`;
 }
 
-function createSegmentContext(thinkingLevel: string, colors: ColorScheme): SegmentContext {
+function createSegmentContext(
+  thinkingLevel: string,
+  colors: ColorScheme,
+): SegmentContext {
   return {
     model: undefined,
     thinkingLevel,
     sessionId: undefined,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
+    usageStats: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+      subagentCost: 0,
+    },
     contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,
@@ -36,7 +50,9 @@ function createSegmentContext(thinkingLevel: string, colors: ColorScheme): Segme
     segmentLabels: new Map(),
     theme: {
       fg() {
-        throw new Error("unexpected theme color lookup in thinking segment test");
+        throw new Error(
+          "unexpected theme color lookup in thinking segment test",
+        );
       },
     } satisfies ThemeLike,
     colors,
@@ -52,9 +68,15 @@ test("thinking segment uses per-level colors for off through medium", () => {
   };
 
   const off = renderSegment("thinking", createSegmentContext("off", colors));
-  const minimal = renderSegment("thinking", createSegmentContext("minimal", colors));
+  const minimal = renderSegment(
+    "thinking",
+    createSegmentContext("minimal", colors),
+  );
   const low = renderSegment("thinking", createSegmentContext("low", colors));
-  const medium = renderSegment("thinking", createSegmentContext("medium", colors));
+  const medium = renderSegment(
+    "thinking",
+    createSegmentContext("medium", colors),
+  );
 
   assert.equal(off.content, `${hexAnsi("#111111")}think:off\x1b[0m`);
   assert.equal(minimal.content, `${hexAnsi("#222222")}think:min\x1b[0m`);
@@ -66,7 +88,10 @@ test("thinking segment uses solid thinking color for high through max (no rainbo
   const colors: ColorScheme = { thinking: "#111111" };
 
   for (const level of ["high", "xhigh", "max"]) {
-    const rendered = renderSegment("thinking", createSegmentContext(level, colors));
+    const rendered = renderSegment(
+      "thinking",
+      createSegmentContext(level, colors),
+    );
     assert.deepEqual(rendered, {
       content: `${hexAnsi("#111111")}think:${level}\x1b[0m`,
       visible: true,

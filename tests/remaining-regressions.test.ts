@@ -1,13 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { NERD_ICONS } from "../icons.ts";
-import { isStaleExtensionContextError, shouldShowStartupWelcome } from "../lifecycle.ts";
-import { __resetCurrencyRatesForTest, __setCurrencyRatesForTest } from "../currency-rates.ts";
-import { renderSegment } from "../segments.ts";
-import type { SegmentContext } from "../types.ts";
+import { NERD_ICONS } from "../src/theme/icons.ts";
+import {
+  isStaleExtensionContextError,
+  shouldShowStartupWelcome,
+} from "../src/lifecycle/lifecycle.ts";
+import {
+  __resetCurrencyRatesForTest,
+  __setCurrencyRatesForTest,
+} from "../src/usage/currency-rates.ts";
+import { renderSegment } from "../src/segments/index.ts";
+import type { SegmentContext } from "../src/config/types.ts";
 
-const source = readFileSync(new URL("../index.ts", import.meta.url), "utf-8");
+const source = readFileSync(
+  new URL("../src/extension/session-lifecycle.ts", import.meta.url),
+  "utf-8",
+);
 const originalNerdFonts = process.env.POWERLINE_NERD_FONTS;
 process.env.POWERLINE_NERD_FONTS = "0";
 
@@ -27,13 +36,22 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentContext {
+function createSegmentContext(
+  overrides: Partial<SegmentContext> = {},
+): SegmentContext {
   return {
     model: { id: "claude-sonnet-4", name: "Claude Sonnet 4" },
     thinkingLevel: "off",
     sessionId: undefined,
     cwd: "/tmp/project",
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
+    usageStats: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+      subagentCost: 0,
+    },
     contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,
@@ -59,14 +77,24 @@ function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentC
 
 test("model segment can show provider-qualified ids", () => {
   const normal = renderSegment("model", createSegmentContext());
-  const qualified = renderSegment("model", createSegmentContext({
-    model: { id: "claude-sonnet-4", name: "Claude Sonnet 4", provider: "anthropic" },
-    options: { model: { display: "qualified" } },
-  }));
-  const alreadyQualified = renderSegment("model", createSegmentContext({
-    model: { id: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai" },
-    options: { model: { display: "qualified" } },
-  }));
+  const qualified = renderSegment(
+    "model",
+    createSegmentContext({
+      model: {
+        id: "claude-sonnet-4",
+        name: "Claude Sonnet 4",
+        provider: "anthropic",
+      },
+      options: { model: { display: "qualified" } },
+    }),
+  );
+  const alreadyQualified = renderSegment(
+    "model",
+    createSegmentContext({
+      model: { id: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai" },
+      options: { model: { display: "qualified" } },
+    }),
+  );
 
   assert.equal(stripAnsi(normal.content), "Sonnet 4");
   assert.equal(stripAnsi(qualified.content), "anthropic/claude-sonnet-4");
@@ -76,35 +104,91 @@ test("model segment can show provider-qualified ids", () => {
 test("cost segment supports subscription display modes and converted currencies", () => {
   __setCurrencyRatesForTest({ CNY: 7.2 });
 
-  const subscription = renderSegment("cost", createSegmentContext({
-    usingSubscription: true,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0 },
-  }));
-  const reportedCost = renderSegment("cost", createSegmentContext({
-    usingSubscription: true,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0 },
-    options: { cost: { subscriptionDisplay: "reported-cost" } },
-  }));
-  const both = renderSegment("cost", createSegmentContext({
-    usingSubscription: true,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0 },
-    options: { cost: { subscriptionDisplay: "both" } },
-  }));
-  const zeroReported = renderSegment("cost", createSegmentContext({
-    usingSubscription: true,
-    options: { cost: { subscriptionDisplay: "reported-cost" } },
-  }));
-  const zeroBoth = renderSegment("cost", createSegmentContext({
-    usingSubscription: true,
-    options: { cost: { subscriptionDisplay: "both" } },
-  }));
-  const withSubagentCost = renderSegment("cost", createSegmentContext({
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.42, subagentCost: 0.58 },
-  }));
-  const convertedCurrency = renderSegment("cost", createSegmentContext({
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 1, subagentCost: 0.25 },
-    options: { cost: { currency: "CNY" } },
-  }));
+  const subscription = renderSegment(
+    "cost",
+    createSegmentContext({
+      usingSubscription: true,
+      usageStats: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0.42,
+        subagentCost: 0,
+      },
+    }),
+  );
+  const reportedCost = renderSegment(
+    "cost",
+    createSegmentContext({
+      usingSubscription: true,
+      usageStats: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0.42,
+        subagentCost: 0,
+      },
+      options: { cost: { subscriptionDisplay: "reported-cost" } },
+    }),
+  );
+  const both = renderSegment(
+    "cost",
+    createSegmentContext({
+      usingSubscription: true,
+      usageStats: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0.42,
+        subagentCost: 0,
+      },
+      options: { cost: { subscriptionDisplay: "both" } },
+    }),
+  );
+  const zeroReported = renderSegment(
+    "cost",
+    createSegmentContext({
+      usingSubscription: true,
+      options: { cost: { subscriptionDisplay: "reported-cost" } },
+    }),
+  );
+  const zeroBoth = renderSegment(
+    "cost",
+    createSegmentContext({
+      usingSubscription: true,
+      options: { cost: { subscriptionDisplay: "both" } },
+    }),
+  );
+  const withSubagentCost = renderSegment(
+    "cost",
+    createSegmentContext({
+      usageStats: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0.42,
+        subagentCost: 0.58,
+      },
+    }),
+  );
+  const convertedCurrency = renderSegment(
+    "cost",
+    createSegmentContext({
+      usageStats: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 1,
+        subagentCost: 0.25,
+      },
+      options: { cost: { currency: "CNY" } },
+    }),
+  );
 
   __resetCurrencyRatesForTest();
 
@@ -118,11 +202,14 @@ test("cost segment supports subscription display modes and converted currencies"
 });
 
 test("context segment shows used tokens, maximum, and percentage", () => {
-  const context = renderSegment("context_pct", createSegmentContext({
-    contextTokens: 4_500,
-    contextPercent: 1.7,
-    contextWindow: 272_000,
-  }));
+  const context = renderSegment(
+    "context_pct",
+    createSegmentContext({
+      contextTokens: 4_500,
+      contextPercent: 1.7,
+      contextWindow: 272_000,
+    }),
+  );
 
   assert.equal(stripAnsi(context.content), "◫ 4.5k/272k (1.7%) AC");
   assert.equal(context.visible, true);
@@ -136,13 +223,41 @@ test("startup welcome predicate respects powerline.welcome false", () => {
   assert.equal(shouldShowStartupWelcome("startup", true), true);
   assert.equal(shouldShowStartupWelcome("startup", false), false);
   assert.equal(shouldShowStartupWelcome("resume", true), false);
-  assert.match(source, /setupCustomEditor\(ctx\);\r?\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome\)\)/);
+  assert.match(
+    source,
+    /setupCustomEditor\(pi, rt, ctx\);\r?\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome\)\)/,
+  );
 });
 
 test("stale ctx guard handles old and new Pi messages on agent_end", () => {
-  assert.equal(isStaleExtensionContextError(new Error("This extension instance is stale after session replacement or reload.")), true);
-  assert.equal(isStaleExtensionContextError(new Error("This extension ctx is stale after session replacement or reload.")), true);
-  assert.equal(isStaleExtensionContextError(new Error("ctx.hasUI failed for another reason")), false);
-  assert.match(source, /let hasUI = false;\r?\n\s+try \{\r?\n\s+hasUI = Boolean\(ctx\.hasUI\);/);
-  assert.match(source, /if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;\r?\n\s+return;/);
+  assert.equal(
+    isStaleExtensionContextError(
+      new Error(
+        "This extension instance is stale after session replacement or reload.",
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    isStaleExtensionContextError(
+      new Error(
+        "This extension ctx is stale after session replacement or reload.",
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    isStaleExtensionContextError(
+      new Error("ctx.hasUI failed for another reason"),
+    ),
+    false,
+  );
+  assert.match(
+    source,
+    /let hasUI = false;\r?\n\s+try \{\r?\n\s+hasUI = Boolean\(ctx\.hasUI\);/,
+  );
+  assert.match(
+    source,
+    /if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+rt\.currentCtx = null;\r?\n\s+return;/,
+  );
 });

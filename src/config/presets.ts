@@ -1,5 +1,5 @@
 import type { ColorScheme, PresetDef, StatusLinePreset } from "./types.ts";
-import { getDefaultColors } from "./theme.ts";
+import { getDefaultColors } from "../theme/theme.ts";
 import type { CustomPresetConfig } from "./types.ts";
 
 // Get base colors from theme.ts (single source of truth)
@@ -32,7 +32,17 @@ const CHEF_COLORS: ColorScheme = {
 
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   default: {
-    leftSegments: ["model", "thinking", "shell_mode", "path", "git", "queue", "context_pct", "cache_read", "cost"],
+    leftSegments: [
+      "model",
+      "thinking",
+      "shell_mode",
+      "path",
+      "git",
+      "queue",
+      "context_pct",
+      "cache_read",
+      "cost",
+    ],
     rightSegments: [],
     secondarySegments: ["extension_statuses"],
     separator: "powerline-thin",
@@ -40,7 +50,12 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     segmentOptions: {
       model: { showThinkingLevel: false },
       path: { mode: "basename" },
-      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      git: {
+        showBranch: true,
+        showStaged: true,
+        showUnstaged: true,
+        showUntracked: true,
+      },
     },
   },
 
@@ -51,7 +66,12 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     colors: MINIMAL_COLORS,
     segmentOptions: {
       path: { mode: "basename" },
-      git: { showBranch: true, showStaged: false, showUnstaged: false, showUntracked: false },
+      git: {
+        showBranch: true,
+        showStaged: false,
+        showUnstaged: false,
+        showUntracked: false,
+      },
     },
   },
 
@@ -62,32 +82,86 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     colors: DEFAULT_COLORS,
     segmentOptions: {
       model: { showThinkingLevel: false },
-      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: false },
+      git: {
+        showBranch: true,
+        showStaged: true,
+        showUnstaged: true,
+        showUntracked: false,
+      },
     },
   },
 
   full: {
-    leftSegments: ["hostname", "model", "thinking", "shell_mode", "path", "git", "queue", "subagents"],
-    rightSegments: ["token_in", "token_out", "cache_read", "cost", "context_pct", "time_spent", "time", "extension_statuses"],
+    leftSegments: [
+      "hostname",
+      "model",
+      "thinking",
+      "shell_mode",
+      "path",
+      "git",
+      "queue",
+      "subagents",
+    ],
+    rightSegments: [
+      "token_in",
+      "token_out",
+      "cache_read",
+      "cost",
+      "context_pct",
+      "time_spent",
+      "time",
+      "extension_statuses",
+    ],
     separator: "powerline",
     colors: DEFAULT_COLORS,
     segmentOptions: {
       model: { showThinkingLevel: false },
       path: { mode: "abbreviated", maxLength: 50 },
-      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      git: {
+        showBranch: true,
+        showStaged: true,
+        showUnstaged: true,
+        showUntracked: true,
+      },
       time: { format: "24h", showSeconds: false },
     },
   },
 
   nerd: {
-    leftSegments: ["hostname", "model", "thinking", "shell_mode", "path", "git", "queue", "session", "subagents"],
-    rightSegments: ["token_in", "token_out", "cache_read", "cache_write", "cost", "context_pct", "context_total", "time_spent", "time", "extension_statuses"],
+    leftSegments: [
+      "hostname",
+      "model",
+      "thinking",
+      "shell_mode",
+      "path",
+      "git",
+      "queue",
+      "session",
+      "subagents",
+    ],
+    rightSegments: [
+      "token_in",
+      "token_out",
+      "cache_read",
+      "cache_write",
+      "cost",
+      "context_pct",
+      "context_total",
+      "time_spent",
+      "time",
+      "extension_statuses",
+    ],
     separator: "powerline",
     colors: NERD_COLORS,
     segmentOptions: {
       model: { showThinkingLevel: false },
       path: { mode: "abbreviated", maxLength: 60 },
-      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      git: {
+        showBranch: true,
+        showStaged: true,
+        showUnstaged: true,
+        showUntracked: true,
+      },
       time: { format: "24h", showSeconds: true },
     },
   },
@@ -100,23 +174,40 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     segmentOptions: {
       model: { showThinkingLevel: true },
       path: { mode: "abbreviated", maxLength: 40 },
-      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      git: {
+        showBranch: true,
+        showStaged: true,
+        showUnstaged: true,
+        showUntracked: true,
+      },
     },
   },
 
   chef: {
-    leftSegments: ["hostname", "model", "thinking", "shell_mode", "path", "git", "queue"],
+    leftSegments: [
+      "hostname",
+      "model",
+      "thinking",
+      "shell_mode",
+      "path",
+      "git",
+      "queue",
+    ],
     rightSegments: ["tps", "open_ports", "cost", "context_pct", "time"],
     separator: "slash",
     colors: CHEF_COLORS,
     segmentOptions: {
       model: { showThinkingLevel: false },
       path: { mode: "basename" },
-      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      git: {
+        showBranch: true,
+        showStaged: true,
+        showUnstaged: true,
+        showUntracked: true,
+      },
       time: { format: "24h", showSeconds: false },
     },
   },
-
 };
 
 export function getPreset(name: string): PresetDef {
@@ -127,7 +218,9 @@ export function getPreset(name: string): PresetDef {
 const customPresets = new Map<string, PresetDef>();
 
 /** Register user-defined presets from settings. Replaces any previously registered. */
-export function registerCustomPresets(defs: Record<string, CustomPresetConfig>): void {
+export function registerCustomPresets(
+  defs: Record<string, CustomPresetConfig>,
+): void {
   customPresets.clear();
   for (const [name, def] of Object.entries(defs)) {
     const presetDef: PresetDef = {
@@ -144,5 +237,9 @@ export function registerCustomPresets(defs: Record<string, CustomPresetConfig>):
 
 /** Resolve a preset by name, checking user-defined presets first. */
 export function resolvePreset(name: string): PresetDef {
-  return customPresets.get(name) ?? PRESETS[name as StatusLinePreset] ?? PRESETS.default;
+  return (
+    customPresets.get(name) ??
+    PRESETS[name as StatusLinePreset] ??
+    PRESETS.default
+  );
 }

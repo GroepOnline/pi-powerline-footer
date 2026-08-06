@@ -1,3 +1,7 @@
+import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
+
+import type { EditorBoundaryShortcuts } from "./editor-input.ts";
+
 export interface BashModeSettings {
   toggleShortcut: string | null;
   transcriptMaxLines: number;
@@ -56,4 +60,21 @@ export interface ShellSessionState {
   shellName: string;
   cwd: string;
   lastExitCode: number | null;
+}
+
+export interface BashModeEditorOptions {
+  keybindings: KeybindingsManager;
+  isBashModeActive: () => boolean;
+  isShellRunning: () => boolean;
+  onExitBashMode: () => void;
+  onSubmitCommand: (command: string) => void;
+  onEditorSubmit?: () => void;
+  editorBoundaryShortcuts?: EditorBoundaryShortcuts;
+  onInterrupt: () => void;
+  onNotify: (message: string, level?: "info" | "warning" | "error") => void;
+  getHistoryEntries: (prefix: string) => string[];
+  resolveGhostSuggestion: (
+    text: string,
+    signal: AbortSignal,
+  ) => Promise<GhostSuggestion | null>;
 }

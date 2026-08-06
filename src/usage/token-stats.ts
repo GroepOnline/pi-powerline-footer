@@ -1,6 +1,6 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
-type SessionAssistantUsage = AssistantMessage["usage"];
+export type SessionAssistantUsage = AssistantMessage["usage"];
 
 export interface SessionTokenStats {
   input: number;
@@ -17,7 +17,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function hasSessionAssistantUsage(value: unknown): value is SessionAssistantUsage {
+export function hasSessionAssistantUsage(value: unknown): value is SessionAssistantUsage {
   if (!isRecord(value)) {
     return false;
   }
@@ -34,14 +34,14 @@ function hasSessionAssistantUsage(value: unknown): value is SessionAssistantUsag
   return isRecord(value.cost) && typeof value.cost.total === "number";
 }
 
-function isSessionAssistantMessage(value: unknown): value is AssistantMessage {
+export function isSessionAssistantMessage(value: unknown): value is AssistantMessage {
   return isRecord(value)
     && value.role === "assistant"
     && hasSessionAssistantUsage(value.usage)
     && (value.stopReason === undefined || typeof value.stopReason === "string");
 }
 
-function getUsageTokenTotal(usage: SessionAssistantUsage): number {
+export function getUsageTokenTotal(usage: SessionAssistantUsage): number {
   const totalTokens = "totalTokens" in usage && typeof usage.totalTokens === "number" ? usage.totalTokens : 0;
   return totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }

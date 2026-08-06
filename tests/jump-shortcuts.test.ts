@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isSupportedSuperShortcut, matchesConfiguredShortcut, shortcutConflictKey } from "../shortcuts.ts";
+import {
+  isSupportedSuperShortcut,
+  matchesConfiguredShortcut,
+  shortcutConflictKey,
+} from "../src/shortcuts/matching.ts";
 import { resolveShortcutConfig } from "../index.ts";
 
 test("surviving editor shortcuts resolve without app-owned chat scrolling", () => {
@@ -11,8 +15,14 @@ test("surviving editor shortcuts resolve without app-owned chat scrolling", () =
   assert.equal(resolved.ideaCapture, null);
   assert.equal(resolved.editorStart, "super+shift+up");
   assert.equal(resolved.editorEnd, "super+shift+down");
-  assert.equal(Object.keys(resolved).some((key) => key.startsWith("scroll")), false);
-  assert.equal(Object.keys(resolved).some((key) => key.startsWith("jump")), false);
+  assert.equal(
+    Object.keys(resolved).some((key) => key.startsWith("scroll")),
+    false,
+  );
+  assert.equal(
+    Object.keys(resolved).some((key) => key.startsWith("jump")),
+    false,
+  );
 });
 
 test("super shortcut matching and conflict normalization remain supported", () => {

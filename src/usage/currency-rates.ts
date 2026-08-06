@@ -1,9 +1,20 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { getAgentPath } from "./paths.ts";
+import { getAgentPath } from "../paths/paths.ts";
 
-export const SUPPORTED_COST_CURRENCIES = ["USD", "CNY", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "INR", "KRW"] as const;
-export type CostCurrencyCode = typeof SUPPORTED_COST_CURRENCIES[number];
+export const SUPPORTED_COST_CURRENCIES = [
+  "USD",
+  "CNY",
+  "EUR",
+  "GBP",
+  "JPY",
+  "CAD",
+  "AUD",
+  "CHF",
+  "INR",
+  "KRW",
+] as const;
+export type CostCurrencyCode = (typeof SUPPORTED_COST_CURRENCIES)[number];
 
 const CURRENCY_SYMBOLS: Record<CostCurrencyCode, string> = {
   USD: "$",
@@ -19,7 +30,8 @@ const CURRENCY_SYMBOLS: Record<CostCurrencyCode, string> = {
 };
 
 const RATE_TTL_MS = 24 * 60 * 60 * 1000;
-const RATE_URL = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json";
+const RATE_URL =
+  "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json";
 const RATE_CACHE_PATH = getAgentPath("powerline-footer", "currency-rates.json");
 
 type RateTable = Partial<Record<CostCurrencyCode, number>>;
@@ -36,14 +48,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export function normalizeCostCurrency(value: unknown): CostCurrencyCode | undefined {
+export function normalizeCostCurrency(
+  value: unknown,
+): CostCurrencyCode | undefined {
   if (typeof value !== "string") return undefined;
   const code = value.trim().toUpperCase();
-  return (SUPPORTED_COST_CURRENCIES as readonly string[]).includes(code) ? code as CostCurrencyCode : undefined;
+  return (SUPPORTED_COST_CURRENCIES as readonly string[]).includes(code)
+    ? (code as CostCurrencyCode)
+    : undefined;
 }
 
 function parseCachedRates(value: unknown): CachedRates | null {
-  if (!isRecord(value) || typeof value.timestamp !== "number" || !isRecord(value.rates)) return null;
+  if (
+    !isRecord(value) ||
+    typeof value.timestamp !== "number" ||
+    !isRecord(value.rates)
+  )
+    return null;
 
   const rates: RateTable = { USD: 1 };
   for (const currency of SUPPORTED_COST_CURRENCIES) {
@@ -58,7 +79,9 @@ function parseCachedRates(value: unknown): CachedRates | null {
 
 async function readCachedRatesFromDisk(): Promise<CachedRates | null> {
   try {
-    return parseCachedRates(JSON.parse(await readFile(RATE_CACHE_PATH, "utf8")));
+    return parseCachedRates(
+      JSON.parse(await readFile(RATE_CACHE_PATH, "utf8")),
+    );
   } catch {
     return null;
   }
@@ -75,10 +98,12 @@ async function writeCachedRatesToDisk(rates: CachedRates): Promise<void> {
 
 async function fetchLatestRates(): Promise<CachedRates> {
   const response = await fetch(RATE_URL);
-  if (!response.ok) throw new Error(`currency rate fetch failed with HTTP ${response.status}`);
+  if (!response.ok)
+    throw new Error(`currency rate fetch failed with HTTP ${response.status}`);
 
   const body = await response.json();
-  if (!isRecord(body) || !isRecord(body.usd)) throw new Error("currency rate response did not include USD rates");
+  if (!isRecord(body) || !isRecord(body.usd))
+    throw new Error("currency rate response did not include USD rates");
 
   const rates: RateTable = { USD: 1 };
   for (const currency of SUPPORTED_COST_CURRENCIES) {
@@ -119,10 +144,15 @@ function getRate(currency: CostCurrencyCode): number | null {
   const rate = cachedRates?.rates[currency];
   ensureRatesRefreshing(Date.now());
 
-  return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : null;
+  return typeof rate === "number" && Number.isFinite(rate) && rate > 0
+    ? rate
+    : null;
 }
 
-export function formatUsdCost(amountUsd: number, currency: CostCurrencyCode = "USD"): string | null {
+export function formatUsdCost(
+  amountUsd: number,
+  currency: CostCurrencyCode = "USD",
+): string | null {
   const rate = getRate(currency);
   if (!rate) return `-- ${currency}`;
 
@@ -131,7 +161,10 @@ export function formatUsdCost(amountUsd: number, currency: CostCurrencyCode = "U
   return `${CURRENCY_SYMBOLS[currency]}${amount.toFixed(decimals)}`;
 }
 
-export function __setCurrencyRatesForTest(rates: RateTable, timestamp = Date.now()): void {
+export function __setCurrencyRatesForTest(
+  rates: RateTable,
+  timestamp = Date.now(),
+): void {
   cachedRates = { timestamp, rates: { USD: 1, ...rates } };
   pendingFetch = null;
 }

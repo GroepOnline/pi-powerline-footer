@@ -1,8 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
-import { getSeparator } from "../separators.ts";
-import { PRESETS } from "../presets.ts";
+import {
+  collectHiddenExtensionStatusKeys,
+  getNotificationExtensionStatuses,
+  normalizeExtensionStatusValue,
+  parsePowerlineConfig,
+  mergeSegmentOptions,
+  mergeSegmentsWithCustomItems,
+  nextPowerlineSettingWithOptions,
+  nextPowerlineSettingWithPreset,
+  normalizeCompactExtensionStatus,
+} from "../src/config/powerline-config.ts";
+import { getSeparator } from "../src/theme/separators.ts";
+import { PRESETS } from "../src/config/presets.ts";
 
 test("fixed custom preset is removed in favor of powerline.layout", () => {
   assert.equal("custom" in PRESETS, false);
@@ -57,8 +67,17 @@ test("parsePowerlineConfig supports disabled segments", () => {
     ["default", "compact"],
   );
 
-  assert.deepEqual(config.disabledSegments, ["queue", "cost", "extension_statuses", "custom:ci"]);
-  assert.deepEqual(config.invalidDisabledSegments, ["unknown", "custom:missing", "123"]);
+  assert.deepEqual(config.disabledSegments, [
+    "queue",
+    "cost",
+    "extension_statuses",
+    "custom:ci",
+  ]);
+  assert.deepEqual(config.invalidDisabledSegments, [
+    "unknown",
+    "custom:missing",
+    "123",
+  ]);
 });
 
 test("parsePowerlineConfig supports partial explicit layout rows", () => {
@@ -80,7 +99,11 @@ test("parsePowerlineConfig supports partial explicit layout rows", () => {
     right: ["cost"],
     secondary: [],
   });
-  assert.deepEqual(config.invalidLayoutSegments, ["left:unknown", "left:123", "right:model"]);
+  assert.deepEqual(config.invalidLayoutSegments, [
+    "left:unknown",
+    "left:123",
+    "right:model",
+  ]);
 });
 
 test("parsePowerlineConfig preserves reporter layout groups", () => {
@@ -153,12 +176,14 @@ test("parsePowerlineConfig validates primary powerline placement", () => {
   assert.equal(invalid.invalidPlacement, "sideways");
 });
 
-
-
-
 test("parsePowerlineConfig supports welcome, legacy sharp-S, and queue capture settings", () => {
   const disabled = parsePowerlineConfig(
-    { preset: "compact", welcome: false, stashSharpSShortcut: true, queue: { captureSigil: false } },
+    {
+      preset: "compact",
+      welcome: false,
+      stashSharpSShortcut: true,
+      queue: { captureSigil: false },
+    },
     ["default", "compact"],
   );
   const customSigil = parsePowerlineConfig(
@@ -187,21 +212,35 @@ test("parsePowerlineConfig extracts supported segment options", () => {
       preset: "default",
       model: { showThinkingLevel: true, display: "qualified" },
       path: { mode: "full", maxLength: 120 },
-      git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch", hostIcon: true },
+      git: {
+        showBranch: false,
+        showStaged: false,
+        showUnstaged: true,
+        showUntracked: false,
+        polling: "branch",
+        hostIcon: true,
+      },
       time: { format: "12h", showSeconds: true },
       cost: { subscriptionDisplay: "both", currency: "cny" },
     },
     ["default", "compact"],
   );
-  const invalidCurrency = parsePowerlineConfig(
-    { cost: { currency: "BTC" } },
-    ["default", "compact"],
-  );
+  const invalidCurrency = parsePowerlineConfig({ cost: { currency: "BTC" } }, [
+    "default",
+    "compact",
+  ]);
 
   assert.deepEqual(config.segmentOptions, {
     model: { showThinkingLevel: true, display: "qualified" },
     path: { mode: "full", maxLength: 120 },
-    git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch", hostIcon: true },
+    git: {
+      showBranch: false,
+      showStaged: false,
+      showUnstaged: true,
+      showUntracked: false,
+      polling: "branch",
+      hostIcon: true,
+    },
     time: { format: "12h", showSeconds: true },
     cost: { subscriptionDisplay: "both", currency: "CNY" },
   });
@@ -211,8 +250,15 @@ test("parsePowerlineConfig extracts supported segment options", () => {
 test("mergeSegmentOptions lets user config override preset segment defaults", () => {
   assert.deepEqual(
     mergeSegmentOptions(
-      { path: { mode: "basename", maxLength: 20 }, git: { showBranch: true, showUntracked: true } },
-      { path: { mode: "full" }, git: { showUntracked: false }, cost: { subscriptionDisplay: "reported-cost" } },
+      {
+        path: { mode: "basename", maxLength: 20 },
+        git: { showBranch: true, showUntracked: true },
+      },
+      {
+        path: { mode: "full" },
+        git: { showUntracked: false },
+        cost: { subscriptionDisplay: "reported-cost" },
+      },
     ),
     {
       model: {},
@@ -235,15 +281,36 @@ test("mergeSegmentsWithCustomItems appends custom segment ids by position", () =
       separator: "powerline",
     },
     [
-      { id: "ci", statusKey: "ci", position: "left", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "timer", statusKey: "timer", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      {
+        id: "ci",
+        statusKey: "ci",
+        position: "left",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
+      {
+        id: "timer",
+        statusKey: "timer",
+        position: "right",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
+      {
+        id: "review",
+        statusKey: "review",
+        position: "secondary",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
     ],
   );
 
   assert.deepEqual(merged.leftSegments, ["path", "custom:ci"]);
   assert.deepEqual(merged.rightSegments, ["git", "custom:timer"]);
-  assert.deepEqual(merged.secondarySegments, ["extension_statuses", "custom:review"]);
+  assert.deepEqual(merged.secondarySegments, [
+    "extension_statuses",
+    "custom:review",
+  ]);
 });
 
 test("mergeSegmentsWithCustomItems filters disabled segment ids", () => {
@@ -255,9 +322,27 @@ test("mergeSegmentsWithCustomItems filters disabled segment ids", () => {
       separator: "powerline",
     },
     [
-      { id: "ci", statusKey: "ci", position: "left", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "timer", statusKey: "timer", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      {
+        id: "ci",
+        statusKey: "ci",
+        position: "left",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
+      {
+        id: "timer",
+        statusKey: "timer",
+        position: "right",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
+      {
+        id: "review",
+        statusKey: "review",
+        position: "secondary",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
     ],
     { disabledSegments: ["model", "cost", "custom:ci", "custom:review"] },
   );
@@ -276,8 +361,20 @@ test("mergeSegmentsWithCustomItems applies partial layout rows before disabled f
       separator: "powerline",
     },
     [
-      { id: "ci", statusKey: "ci", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      {
+        id: "ci",
+        statusKey: "ci",
+        position: "right",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
+      {
+        id: "review",
+        statusKey: "review",
+        position: "secondary",
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
     ],
     {
       layout: {
@@ -294,15 +391,26 @@ test("mergeSegmentsWithCustomItems applies partial layout rows before disabled f
 });
 
 test("nextPowerlineSettingWithPreset preserves object settings", () => {
-  const updated = nextPowerlineSettingWithPreset({ preset: "default", customItems: [{ id: "ci" }] }, "compact");
-  if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
+  const updated = nextPowerlineSettingWithPreset(
+    { preset: "default", customItems: [{ id: "ci" }] },
+    "compact",
+  );
+  if (
+    typeof updated !== "object" ||
+    updated === null ||
+    Array.isArray(updated)
+  ) {
     assert.fail("expected an object powerline setting");
   }
   if (!("preset" in updated)) {
-    assert.fail("expected preset to be preserved on the updated powerline setting");
+    assert.fail(
+      "expected preset to be preserved on the updated powerline setting",
+    );
   }
   if (!("customItems" in updated)) {
-    assert.fail("expected customItems to be preserved on the updated powerline setting");
+    assert.fail(
+      "expected customItems to be preserved on the updated powerline setting",
+    );
   }
 
   assert.equal(updated.preset, "compact");
@@ -316,20 +424,43 @@ test("nextPowerlineSettingWithOptions preserves object settings", () => {
     "compact",
   );
 
-  assert.deepEqual(updated, { preset: "default", customItems: [{ id: "ci" }], placement: "below" });
-});
-
-test("nextPowerlineSettingWithOptions converts string presets to object settings", () => {
-  assert.deepEqual(nextPowerlineSettingWithOptions("compact", { placement: "below" }, "compact"), {
-    preset: "compact",
+  assert.deepEqual(updated, {
+    preset: "default",
+    customItems: [{ id: "ci" }],
     placement: "below",
   });
 });
 
+test("nextPowerlineSettingWithOptions converts string presets to object settings", () => {
+  assert.deepEqual(
+    nextPowerlineSettingWithOptions(
+      "compact",
+      { placement: "below" },
+      "compact",
+    ),
+    {
+      preset: "compact",
+      placement: "below",
+    },
+  );
+});
+
 test("collectHiddenExtensionStatusKeys includes default custom status keys", () => {
   const hidden = collectHiddenExtensionStatusKeys([
-    { id: "ci", statusKey: "ci-status", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-    { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: false },
+    {
+      id: "ci",
+      statusKey: "ci-status",
+      position: "right",
+      hideWhenMissing: true,
+      excludeFromExtensionStatuses: true,
+    },
+    {
+      id: "review",
+      statusKey: "review",
+      position: "secondary",
+      hideWhenMissing: true,
+      excludeFromExtensionStatuses: false,
+    },
   ]);
 
   assert.equal(hidden.has("ci-status"), true);
@@ -343,7 +474,10 @@ test("normalizeCompactExtensionStatus strips baked-in trailing separators", () =
 });
 
 test("normalizeExtensionStatusValue keeps notification-style statuses renderable for custom items", () => {
-  assert.equal(normalizeExtensionStatusValue("[review] queued · "), "[review] queued");
+  assert.equal(
+    normalizeExtensionStatusValue("[review] queued · "),
+    "[review] queued",
+  );
 });
 
 test("getNotificationExtensionStatuses skips promoted hidden status keys", () => {
@@ -354,5 +488,7 @@ test("getNotificationExtensionStatuses skips promoted hidden status keys", () =>
   ]);
   const hidden = new Set(["ci-status"]);
 
-  assert.deepEqual(getNotificationExtensionStatuses(statuses, hidden), ["[review] running"]);
+  assert.deepEqual(getNotificationExtensionStatuses(statuses, hidden), [
+    "[review] running",
+  ]);
 });

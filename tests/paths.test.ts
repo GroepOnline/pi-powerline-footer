@@ -4,9 +4,16 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { getAgentDir, getAgentPath, getAgentSessionDirs, normalizeAgentDirPath } from "../paths.ts";
+import {
+  getAgentDir,
+  getAgentPath,
+  getAgentSessionDirs,
+  normalizeAgentDirPath,
+} from "../src/paths/paths.ts";
 
-function withTemporaryPathEnv(run: (home: string, agentDir: string) => void): void {
+function withTemporaryPathEnv(
+  run: (home: string, agentDir: string) => void,
+): void {
   const root = mkdtempSync(join(tmpdir(), "powerline-paths-"));
   const home = join(root, "home");
   const agentDir = join(root, "custom-agent");
@@ -35,7 +42,10 @@ test("agent dir uses non-empty PI_CODING_AGENT_DIR", () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     assert.equal(getAgentDir(), agentDir);
-    assert.equal(getAgentPath("settings.json"), join(agentDir, "settings.json"));
+    assert.equal(
+      getAgentPath("settings.json"),
+      join(agentDir, "settings.json"),
+    );
   });
 });
 
@@ -44,7 +54,10 @@ test("agent dir falls back to HOME .pi/agent for empty env values", () => {
     process.env.PI_CODING_AGENT_DIR = "   ";
 
     assert.equal(getAgentDir(), join(home, ".pi", "agent"));
-    assert.equal(getAgentPath("sessions"), join(home, ".pi", "agent", "sessions"));
+    assert.equal(
+      getAgentPath("sessions"),
+      join(home, ".pi", "agent", "sessions"),
+    );
   });
 });
 
@@ -65,6 +78,9 @@ test("agent sessions include legacy ~/.pi/sessions only when it exists", () => {
     assert.deepEqual(getAgentSessionDirs(), [join(agentDir, "sessions")]);
 
     mkdirSync(join(home, ".pi", "sessions"), { recursive: true });
-    assert.deepEqual(getAgentSessionDirs(), [join(agentDir, "sessions"), join(home, ".pi", "sessions")]);
+    assert.deepEqual(getAgentSessionDirs(), [
+      join(agentDir, "sessions"),
+      join(home, ".pi", "sessions"),
+    ]);
   });
 });
