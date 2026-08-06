@@ -89,7 +89,7 @@ Powerline Queue + Inbox commands and capture shortcuts:
 - `/queue clear <id|all>`: clear queued prompt items
 - `/queue target <id> @name|global|current`: retarget a queued item
 
-The default capture sigil is `#`. When the editor text starts with `# `, the prompt glyph changes to `#`; pressing Enter saves the idea, clears the editor, and leaves the original sigil text in editor history for quick recovery. Configure or disable this under `powerline.queue.captureSigil`:
+The default capture sigil is `#`. When the editor text starts with `#` followed by a space, the prompt glyph changes to `#`; pressing Enter saves the idea, clears the editor, and leaves the original sigil text in editor history for quick recovery. Configure or disable this under `powerline.queue.captureSigil`:
 
 ```json
 {
@@ -466,7 +466,7 @@ Powerline wraps Pi's autocomplete provider so bash mode can add shell-aware sugg
 
 Transform boring "Working..." messages into themed phrases that match your style:
 
-```
+```text
 /vibe star trek    → "Running diagnostics...", "Engaging warp drive..."
 /vibe pirate       → "Hoisting the sails...", "Charting course..."
 /vibe zen          → "Breathing deeply...", "Finding balance..."
@@ -581,7 +581,7 @@ Set `git.hostIcon` to replace the branch icon with the origin remote's host logo
 }
 ```
 
-The origin remote is detected (SSH or HTTPS) and mapped to an icon: GitHub (), GitLab (), Bitbucket (), or a generic git logo () for any other remote (self-hosted, Gitea, Codeberg, …). Repositories without an origin remote keep the plain branch icon (), as do ASCII (non–Nerd Font) setups. The remote is read once and cached, so this adds no per-render cost. Default is `false` (branch icon unchanged).
+The origin remote is detected (SSH or HTTPS) and mapped to an icon: GitHub (`nf-fa-github`), GitLab (`nf-fa-gitlab`), Bitbucket (`nf-fa-bitbucket`), or a generic git logo (`nf-fa-git`) for any other remote (self-hosted, Gitea, Codeberg, …). Repositories without an origin remote keep the plain branch icon (`nf-fa-code_fork`), as do ASCII (non–Nerd Font) setups. The remote is read once and cached, so this adds no per-render cost. Default is `false` (branch icon unchanged).
 
 ## Segments
 
