@@ -49,8 +49,6 @@
     "extensions": [
       "./index.ts"
     ]
-  },
-  "dependencies": {
-    "@groeponline/fff-node": "^0.10.2-nightly.f84c885"
   }
 }
+
