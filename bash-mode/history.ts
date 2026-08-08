@@ -224,7 +224,13 @@ export function readGlobalShellHistory(shellPath: string): string[] {
     // Global shell history is optional recall data. If the file exists but is
     // unreadable, cache an empty result under its fingerprint so bash mode keeps
     // working without logging a stack on every keypress until the file changes.
-    if (stat) {
+    // Only cache persistent permission failures. Transient filesystem errors
+    // must be retried on the next completion rather than hiding history.
+    const errorCode =
+      error && typeof error === "object" && "code" in error
+        ? (error as { code?: string }).code
+        : undefined;
+    if (stat && (errorCode === "EACCES" || errorCode === "EPERM")) {
       globalHistoryCache.set(cacheKey, { ...stat, entries: [] });
     }
     console.debug(
