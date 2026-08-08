@@ -16,6 +16,7 @@ import { requestImmediateStatusRender } from "./segment-context.ts";
 import { buildStashPreview } from "./stash-history.ts";
 import { showSelectOverlay } from "./menu-views.ts";
 import { getQueueContext } from "./queue-context.ts";
+import { isStaleExtensionContextError } from "./stale-context.ts";
 import { config } from "./state.ts";
 import type { RuntimeState } from "./types.ts";
 
@@ -157,6 +158,7 @@ export function deliverQueueItem(
   rt.queueStore.update(item.id, { status: "delivering", error: undefined });
   requestQueueRender(rt);
 
+  let sent = false;
   try {
     const deliverAs = deliveryModeForItem(ctx, item);
     const deliveryText = formatQueueDeliveryText(item);
@@ -165,11 +167,25 @@ export function deliverQueueItem(
     } else {
       pi.sendUserMessage(deliveryText);
     }
+    sent = true;
     rt.queueStore.update(item.id, { status: "sent", error: undefined });
-    ctx.ui.notify(`Sent queued item ${item.id}`, "info");
+    try {
+      ctx.ui.notify(`Sent queued item ${item.id}`, "info");
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
+    }
     requestQueueRender(rt);
     return true;
   } catch (error) {
+    if (isStaleExtensionContextError(error)) {
+      // The extension context was replaced (reload/session swap) mid-delivery.
+      // Leave the item queued so it can be retried instead of marking it failed.
+      if (!sent) {
+        rt.queueStore.update(item.id, { status: "queued", error: undefined });
+        requestQueueRender(rt);
+      }
+      return false;
+    }
     const message = error instanceof Error ? error.message : String(error);
     rt.queueStore.update(item.id, { status: "failed", error: message });
     ctx.ui.notify(`Failed to send ${item.id}: ${message}`, "error");
@@ -184,13 +200,18 @@ export function schedulePostCompactionDelivery(
   ctx: any,
 ): void {
   if (rt.queueDeliveryTimer) clearTimeout(rt.queueDeliveryTimer);
+  const queueContext = getQueueContext(ctx);
+  const scheduledGeneration = rt.sessionGeneration;
   rt.queueDeliveryTimer = setTimeout(() => {
     rt.queueDeliveryTimer = null;
-    const item = rt.queueStore.queuedDeliveryItems(
-      getQueueContext(ctx),
-      "post-compact",
-    )[0];
-    if (item) deliverQueueItem(pi, rt, ctx, item);
+    if (scheduledGeneration !== rt.sessionGeneration) return;
+    const item = rt.queueStore.queuedDeliveryItems(queueContext, "post-compact")[0];
+    if (!item) return;
+    try {
+      deliverQueueItem(pi, rt, ctx, item);
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
+    }
   }, 50);
 }
 

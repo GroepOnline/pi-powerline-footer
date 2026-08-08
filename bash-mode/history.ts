@@ -194,8 +194,9 @@ export function readGlobalShellHistory(shellPath: string): string[] {
     return [];
   }
 
+  let stat: FileFingerprint | undefined;
   try {
-    const stat = statSync(filePath);
+    stat = statSync(filePath);
     const cached = globalHistoryCache.get(cacheKey);
     if (cached && matchesFingerprint(cached, stat)) {
       return cached.entries;
@@ -220,8 +221,12 @@ export function readGlobalShellHistory(shellPath: string): string[] {
     });
     return entries;
   } catch (error) {
-    // Global shell history is optional recall data. If it is unavailable, shell predictions
-    // should degrade to other sources instead of failing the editor.
+    // Global shell history is optional recall data. If the file exists but is
+    // unreadable, cache an empty result under its fingerprint so bash mode keeps
+    // working without logging a stack on every keypress until the file changes.
+    if (stat) {
+      globalHistoryCache.set(cacheKey, { ...stat, entries: [] });
+    }
     console.debug(
       `[powerline-footer] Failed to read global shell history for ${shellName}:`,
       error,
