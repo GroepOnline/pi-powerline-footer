@@ -53,6 +53,7 @@ import {
 } from "./state.ts";
 import { CONTEXT_STATUS_RENDER_MS } from "./constants.ts";
 import type { RuntimeState } from "./types.ts";
+import { isStaleExtensionContextError } from "./stale-context.ts";
 import {
   dismissWelcome,
   scheduleDismissWelcome,
@@ -86,13 +87,6 @@ function getRecentAgentContext(ctx: any): string | undefined {
 
 export function shouldShowStartupWelcome(reason: unknown, welcomeEnabled: boolean): boolean {
   return reason === "startup" && welcomeEnabled;
-}
-
-export function isStaleExtensionContextError(error: unknown): boolean {
-  return error instanceof Error && (
-    error.message.includes("This extension instance is stale")
-    || error.message.includes("This extension ctx is stale")
-  );
 }
 
 export function registerSessionLifecycle(
