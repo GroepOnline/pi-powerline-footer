@@ -396,7 +396,7 @@ export function setupCustomEditor(
           requestStatusRender(rt);
         },
         render(): string[] {
-          return [];
+          return [""];
         },
       };
     },

@@ -103,6 +103,20 @@ test("project history is stored newest-first and global zsh history parses histf
   assert.deepEqual(global, ["plain-command", "git pull", "git fetch"]);
 });
 
+test("global history retries after a transient read failure", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-history-retry-"));
+  const histfile = join(cwd, "history");
+  process.env.HISTFILE = histfile;
+  mkdirSync(histfile);
+
+  assert.deepEqual(readGlobalShellHistory("/bin/bash"), []);
+  rmSync(histfile, { recursive: true, force: true });
+  writeFileSync(histfile, "git recover\n");
+
+  assert.deepEqual(readGlobalShellHistory("/bin/bash"), ["git recover"]);
+  rmSync(cwd, { recursive: true, force: true });
+});
+
 test("matchHistoryEntries returns newest entries when the prefix is empty", () => {
   const matches = matchHistoryEntries(
     ["git stash", "git status", "git stash", "git fetch"],

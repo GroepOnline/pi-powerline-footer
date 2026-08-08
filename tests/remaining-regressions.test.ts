@@ -2,10 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { NERD_ICONS } from "../src/theme/icons.ts";
-import {
-  isStaleExtensionContextError,
-  shouldShowStartupWelcome,
-} from "../src/extension/session-lifecycle.ts";
+import { shouldShowStartupWelcome } from "../src/extension/session-lifecycle.ts";
+import { isStaleExtensionContextError } from "../src/extension/stale-context.ts";
 import {
   __resetCurrencyRatesForTest,
   __setCurrencyRatesForTest,

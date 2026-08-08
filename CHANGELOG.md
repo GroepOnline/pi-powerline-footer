@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Fullscreen footer height** — Return one blank footer line so the Powerline footer matches Pi fullscreen dock sizing at startup (ported from upstream `nicobailon/pi-powerline-footer` #151).
+- **Post-compaction queue delivery** — Snapshot the queue context and session generation before delayed delivery, and reset undelivered items to queued on a stale extension context instead of marking them failed (ported from upstream `27cc7bf`).
+- **Global shell history fallback** — Cache an unreadable global history file as empty under its fingerprint so bash mode keeps working without logging a stack on every keypress until the file changes (ported from upstream `d3649cf` #149).
+
 ## [0.17.2] - 2026-08-05
 
 ### Fixed
